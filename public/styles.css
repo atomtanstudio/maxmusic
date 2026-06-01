@@ -16,6 +16,7 @@
   --accent-hover: #d4926a;
   --accent-muted: rgba(193, 127, 89, 0.15);
   --accent-2: #5a8f7b;
+  /* logo.svg uses: --accent, --accent-hover, --accent-2, warm darks (no purple) */
   --success: #6b9e78;
   --danger: #c45c5c;
   --warning: #c9a227;
