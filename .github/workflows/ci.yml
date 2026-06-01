@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Smoke test server
+        run: |
+          npm start &
+          PID=$!
+          sleep 2
+          curl -fsS http://localhost:3000/api/health | grep -q '"ok":true'
+          curl -fsS -o /dev/null http://localhost:3000/
+          kill $PID

@@ -1,0 +1,14 @@
+# Deploy from GitHub: https://render.com/docs/deploy-render-blueprint
+services:
+  - type: web
+    name: maxmusic
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: NODE_VERSION
+        value: "20"
