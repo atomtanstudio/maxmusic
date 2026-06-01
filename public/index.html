@@ -15,8 +15,10 @@
     <div class="sidebar-backdrop" id="sidebarBackdrop" hidden aria-hidden="true"></div>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <img src="/logo.svg" alt="" class="brand-logo" width="32" height="32" />
-        <div>
+        <div class="brand-logo-wrap">
+          <img src="/logo.svg" alt="" class="brand-logo" />
+        </div>
+        <div class="brand-text">
           <span class="brand-name">maxmusic</span>
           <span class="brand-sub">MiniMax studio</span>
         </div>
@@ -25,7 +27,10 @@
         <button class="nav-btn active" data-view="create">Create</button>
         <button class="nav-btn" data-view="covers">Covers</button>
         <button class="nav-btn" data-view="lyrics">Lyrics</button>
-        <button class="nav-btn" data-view="library">Library <span id="libraryCount">0</span></button>
+        <button class="nav-btn" data-view="library">
+          <span class="nav-label">Library</span>
+          <span class="nav-badge" id="libraryCount" hidden aria-label="0 saved tracks" title="0 saved tracks">0</span>
+        </button>
         <button class="nav-btn" data-view="settings">Settings</button>
       </nav>
       <div class="sidebar-foot">
@@ -59,8 +64,18 @@
             </div>
             <div class="field">
               <label for="prompt">Style / prompt</label>
-              <textarea id="prompt" class="text-input" rows="3" placeholder="E minor, 90 BPM, indie folk, melancholic, acoustic guitar, male vocal"></textarea>
-              <div class="chip-row" id="styleChips"></div>
+              <textarea id="prompt" class="text-input" rows="3" placeholder="Indie folk, 90 BPM, melancholic, acoustic guitar, male vocal — put genre first"></textarea>
+              <p class="field-hint">Leading tags are sent first to the API; conflicting synth/EDM words are trimmed if your genre is acoustic or folk.</p>
+              <div class="chip-toolbar">
+                <button type="button" class="wand-chip-btn" id="promptWandBtn" title="Suggest style tags — add a genre or theme first for best results">
+                  <svg class="wand-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M3.5 20.5 11 13" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                    <path d="m11.2 12.8 2-2 5.8-5.8a1.2 1.2 0 0 1 1.7 1.7l-5.8 5.8-2 2a1.2 1.2 0 0 1-1.7-1.7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                    <path d="M17.2 5.8 19 4M18.5 8.5l1.5 1.5M20.5 6l1.5-1.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" opacity="0.7"/>
+                  </svg>
+                </button>
+                <div class="chip-row" id="styleChips"></div>
+              </div>
             </div>
             <div class="field" id="lyricsField">
               <div class="field-head">
@@ -86,13 +101,7 @@
                 <span class="switch-ui"></span>
                 <span>More variation on B</span>
               </label>
-              <label class="switch" title="Cannot combine with dual A/B">
-                <input type="checkbox" id="streamMode" />
-                <span class="switch-ui"></span>
-                <span>Stream while generating</span>
-              </label>
             </div>
-            <p class="field-hint" id="outputModeHint" hidden>Dual A/B and streaming cannot run together — using dual mode.</p>
             <details class="advanced">
               <summary>Advanced audio</summary>
               <div class="advanced-body">
@@ -100,8 +109,8 @@
                   <div class="field">
                     <label for="model">Model</label>
                     <select id="model" class="text-input">
+                      <option value="music-2.6-free" selected>music-2.6-free (no charge while available)</option>
                       <option value="music-2.6">music-2.6 (paid)</option>
-                      <option value="music-2.6-free">music-2.6-free</option>
                     </select>
                   </div>
                   <div class="field">
@@ -215,15 +224,33 @@
 
           <!-- LIBRARY -->
           <section class="view view-library" data-view="library" hidden>
-            <div class="field-head" style="margin-bottom:16px">
+            <div id="libraryVideoExportPanel" class="video-export-panel library-video-panel" hidden>
+              <div class="video-export-head">
+                <strong id="libraryVideoExportTitle">Generating lyric video</strong>
+                <button type="button" class="secondary-btn" id="libraryVideoExportCancel">Cancel</button>
+              </div>
+              <p id="libraryVideoExportMsg" class="video-export-msg">Preparing…</p>
+              <div class="video-export-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                <span id="libraryVideoExportFill" class="video-export-fill"></span>
+              </div>
+            </div>
+            <div class="field-head library-toolbar" style="margin-bottom:16px">
               <input type="text" id="librarySearch" class="text-input" placeholder="Search…" style="max-width:280px" />
-              <div style="display:flex;gap:8px">
+              <div class="library-toolbar-actions">
+                <div class="library-view-toggle" role="group" aria-label="Library layout">
+                  <button type="button" class="view-toggle-btn active" id="libraryViewList" title="List view" aria-pressed="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h12v2H2v-2z"/></svg>
+                  </button>
+                  <button type="button" class="view-toggle-btn" id="libraryViewTiles" title="Tile view" aria-pressed="false">
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                  </button>
+                </div>
                 <button class="secondary-btn" id="exportLibrary">Export</button>
                 <button class="secondary-btn" id="importLibrary">Import</button>
                 <button class="secondary-btn" id="clearLibrary">Clear</button>
               </div>
             </div>
-            <div class="library-grid" id="libraryGrid"></div>
+            <div class="library-grid library-grid--list" id="libraryGrid"></div>
             <p class="field-hint" id="libraryEmpty" hidden>No tracks yet.</p>
           </section>
 
@@ -231,7 +258,7 @@
           <section class="view view-settings" data-view="settings" hidden>
             <div class="settings-card">
               <h3>API key</h3>
-              <p class="field-hint">Stored in this browser only. Sent as <code>X-Api-Key</code> to your local server, which proxies MiniMax.</p>
+              <p class="field-hint">Your MiniMax key — <strong>never</strong> stored in this git repo. Saved in this browser only and sent as <code>X-Api-Key</code> to the server you run (local or Render), which proxies MiniMax.</p>
               <div style="display:flex;gap:8px;margin-top:12px">
                 <input type="password" id="userApiKey" class="text-input" placeholder="sk-…" />
                 <button class="secondary-btn" id="saveKey">Save</button>
@@ -241,7 +268,7 @@
             </div>
             <div class="settings-card">
               <h3>Server key</h3>
-              <p class="field-hint">Optional <code>MINIMAX_API_KEY</code> env var when running <code>npm start</code>.</p>
+              <p class="field-hint">Optional <code>MINIMAX_API_KEY</code> on the host (local <code>.env</code> or Render secrets). For public sites, leave the server unset and use the field above only.</p>
               <p class="field-hint" id="serverKeyStatus"></p>
             </div>
             <div class="settings-card">
@@ -249,7 +276,7 @@
               <label class="switch">
                 <input type="checkbox" id="autoCoverArt" checked />
                 <span class="switch-ui"></span>
-                <span>Auto-generate cover art after each track</span>
+                <span>Generate cover art in parallel with each track</span>
               </label>
             </div>
           </section>
@@ -257,37 +284,28 @@
 
         <aside class="panel-preview" id="previewPanel">
           <div id="previewEmpty" class="preview-empty">
-            <p>Output appears here — player, metadata, and dual takes.</p>
+            <p>Generated tracks appear here. Save to library when you want to keep them.</p>
           </div>
           <div id="previewLoading" class="loading-block" hidden>
             <p id="loadingMsg">Generating…</p>
             <div class="loading-bar"><span></span></div>
           </div>
-          <div id="previewDual" class="preview-dual" hidden></div>
-          <div id="previewSingle" hidden>
-            <div class="player-cover" id="playerCover">
-              <img id="playerCoverImg" alt="" hidden />
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" id="playerCoverIcon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <div id="videoExportPanel" class="video-export-panel" hidden>
+            <div class="video-export-head">
+              <strong id="videoExportTitle">Generating lyric video</strong>
+              <button type="button" class="secondary-btn" id="videoExportCancel">Cancel</button>
             </div>
-            <div class="player-title" id="playerTitle">—</div>
-            <div class="player-sub" id="playerSub">—</div>
-            <div class="player-controls">
-              <button class="ctrl-play" id="playerPlay" aria-label="Play">▶</button>
-              <div class="player-transport">
-                <div class="waveform-wrap" id="waveformWrap" title="Click to seek">
-                  <canvas id="waveform" height="56" aria-hidden="true"></canvas>
-                  <div class="waveform-playhead" id="waveformPlayhead"></div>
-                </div>
-                <div class="progress-times"><span id="currentTime">0:00</span><span id="duration">0:00</span></div>
-              </div>
+            <p id="videoExportMsg" class="video-export-msg">Preparing…</p>
+            <div class="video-export-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+              <span id="videoExportFill" class="video-export-fill"></span>
             </div>
-            <audio id="audioEl" preload="metadata"></audio>
-            <div class="action-row">
-              <a class="secondary-btn" id="downloadBtn" download>Download</a>
-              <button class="secondary-btn" id="coverArtBtn">Cover art</button>
-              <button class="secondary-btn" id="useAsRefBtn">Use as cover ref</button>
+          </div>
+          <div id="previewSession" class="preview-session" hidden>
+            <div class="session-head">
+              <h2 class="session-title">This session</h2>
+              <button type="button" class="secondary-btn" id="clearSessionBtn">Clear</button>
             </div>
-            <p class="field-hint" id="playerStats" style="margin-top:12px"></p>
+            <div id="sessionList" class="session-list suno-clips"></div>
           </div>
         </aside>
       </div>

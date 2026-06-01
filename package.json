@@ -8,7 +8,8 @@
     "start": "PORT=3001 node scripts/start.mjs",
     "stop": "node scripts/stop.mjs",
     "restart": "npm run stop && npm start",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "security:check": "bash scripts/security-check.sh"
   },
   "dependencies": {
     "cors": "^2.8.5",

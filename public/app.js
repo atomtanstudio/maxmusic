@@ -1,3 +1,7 @@
+import { buildRichStylePrompt, isGenericSeed, pickWandTheme, prepareMusicPrompt } from './style-suggest.js';
+import { dualTrackTitles, titleFromLyrics } from './title-from-lyrics.js';
+import { exportLyricVideo } from './lyric-video.js';
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -5,6 +9,7 @@ const STORAGE = {
   tracks: 'maxmusic.tracks',
   apiKey: 'maxmusic.apiKey',
   autoCoverArt: 'maxmusic.autoCoverArt',
+  libraryView: 'maxmusic.libraryView',
 };
 
 const STYLE_CHIPS = [
@@ -31,11 +36,14 @@ const state = {
   referenceFile: null,
   coverFeatureId: null,
   currentTrack: null,
-  dualTakes: null, // { A: { status }, B: { status } } while generating
-  dualMeta: null,
-  dualPlayedFirst: false,
+  sessionItems: [],
+  videoExport: null,
+  suggestedSongTitle: '',
   isGenerating: false,
   library: [],
+  libraryAudio: null,
+  libraryPlayingId: null,
+  libraryView: localStorage.getItem(STORAGE.libraryView) || 'list',
 };
 
 const waveform = {
@@ -78,10 +86,20 @@ function formatBytes(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function titleFromPrompt(prompt, mode) {
-  if (!prompt) return mode === 'instrumental' ? 'Untitled instrumental' : 'Untitled';
-  const first = prompt.split(/[,.!?\n]/)[0].trim();
-  return (first.length >= 4 ? first : prompt).slice(0, 50);
+function resolveTrackTitle({ lyrics = '', prompt = '', mode = 'vocal', apiTitle = '' } = {}) {
+  return titleFromLyrics(lyrics, {
+    apiTitle: apiTitle || state.suggestedSongTitle || '',
+    prompt,
+    mode,
+  });
+}
+
+function resolveDualTrackTitles({ lyrics = '', prompt = '', mode = 'vocal', apiTitle = '' } = {}) {
+  return dualTrackTitles(lyrics, {
+    apiTitle: apiTitle || state.suggestedSongTitle || '',
+    prompt,
+    mode,
+  });
 }
 
 function paletteFor(seed) {
@@ -117,6 +135,54 @@ function showAlert(id, msg) {
   a.textContent = msg;
 }
 
+function parseLyricsResponse(result) {
+  const data = result?.data && typeof result.data === 'object' ? result.data : result;
+  return {
+    lyrics: (data.lyrics || result.lyrics || '').trim(),
+    song_title: data.song_title || result.song_title || '',
+    style_tags: data.style_tags || result.style_tags || '',
+  };
+}
+
+function applyLyricsToCreateFields({ lyrics, style_tags, song_title }, { updatePrompt = false } = {}) {
+  if (lyrics) {
+    $('#lyrics').value = lyrics;
+    $('#lyrics').disabled = false;
+    $('#lyrics').style.opacity = '1';
+    $('#lyricsOptimizer').checked = false;
+    $('#lyricsCount').textContent = String(lyrics.length);
+  }
+  if (updatePrompt && style_tags) $('#prompt').value = style_tags;
+  state.suggestedSongTitle = song_title
+    || titleFromLyrics(lyrics, { prompt: $('#prompt').value, mode: state.mode });
+  if (song_title && state.view === 'lyrics') $('#lyricsTitle').value = song_title;
+}
+
+async function fetchLyricsFromApi({ mode, prompt, lyrics = '', title = '' }) {
+  const result = await api('/api/lyrics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, prompt, lyrics, title }),
+  });
+  return parseLyricsResponse(result);
+}
+
+async function ensureLyricsForCreate(prompt) {
+  const theme = isGenericSeed(prompt) ? pickWandTheme(prompt) : (prompt?.trim() || pickWandTheme(prompt));
+  const parsed = await fetchLyricsFromApi({ mode: 'write_full_song', prompt: theme });
+  if (!parsed.lyrics) throw new Error('Lyrics API returned no lyrics — try again or write your own.');
+  applyLyricsToCreateFields(parsed, { updatePrompt: false });
+  return parsed.lyrics;
+}
+
+function hexToAudioBlob(hex, mime = 'audio/mpeg') {
+  const clean = hex.replace(/\s/g, '');
+  if (!clean || clean.length < 4) return null;
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < clean.length; i += 2) bytes[i / 2] = parseInt(clean.slice(i, i + 2), 16);
+  return new Blob([bytes], { type: mime });
+}
+
 function trackFromResult(result, meta) {
   const t = result.track;
   const extra = result.extra_info || {};
@@ -141,24 +207,338 @@ function trackFromResult(result, meta) {
 }
 
 // --- Library ---
+function updateLibraryCountBadge() {
+  const el = $('#libraryCount');
+  if (!el) return;
+  const n = state.library.length;
+  el.textContent = String(n);
+  el.hidden = n === 0;
+  const label = `${n} saved track${n === 1 ? '' : 's'}`;
+  el.setAttribute('aria-label', label);
+  el.title = label;
+}
+
 function loadLibrary() {
   try { state.library = JSON.parse(localStorage.getItem(STORAGE.tracks) || '[]'); }
   catch { state.library = []; }
-  $('#libraryCount').textContent = state.library.length;
+  updateLibraryCountBadge();
 }
 
 function saveLibrary() {
   localStorage.setItem(STORAGE.tracks, JSON.stringify(state.library));
-  $('#libraryCount').textContent = state.library.length;
+  updateLibraryCountBadge();
+}
+
+function stopLibraryPlayback() {
+  $$('.library-audio').forEach((a) => {
+    a.pause();
+    a.currentTime = 0;
+  });
+  if (state.libraryAudio) {
+    state.libraryAudio.pause();
+    state.libraryAudio = null;
+  }
+  state.libraryPlayingId = null;
+  syncLibraryPlayUi(null);
+}
+
+function syncLibraryPlayUi(playingId) {
+  $$('.library-card').forEach((card) => {
+    const playing = !!playingId && card.dataset.id === playingId;
+    card.classList.toggle('is-playing', playing);
+    const btn = card.querySelector('[data-act="play"]');
+    if (!btn) return;
+    btn.classList.toggle('is-playing', playing);
+    btn.textContent = playing ? '❚❚' : '▶';
+    btn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  });
+}
+
+function bindAudioTransport({ audio, playBtn, timeEl, seekEl, onBeforePlay }) {
+  if (!audio) return;
+  const syncTime = () => {
+    if (timeEl) {
+      const cur = formatTime(audio.currentTime);
+      const dur = audio.duration && Number.isFinite(audio.duration) ? formatTime(audio.duration) : '—';
+      timeEl.textContent = `${cur} / ${dur}`;
+    }
+    if (seekEl && audio.duration && Number.isFinite(audio.duration)) {
+      seekEl.value = String((audio.currentTime / audio.duration) * 100);
+    }
+  };
+  playBtn?.addEventListener('click', () => {
+    if (audio.paused) {
+      onBeforePlay?.();
+      audio.play().catch(() => toast('Playback failed', 'error'));
+    } else {
+      audio.pause();
+      if (audio.classList.contains('library-audio')) {
+        state.libraryPlayingId = null;
+        state.libraryAudio = null;
+        syncLibraryPlayUi(null);
+      }
+    }
+  });
+  seekEl?.addEventListener('input', () => {
+    if (!audio.duration || !Number.isFinite(audio.duration)) return;
+    audio.currentTime = (parseFloat(seekEl.value) / 100) * audio.duration;
+    syncTime();
+  });
+  audio.addEventListener('play', () => {
+    playBtn?.classList.add('is-playing');
+    if (playBtn) playBtn.textContent = '❚❚';
+  });
+  audio.addEventListener('pause', () => {
+    playBtn?.classList.remove('is-playing');
+    if (playBtn) playBtn.textContent = '▶';
+  });
+  audio.addEventListener('timeupdate', syncTime);
+  audio.addEventListener('loadedmetadata', syncTime);
+  audio.addEventListener('ended', () => {
+    playBtn?.classList.remove('is-playing');
+    if (playBtn) playBtn.textContent = '▶';
+    if (seekEl) seekEl.value = '0';
+    if (audio.classList.contains('library-audio')) stopLibraryPlayback();
+  });
+}
+
+function toggleLibraryTrack(t, card) {
+  if (!t?.url) {
+    toast('No audio URL for this track', 'error');
+    return;
+  }
+  const audio = card?.querySelector('.library-audio');
+  if (state.libraryPlayingId === t.id && audio && !audio.paused) {
+    audio.pause();
+    stopLibraryPlayback();
+    return;
+  }
+  $$('.take-audio').forEach((a) => a.pause());
+  $$('.library-audio').forEach((a) => { if (a !== audio) a.pause(); });
+  state.libraryPlayingId = null;
+  state.libraryAudio = null;
+  if (audio) {
+    state.libraryAudio = audio;
+    state.libraryPlayingId = t.id;
+    audio.play().catch(() => toast('Playback failed', 'error'));
+  } else {
+    const fallback = new Audio(t.url);
+    state.libraryAudio = fallback;
+    state.libraryPlayingId = t.id;
+    fallback.addEventListener('ended', stopLibraryPlayback);
+    fallback.play().catch(() => toast('Playback failed', 'error'));
+  }
+  syncLibraryPlayUi(t.id);
+}
+
+function confirmRemoveLibraryTrack(t) {
+  if (!t) return;
+  if (!confirm(`Remove “${t.title}” from your library?\n\nThis only removes it from this browser — the audio file on the server is not deleted.`)) {
+    return;
+  }
+  removeFromLibrary(t.id);
+  toast('Removed from library', 'success');
 }
 
 function addToLibrary(track) {
+  if (state.library.some((t) => t.id === track.id)) return false;
   state.library.unshift(track);
   if (state.library.length > 200) state.library = state.library.slice(0, 200);
   saveLibrary();
+  renderLibrary();
+  return true;
+}
+
+function downloadTrack(track) {
+  if (!track?.url) {
+    toast('No audio to download', 'error');
+    return;
+  }
+  const ext = track.filename?.split('.').pop() || 'mp3';
+  const a = document.createElement('a');
+  a.href = track.url;
+  a.download = `${(track.title || 'track').replace(/[^\w.-]+/g, '-').replace(/-+/g, '-')}.${ext}`;
+  a.click();
+  toast('Download started', 'success');
+}
+
+function saveTrackToLibrary(track, label = 'Track') {
+  if (!track) return;
+  if (addToLibrary(track)) {
+    const item = state.sessionItems.find((i) => i.track?.id === track.id);
+    if (item) item.savedToLibrary = true;
+    renderSessionList();
+    toast(`${label} saved to library`, 'success');
+  } else {
+    toast(`${label} is already in your library`, '');
+  }
+}
+
+function isTrackInLibrary(trackId) {
+  return state.library.some((t) => t.id === trackId);
+}
+
+function newSessionId() {
+  return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function addSessionItem(item) {
+  const entry = {
+    id: item.id || newSessionId(),
+    status: item.status || 'creating',
+    label: item.label || 'Untitled',
+    track: item.track || null,
+    error: item.error || null,
+    gradient: item.gradient || dualGradient(item.label || ''),
+    coverArtUrl: item.coverArtUrl || item.track?.coverArtUrl || null,
+    promptSnippet: item.promptSnippet || item.track?.prompt || '',
+    savedToLibrary: item.track ? isTrackInLibrary(item.track.id) : false,
+  };
+  state.sessionItems.unshift(entry);
+  updatePreviewChrome();
+  renderSessionList();
+  return entry.id;
+}
+
+function updateSessionItem(id, patch) {
+  const item = state.sessionItems.find((i) => i.id === id);
+  if (!item) return;
+  Object.assign(item, patch);
+  if (patch.track) {
+    item.savedToLibrary = isTrackInLibrary(patch.track.id);
+    item.coverArtUrl = patch.track.coverArtUrl || item.coverArtUrl;
+    item.gradient = patch.track.gradient || item.gradient;
+    item.promptSnippet = patch.track.prompt || item.promptSnippet;
+  }
+  renderSessionList();
+  updatePreviewChrome();
+}
+
+function sessionItemsNeedingLibrarySave() {
+  return state.sessionItems.filter(
+    (i) => i.status === 'ready' && i.track && !isTrackInLibrary(i.track.id),
+  );
+}
+
+async function clearSession() {
+  const unsaved = sessionItemsNeedingLibrarySave();
+  if (unsaved.length) {
+    const n = unsaved.length;
+    const saveFirst = confirm(
+      `${n} track${n > 1 ? 's are' : ' is'} not in your library yet.\n\nOK = save them to the library first, then clear.\nCancel = continue without saving.`,
+    );
+    if (saveFirst) {
+      unsaved.forEach((i) => addToLibrary(i.track));
+      unsaved.forEach((i) => { i.savedToLibrary = true; });
+      renderSessionList();
+    }
+  }
+  if (!state.sessionItems.length) return;
+  if (!confirm('Clear all tracks from this session?')) return;
+  state.sessionItems = [];
+  updatePreviewChrome();
+  renderSessionList();
+  toast('Session cleared', '');
+}
+
+function renderVideoExportPanel() {
+  const ve = state.videoExport;
+  const panels = [$('#videoExportPanel'), $('#libraryVideoExportPanel')].filter(Boolean);
+  const title = ve?.active
+    ? 'Generating lyric video…'
+    : ve?.error
+      ? 'Lyric video failed'
+      : 'Lyric video ready';
+  const msg = ve?.message || '';
+  const pct = ve?.progress != null ? Math.round(ve.progress * 100) : 0;
+
+  for (const panel of panels) {
+    if (!ve) {
+      panel.hidden = true;
+      continue;
+    }
+    panel.hidden = false;
+    panel.classList.toggle('is-done', Boolean(ve.done));
+    panel.classList.toggle('is-error', Boolean(ve.error));
+    const titleEl = panel.querySelector('.video-export-head strong');
+    const msgEl = panel.querySelector('.video-export-msg');
+    const fill = panel.querySelector('.video-export-fill');
+    const bar = panel.querySelector('.video-export-bar');
+    const cancel = panel.querySelector('[id$="VideoExportCancel"]');
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = msg;
+    if (fill) fill.style.width = `${pct}%`;
+    if (bar) {
+      bar.setAttribute('aria-valuenow', String(pct));
+      bar.setAttribute('aria-valuetext', `${pct}%`);
+    }
+    if (cancel) cancel.hidden = !ve.active;
+  }
+}
+
+async function createLyricVideoForTrack(track, sessionId) {
+  if (state.videoExport?.active) {
+    toast('Lyric video in progress — see the progress bar above the list', '');
+    return;
+  }
+  const abort = new AbortController();
+  state.videoExport = {
+    active: true,
+    trackId: track.id,
+    progress: 0,
+    message: 'Starting…',
+    abort,
+  };
+  renderVideoExportPanel();
+  renderSessionList();
+  renderLibrary();
+
+  try {
+    const result = await exportLyricVideo(
+      track,
+      (update) => {
+        if (!state.videoExport?.active) return;
+        state.videoExport.progress = update.progress ?? state.videoExport.progress;
+        state.videoExport.message = update.message;
+        renderVideoExportPanel();
+        renderSessionList();
+        renderLibrary();
+      },
+      { signal: abort.signal },
+    );
+    state.videoExport = {
+      active: false,
+      done: true,
+      trackId: track.id,
+      progress: 1,
+      message: `Download started (${result.filename})`,
+    };
+    renderVideoExportPanel();
+    toast(`Lyric video saved (${result.label})`, 'success');
+  } catch (e) {
+    const cancelled = e.message?.includes('cancel');
+    state.videoExport = {
+      active: false,
+      error: e.message,
+      trackId: track.id,
+      message: cancelled ? 'Cancelled' : e.message,
+    };
+    renderVideoExportPanel();
+    if (!cancelled) toast(e.message || 'Lyric video failed', 'error');
+  } finally {
+    renderSessionList();
+    renderLibrary();
+    setTimeout(() => {
+      if (!state.videoExport?.active) {
+        state.videoExport = null;
+        renderVideoExportPanel();
+      }
+    }, 12000);
+  }
 }
 
 function removeFromLibrary(id) {
+  if (state.libraryPlayingId === id) stopLibraryPlayback();
   state.library = state.library.filter((t) => t.id !== id);
   saveLibrary();
   renderLibrary();
@@ -166,7 +546,7 @@ function removeFromLibrary(id) {
 
 // --- Navigation ---
 const PAGE_META = {
-  create: ['Create', 'Dual mode builds two versions — each becomes playable when ready'],
+  create: ['Create', 'New tracks stack in the session panel — save to library when you want to keep them'],
   covers: ['Covers', 'Restyle reference audio — quick or lyrics-first workflow'],
   lyrics: ['Lyrics', 'Write or edit lyrics, then send to Create'],
   library: ['Library', 'Local history — export and import supported'],
@@ -195,60 +575,61 @@ function setView(name) {
   if (name === 'settings') refreshKeyStatus();
 }
 
-// --- Preview / player ---
+// --- Preview / session list ---
+function updatePreviewChrome() {
+  const hasSession = state.sessionItems.length > 0;
+  const creating = state.sessionItems.some((i) => i.status === 'creating');
+  $('#previewEmpty').hidden = hasSession || state.isGenerating || !!state.videoExport;
+  $('#previewSession').hidden = !hasSession;
+  $('#previewLoading').hidden = !state.isGenerating || (hasSession && !creating);
+  renderVideoExportPanel();
+}
+
 function setPreviewLoading(on, msg = 'Generating…') {
-  const dualActive = state.dualTakes && typeof state.dualTakes === 'object';
-  $('#previewEmpty').hidden = on || state.currentTrack || dualActive;
-  $('#previewLoading').hidden = !on || dualActive;
-  $('#previewSingle').hidden = on || !state.currentTrack || dualActive;
-  $('#previewDual').hidden = !dualActive;
-  if (on) $('#loadingMsg').textContent = msg;
+  if (on && msg) $('#loadingMsg').textContent = msg;
+  updatePreviewChrome();
 }
 
 function dualGradient(seed) {
   return paletteFor(hashStr(String(seed)));
 }
 
-function playTrack(track, { keepDual = false } = {}) {
-  state.currentTrack = track;
-  if (!keepDual) {
-    state.dualTakes = null;
-    $('#previewDual').hidden = true;
+function shouldGenerateCoverArt() {
+  return $('#autoCoverArt').checked;
+}
+
+function applyCoverArtToTrack(track, coverUrl) {
+  if (!coverUrl || !track) return;
+  track.coverArtUrl = coverUrl;
+  const lib = state.library.find((t) => t.id === track.id);
+  if (lib) lib.coverArtUrl = coverUrl;
+  saveLibrary();
+  const item = state.sessionItems.find((i) => i.track?.id === track.id);
+  if (item) {
+    item.coverArtUrl = coverUrl;
+    if (item.track) item.track.coverArtUrl = coverUrl;
   }
-  const a = $('#audioEl');
-  a.src = track.url;
-  $('#previewEmpty').hidden = true;
-  $('#previewSingle').hidden = false;
+  renderSessionList();
+  renderLibrary();
+}
 
-  $('#playerTitle').textContent = track.title;
-  $('#playerSub').textContent = `${track.mode} · ${(track.prompt || '').slice(0, 60)}`;
+async function fetchCoverArtParallel(meta) {
+  const result = await api('/api/cover-art', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: meta.title,
+      musicPrompt: meta.prompt || meta.musicPrompt,
+      mode: meta.mode,
+      lyrics: meta.lyrics,
+    }),
+  });
+  return result.cover?.url || null;
+}
 
-  const cover = $('#playerCover');
-  const img = $('#playerCoverImg');
-  const icon = $('#playerCoverIcon');
-  if (track.coverArtUrl) {
-    img.src = track.coverArtUrl;
-    img.hidden = false;
-    icon.hidden = true;
-    cover.style.background = '#000';
-  } else {
-    img.hidden = true;
-    icon.hidden = false;
-    cover.style.background = track.gradient;
-  }
-
-  $('#downloadBtn').href = track.url;
-  $('#downloadBtn').download = `${track.title.replace(/[^\w.-]+/g, '-')}.${track.filename?.split('.').pop() || 'mp3'}`;
-
-  const stats = [
-    track.durationMs ? formatTime(track.durationMs / 1000) : null,
-    track.sampleRate ? `${(track.sampleRate / 1000).toFixed(1)} kHz` : null,
-    track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : null,
-  ].filter(Boolean).join(' · ');
-  $('#playerStats').textContent = stats;
-
-  loadWaveform(track.url);
-  a.play().catch(() => {});
+function coverArtPromise(meta) {
+  if (!shouldGenerateCoverArt()) return Promise.resolve(null);
+  return fetchCoverArtParallel(meta).catch(() => null);
 }
 
 // --- Waveform ---
@@ -331,14 +712,15 @@ function seekFromWaveformEvent(e) {
 
 // --- Generation ---
 function readCreatePayload() {
+  const rawPrompt = $('#prompt').value.trim();
   return {
     model: $('#model').value,
-    prompt: $('#prompt').value.trim(),
+    prompt: prepareMusicPrompt(rawPrompt),
     lyrics: $('#lyrics').value,
     is_instrumental: state.mode === 'instrumental',
     lyrics_optimizer: state.mode === 'vocal' && $('#lyricsOptimizer').checked,
-    output_format: $('#streamMode').checked ? 'hex' : $('#outputFormat').value,
-    stream: $('#streamMode').checked,
+    output_format: $('#outputFormat').value,
+    stream: false,
     audio_setting: {
       sample_rate: parseInt($('#sampleRate').value, 10),
       bitrate: parseInt($('#bitrate').value, 10),
@@ -348,34 +730,13 @@ function readCreatePayload() {
   };
 }
 
-function syncOutputModes(changed) {
-  const dual = $('#dualMode');
-  const stream = $('#streamMode');
-  const hint = $('#outputModeHint');
-  if (dual.checked && stream.checked) {
-    if (changed === 'dual') stream.checked = false;
-    else dual.checked = false;
-    hint.hidden = false;
-    setTimeout(() => { hint.hidden = true; }, 4000);
-  }
-}
-
 function validateCreate() {
   const p = readCreatePayload();
   if (state.mode === 'instrumental' && !p.prompt) return 'Instrumental needs a style prompt.';
   if (state.mode === 'vocal' && !p.lyrics_optimizer && !p.lyrics.trim()) {
     return 'Add lyrics or enable auto-lyrics.';
   }
-  if ($('#dualMode').checked && $('#streamMode').checked) {
-    return 'Choose either Dual A/B or Stream — not both.';
-  }
   return null;
-}
-
-function streamErrorMessage(err) {
-  if (!err) return 'Stream failed';
-  if (typeof err === 'string') return err;
-  return err.error || err.details || err.status_msg || JSON.stringify(err);
 }
 
 async function handleCreate() {
@@ -384,33 +745,63 @@ async function handleCreate() {
   showAlert('#alertCreate', err);
   if (err) return;
 
-  const payload = readCreatePayload();
-  const useDual = $('#dualMode').checked && !payload.stream;
+  let payload = readCreatePayload();
+  const useDual = $('#dualMode').checked;
+  const needsAutoLyrics = state.mode === 'vocal' && payload.lyrics_optimizer;
   state.isGenerating = true;
+  state.suggestedSongTitle = '';
   $('#createBtn').disabled = true;
-  if (!useDual) setPreviewLoading(true);
+  showAlert('#alertCreate', null);
+  if (!useDual) setPreviewLoading(true, needsAutoLyrics ? 'Writing lyrics…' : 'Generating…');
 
   try {
-    if (payload.stream) {
-      await handleStreamGenerate(payload);
-    } else if (useDual) {
+    if (needsAutoLyrics) {
+      await ensureLyricsForCreate(payload.prompt);
+      payload = readCreatePayload();
+      payload.lyrics_optimizer = false;
+      if (!payload.lyrics.trim()) {
+        throw new Error('Lyrics were not applied — try again.');
+      }
+      if (!useDual) setPreviewLoading(true, 'Generating music…');
+    }
+    if (useDual) {
+      setPreviewLoading(true, 'Generating…');
       await handleDualGenerateProgressive(payload);
     } else {
-      const result = await api('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const title = resolveTrackTitle({
+        lyrics: payload.lyrics,
+        prompt: payload.prompt,
+        mode: state.mode,
       });
+      const sessionId = addSessionItem({
+        status: 'creating',
+        label: title,
+        promptSnippet: payload.prompt,
+        gradient: dualGradient(payload.prompt || title),
+      });
+      const coverMeta = {
+        title,
+        prompt: payload.prompt,
+        mode: state.mode,
+        lyrics: payload.lyrics,
+      };
+      const [result, coverUrl] = await Promise.all([
+        api('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+        coverArtPromise(coverMeta),
+      ]);
       const track = trackFromResult(result, {
-        title: titleFromPrompt(payload.prompt, state.mode),
+        title,
         prompt: payload.prompt,
         lyrics: payload.lyrics,
         mode: state.mode,
         model: payload.model,
       });
-      addToLibrary(track);
-      playTrack(track);
-      if ($('#autoCoverArt').checked) generateCoverArt(track);
+      if (coverUrl) applyCoverArtToTrack(track, coverUrl);
+      updateSessionItem(sessionId, { status: 'ready', track });
       toast('Track ready', 'success');
     }
   } catch (e) {
@@ -420,46 +811,12 @@ async function handleCreate() {
     state.isGenerating = false;
     $('#createBtn').disabled = false;
     setPreviewLoading(false);
+    updatePreviewChrome();
   }
 }
 
-function dualSlotLabel(slot) {
-  return slot === 'A' ? 'Version A' : 'Version B';
-}
-
-function initDualPanel(meta) {
-  state.dualTakes = { A: { status: 'creating' }, B: { status: 'creating' } };
-  state.dualMeta = meta;
-  state.dualPlayedFirst = false;
-  state.currentTrack = null;
-  $('#previewEmpty').hidden = true;
-  $('#previewSingle').hidden = true;
-  $('#previewDual').hidden = false;
-  $('#previewLoading').hidden = true;
-
-  const title = titleFromPrompt(meta.prompt, meta.mode);
-  const el = $('#previewDual');
-  el.innerHTML = '';
-  for (const slot of ['A', 'B']) {
-    el.appendChild(buildDualCardElement(slot, {
-      status: 'creating',
-      title: `${title} (${slot})`,
-      gradient: dualGradient(meta.prompt + slot),
-    }));
-  }
-}
-
-function buildDualCardElement(slot, info) {
-  const card = document.createElement('div');
-  card.className = 'take-card';
-  card.dataset.slot = slot;
-  card.innerHTML = renderDualCardInner(slot, info);
-  bindDualCard(card, slot, info);
-  return card;
-}
-
-function renderDualCardInner(slot, info) {
-  const status = info.status || 'creating';
+function renderSessionCardInner(item) {
+  const status = item.status || 'creating';
   const statusLabel = status === 'creating' ? 'Creating…'
     : status === 'ready' ? 'Ready'
       : status === 'failed' ? 'Failed' : status;
@@ -467,91 +824,119 @@ function renderDualCardInner(slot, info) {
     : status === 'failed' ? 'take-status--failed' : 'take-status--creating';
 
   const artClass = `take-art${status === 'creating' ? ' is-generating' : ''}`;
-  const artStyle = info.coverArtUrl
-    ? `background-image:url('${info.coverArtUrl}');background-size:cover`
-    : `background:${info.gradient || dualGradient(slot)}`;
+  const artStyle = item.coverArtUrl
+    ? `background-image:url('${item.coverArtUrl}');background-size:cover;background-position:center`
+    : `background:${item.gradient || dualGradient(item.label)}`;
 
-  let body = '';
-  if (status === 'creating') {
-    body = `
-      <p class="take-title">${escapeHtml(info.title || dualSlotLabel(slot))}</p>
-      <p class="take-sub">Composing — usually 30–90s</p>
+  const promptSnippet = escapeHtml((item.promptSnippet || item.track?.prompt || '').slice(0, 120));
+  const title = status === 'ready' && item.track
+    ? escapeHtml(item.track.title)
+    : escapeHtml(item.label);
+
+  const inLib = item.savedToLibrary || (item.track && isTrackInLibrary(item.track.id));
+  const savedBadge = inLib ? '<span class="take-saved-badge">In library</span>' : '';
+
+  const ve = state.videoExport;
+  const videoOnCard = item.track && ve && (ve.active || ve.done || ve.error) && ve.trackId === item.track.id;
+  let videoBlock = '';
+  if (videoOnCard) {
+    const pct = ve.progress != null ? Math.round(ve.progress * 100) : 0;
+    videoBlock = `
+      <div class="take-video-progress">
+        <p class="video-export-msg">${escapeHtml(ve.message || '')}</p>
+        <div class="video-export-bar"><span class="video-export-fill" style="width:${pct}%"></span></div>
+      </div>
     `;
-  } else if (status === 'ready' && info.track) {
-    body = `
-      <p class="take-title">${escapeHtml(info.track.title)}</p>
-      <p class="take-sub">Tap play when you're ready</p>
-      <audio class="take-audio" controls preload="metadata" src="${info.track.url}"></audio>
+  }
+
+  let mainBody = '';
+  if (status === 'creating') {
+    mainBody = `<p class="take-sub">Composing — cover art may generate in parallel</p>`;
+  } else if (status === 'ready' && item.track) {
+    const videoBusy = ve?.active && ve.trackId === item.track.id;
+    mainBody = `
+      <div class="take-mini-player">
+        <button type="button" class="take-mini-play" data-act="play" aria-label="Play">▶</button>
+        <div class="take-mini-transport">
+          <span class="take-mini-time" data-time>0:00 / —</span>
+          <input type="range" class="take-seek" min="0" max="100" value="0" step="0.1" aria-label="Seek through track">
+        </div>
+      </div>
+      <audio class="take-audio" preload="metadata" src="${item.track.url}"></audio>
+      ${videoBlock}
       <div class="take-actions">
-        <button type="button" class="secondary-btn" data-act="open">Open in player</button>
-        <button type="button" class="secondary-btn" data-act="save">Save</button>
+        <button type="button" class="secondary-btn" data-act="save-lib">Save to library</button>
+        <button type="button" class="secondary-btn" data-act="download">Download song</button>
+        <button type="button" class="secondary-btn" data-act="lyric-video" ${videoBusy ? 'disabled' : ''}>Generate and download lyric video</button>
       </div>
     `;
   } else if (status === 'failed') {
-    body = `<p class="take-error">${escapeHtml(info.error || 'Generation failed')}</p>`;
+    mainBody = `<p class="take-error">${escapeHtml(item.error || 'Generation failed')}</p>`;
   }
 
-  const playBtn = status === 'ready'
-    ? `<button type="button" class="take-art-play" data-act="play" aria-label="Play">▶</button>`
-    : `<button type="button" class="take-art-play" disabled aria-label="Waiting">▶</button>`;
-
   return `
-    <div class="take-card-head">
-      <span class="take-label">${dualSlotLabel(slot)}</span>
-      <span class="take-status ${statusClass}">${statusLabel}</span>
+    <div class="${artClass}" style="${artStyle}" aria-hidden="true"></div>
+    <div class="take-main">
+      <div class="take-card-head">
+        <p class="take-title">${title}</p>
+        <span class="take-status ${statusClass}">${statusLabel}</span>
+        ${savedBadge}
+      </div>
+      ${promptSnippet ? `<p class="take-prompt">${promptSnippet}</p>` : ''}
+      ${mainBody}
     </div>
-    <div class="${artClass}" style="${artStyle}">${playBtn}</div>
-    ${body}
   `;
 }
 
-function bindDualCard(card, slot, info) {
+function bindSessionCard(card, item) {
+  const audio = card.querySelector('.take-audio');
   const playBtn = card.querySelector('[data-act="play"]');
-  if (playBtn && info.track) {
-    playBtn.addEventListener('click', () => {
-      const audio = card.querySelector('.take-audio');
-      if (audio) audio.play();
-      else playTrack(info.track);
+  const timeEl = card.querySelector('[data-time]');
+  const seekEl = card.querySelector('.take-seek');
+
+  if (audio && item.track) {
+    bindAudioTransport({
+      audio,
+      playBtn,
+      timeEl,
+      seekEl,
+      onBeforePlay: () => {
+        $$('.take-audio').forEach((a) => { if (a !== audio) a.pause(); });
+        stopLibraryPlayback();
+      },
     });
   }
-  card.querySelector('[data-act="open"]')?.addEventListener('click', () => {
-    if (info.track) playTrack(info.track, { keepDual: true });
+
+  card.querySelector('[data-act="save-lib"]')?.addEventListener('click', () => {
+    if (!item.track) return;
+    saveTrackToLibrary(item.track, item.track.title);
   });
-  card.querySelector('[data-act="save"]')?.addEventListener('click', () => {
-    if (!info.track) return;
-    addToLibrary(info.track);
-    toast(`Saved ${dualSlotLabel(slot)}`, 'success');
-    if ($('#autoCoverArt').checked && !info.track.coverArtUrl) generateCoverArt(info.track);
+  card.querySelector('[data-act="download"]')?.addEventListener('click', () => {
+    if (!item.track) return;
+    downloadTrack(item.track);
+  });
+  card.querySelector('[data-act="lyric-video"]')?.addEventListener('click', () => {
+    if (!item.track) return;
+    createLyricVideoForTrack(item.track, item.id);
   });
 }
 
-function updateDualSlot(slot, status, data = {}) {
-  if (!state.dualTakes) state.dualTakes = {};
-  state.dualTakes[slot] = { status, ...data };
-
-  const card = $(`#previewDual .take-card[data-slot="${slot}"]`);
-  if (!card) return;
-
-  const info = {
-    status,
-    title: data.title,
-    gradient: data.gradient || dualGradient((state.dualMeta?.prompt || '') + slot),
-    track: data.track,
-    coverArtUrl: data.track?.coverArtUrl,
-    error: data.error,
-  };
-
-  if (status === 'ready') card.classList.add('is-ready');
-  if (status === 'failed') card.classList.add('is-failed');
-
-  card.innerHTML = renderDualCardInner(slot, info);
-  bindDualCard(card, slot, info);
-
-  if (status === 'ready' && data.track && !state.dualPlayedFirst) {
-    state.dualPlayedFirst = true;
-    toast(`${dualSlotLabel(slot)} is ready — play anytime`, 'success');
-    const audio = card.querySelector('.take-audio');
-    if (audio) audio.play().catch(() => {});
+function renderSessionList() {
+  const el = $('#sessionList');
+  if (!el) return;
+  el.innerHTML = '';
+  for (const item of state.sessionItems) {
+    const card = document.createElement('div');
+    card.className = 'take-card suno-row';
+    card.dataset.sessionId = item.id;
+    if (item.status === 'ready') card.classList.add('is-ready');
+    if (item.status === 'failed') card.classList.add('is-failed');
+    if (item.savedToLibrary || (item.track && isTrackInLibrary(item.track.id))) {
+      card.classList.add('in-library');
+    }
+    card.innerHTML = renderSessionCardInner(item);
+    bindSessionCard(card, item);
+    el.appendChild(card);
   }
 }
 
@@ -563,110 +948,64 @@ async function handleDualGenerateProgressive(payload) {
     model: payload.model,
   };
 
-  initDualPanel(meta);
+  const { titleA, titleB } = resolveDualTrackTitles({
+    lyrics: meta.lyrics,
+    prompt: meta.prompt,
+    mode: meta.mode,
+  });
+  const idA = addSessionItem({
+    status: 'creating',
+    label: titleA,
+    promptSnippet: meta.prompt,
+    gradient: dualGradient(meta.prompt + 'A'),
+  });
+  const idB = addSessionItem({
+    status: 'creating',
+    label: titleB,
+    promptSnippet: meta.prompt,
+    gradient: dualGradient(meta.prompt + 'B'),
+  });
+  $('#previewLoading').hidden = true;
 
   const variationB = payload.more_variation ? ', alternate arrangement, variation B' : '';
 
-  const runSlot = async (slot, variationSuffix) => {
+  const runSlot = async (slot, variationSuffix, sessionId, title) => {
     const body = { ...payload, stream: false, variation_suffix: variationSuffix };
+    const coverMeta = { title, prompt: meta.prompt, mode: meta.mode, lyrics: meta.lyrics };
+
     try {
-      const result = await api('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const [result, coverUrl] = await Promise.all([
+        api('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+        coverArtPromise(coverMeta),
+      ]);
       const track = trackFromResult(result, {
         ...meta,
-        title: `${titleFromPrompt(meta.prompt, meta.mode)} (${slot})`,
+        title,
       });
-      updateDualSlot(slot, 'ready', { track });
+      if (coverUrl) applyCoverArtToTrack(track, coverUrl);
+      updateSessionItem(sessionId, { status: 'ready', track });
+      toast(`${slot === 'A' ? 'Version A' : 'Version B'} is ready`, 'success');
       return true;
     } catch (e) {
       const msg = e.data?.error || e.data?.details || e.message || 'Failed';
-      updateDualSlot(slot, 'failed', { error: msg });
+      updateSessionItem(sessionId, { status: 'failed', error: msg });
       return false;
     }
   };
 
   const results = await Promise.all([
-    runSlot('A', ''),
-    runSlot('B', variationB),
+    runSlot('A', '', idA, titleA),
+    runSlot('B', variationB, idB, titleB),
   ]);
 
   const n = results.filter(Boolean).length;
   if (n === 0) throw new Error('Both versions failed — check your prompt or API balance.');
   if (n === 1) toast('One version is ready; the other failed', '');
   else toast('Both versions ready', 'success');
-}
-
-async function handleStreamGenerate(payload) {
-  setPreviewLoading(true, 'Streaming audio…');
-  const body = { ...payload, stream: true, output_format: 'hex' };
-  const res = await fetch('/api/generate-stream', {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const d = await res.json().catch(() => ({}));
-    throw new Error(d.error || `Stream failed ${res.status}`);
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let sseBuffer = '';
-  let completed = false;
-
-  const finishFromEvent = (evt) => {
-    if (evt.error) throw new Error(streamErrorMessage(evt.error));
-    if (evt.done && evt.track) {
-      const track = trackFromResult(
-        { track: evt.track, extra_info: evt.extra_info, trace_id: evt.trace_id },
-        {
-          title: titleFromPrompt(payload.prompt, state.mode),
-          prompt: payload.prompt,
-          lyrics: payload.lyrics,
-          mode: state.mode,
-          model: payload.model,
-        },
-      );
-      addToLibrary(track);
-      playTrack(track);
-      if ($('#autoCoverArt').checked) generateCoverArt(track);
-      toast('Stream complete', 'success');
-      completed = true;
-      return true;
-    }
-    return false;
-  };
-
-  const processSseLine = (line) => {
-    if (!line.startsWith('data: ')) return;
-    let evt;
-    try {
-      evt = JSON.parse(line.slice(6));
-    } catch {
-      return;
-    }
-    if (finishFromEvent(evt)) return;
-    if (evt.error) throw new Error(streamErrorMessage(evt.error));
-  };
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    sseBuffer += decoder.decode(value, { stream: true });
-    const lines = sseBuffer.split('\n');
-    sseBuffer = lines.pop() || '';
-    for (const line of lines) processSseLine(line);
-  }
-  if (sseBuffer.trim()) processSseLine(sseBuffer.trim());
-
-  if (!completed) {
-    throw new Error(
-      'Stream ended without audio. MiniMax may not support streaming for this request — turn off Stream and use Dual A/B instead.',
-    );
-  }
 }
 
 // --- Covers ---
@@ -706,8 +1045,9 @@ async function handlePreprocess() {
 }
 
 async function handleCoverGenerate() {
-  const prompt = $('#coverPrompt').value.trim();
-  if (prompt.length < 10) {
+  const rawPrompt = $('#coverPrompt').value.trim();
+  const prompt = prepareMusicPrompt(rawPrompt).slice(0, 300);
+  if (rawPrompt.length < 10) {
     showAlert('#alertCovers', 'Style prompt must be 10–300 characters.');
     return;
   }
@@ -730,32 +1070,57 @@ async function handleCoverGenerate() {
   setPreviewLoading(true);
 
   try {
+    const title = resolveTrackTitle({ lyrics: payload.lyrics, prompt, mode: 'cover' });
+    const sessionId = addSessionItem({
+      status: 'creating',
+      label: title,
+      promptSnippet: prompt,
+      gradient: dualGradient(prompt),
+    });
+    $('#previewLoading').hidden = true;
+    setView('create');
+    const coverMeta = { title, prompt, mode: 'cover', lyrics: payload.lyrics };
     let result;
+    let coverUrl = null;
     if (state.coverFeatureId) {
-      result = await api('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      [result, coverUrl] = await Promise.all([
+        api('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+        coverArtPromise(coverMeta),
+      ]);
     } else {
       const fd = new FormData();
       fd.append('audio', state.referenceFile);
       for (const [k, v] of Object.entries(payload)) {
         if (v != null) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
       }
+      const coverP = coverArtPromise(coverMeta);
       result = await api('/api/cover', { method: 'POST', body: fd });
+      const coverUrl = await coverP;
+      const track = trackFromResult(result, {
+        title,
+        prompt,
+        lyrics: payload.lyrics,
+        mode: 'cover',
+        model: payload.model,
+      });
+      if (coverUrl) applyCoverArtToTrack(track, coverUrl);
+      updateSessionItem(sessionId, { status: 'ready', track });
+      toast('Cover ready', 'success');
+      return;
     }
     const track = trackFromResult(result, {
-      title: titleFromPrompt(prompt, 'cover'),
+      title,
       prompt,
       lyrics: payload.lyrics,
       mode: 'cover',
       model: payload.model,
     });
-    addToLibrary(track);
-    playTrack(track);
-    setView('create');
-    if ($('#autoCoverArt').checked) generateCoverArt(track);
+    if (coverUrl) applyCoverArtToTrack(track, coverUrl);
+    updateSessionItem(sessionId, { status: 'ready', track });
     toast('Cover ready', 'success');
   } catch (e) {
     showAlert('#alertCovers', e.message);
@@ -763,80 +1128,243 @@ async function handleCoverGenerate() {
     state.isGenerating = false;
     $('#coverGenerateBtn').disabled = false;
     setPreviewLoading(false);
+    updatePreviewChrome();
   }
 }
 
 // --- Lyrics page ---
 async function handleLyricsGenerate() {
   showAlert('#alertLyrics', null);
+  const btn = $('#lyricsGenerateBtn');
+  btn.disabled = true;
   try {
-    const result = await api('/api/lyrics', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: state.lyricsMode,
-        prompt: $('#lyricsPrompt').value.trim(),
-        lyrics: $('#lyricsExisting').value,
-        title: $('#lyricsTitle').value.trim(),
-      }),
+    const parsed = await fetchLyricsFromApi({
+      mode: state.lyricsMode,
+      prompt: $('#lyricsPrompt').value.trim(),
+      lyrics: $('#lyricsExisting').value,
+      title: $('#lyricsTitle').value.trim(),
     });
     $('#lyricsResult').hidden = false;
-    $('#lyricsOutput').value = result.lyrics || '';
-    $('#lyricsStyleTags').textContent = [result.song_title, result.style_tags].filter(Boolean).join(' · ');
-    if (result.song_title) $('#lyricsTitle').value = result.song_title;
-    toast('Lyrics ready', 'success');
+    $('#lyricsOutput').value = parsed.lyrics;
+    $('#lyricsStyleTags').textContent = [parsed.song_title, parsed.style_tags].filter(Boolean).join(' · ');
+    const derivedTitle = parsed.song_title
+      || titleFromLyrics(parsed.lyrics, { prompt: $('#lyricsPrompt').value.trim() });
+    if (derivedTitle) {
+      $('#lyricsTitle').value = derivedTitle;
+      state.suggestedSongTitle = derivedTitle;
+    }
+    $('#lyricsOutput').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    toast(parsed.lyrics ? 'Lyrics ready' : 'No lyrics returned', parsed.lyrics ? 'success' : 'error');
   } catch (e) {
     showAlert('#alertLyrics', e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function handlePromptWand() {
+  const btn = $('#promptWandBtn');
+  const seed = $('#prompt').value.trim();
+  const usedPlaceholder = isGenericSeed(seed);
+  const themeForApi = usedPlaceholder ? pickWandTheme(seed) : seed;
+  btn.disabled = true;
+  try {
+    let apiTags = '';
+    try {
+      const parsed = await fetchLyricsFromApi({ mode: 'write_full_song', prompt: themeForApi });
+      apiTags = parsed.style_tags || '';
+    } catch {
+      /* local vocabulary still works */
+    }
+    $('#prompt').value = buildRichStylePrompt(seed, apiTags);
+    toast(
+      usedPlaceholder
+        ? 'Style tags from a sample theme — edit the prompt or add your own vibe first'
+        : 'Detailed style tags applied',
+      'success',
+    );
+  } catch (e) {
+    toast(e.message || 'Style suggestion failed', 'error');
+  } finally {
+    btn.disabled = false;
   }
 }
 
 // --- Cover art ---
 async function generateCoverArt(track) {
   try {
-    const result = await api('/api/cover-art', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: track.title,
-        musicPrompt: track.prompt,
-        mode: track.mode,
-        lyrics: track.lyrics,
-      }),
+    const url = await fetchCoverArtParallel({
+      title: track.title,
+      prompt: track.prompt,
+      mode: track.mode,
+      lyrics: track.lyrics,
     });
-    track.coverArtUrl = result.cover.url;
-    const lib = state.library.find((t) => t.id === track.id);
-    if (lib) lib.coverArtUrl = track.coverArtUrl;
-    saveLibrary();
-    if (state.currentTrack?.id === track.id) playTrack(track);
-    renderLibrary();
+    if (!url) throw new Error('No cover image returned');
+    applyCoverArtToTrack(track, url);
     toast('Cover art ready', 'success');
   } catch (e) {
     toast(e.message || 'Cover art failed', 'error');
   }
 }
 
+function libraryCardVideoBlock(trackId) {
+  const ve = state.videoExport;
+  if (!ve || ve.trackId !== trackId) return '';
+  const pct = ve.progress != null ? Math.round(ve.progress * 100) : 0;
+  return `
+    <div class="library-video-progress">
+      <p>${escapeHtml(ve.message || '')}</p>
+      <div class="video-export-bar"><span class="video-export-fill" style="width:${pct}%"></span></div>
+    </div>
+  `;
+}
+
+function libraryMiniPlayerHtml(t) {
+  const playing = state.libraryPlayingId === t.id;
+  return `
+    <div class="take-mini-player library-mini-player">
+      <button type="button" class="take-mini-play library-play${playing ? ' is-playing' : ''}" data-act="play" aria-label="${playing ? 'Pause' : 'Play'}">${playing ? '❚❚' : '▶'}</button>
+      <div class="take-mini-transport">
+        <span class="take-mini-time" data-time>0:00 / —</span>
+        <input type="range" class="take-seek" min="0" max="100" value="0" step="0.1" aria-label="Seek through track">
+      </div>
+    </div>
+    <audio class="library-audio" preload="metadata" src="${escapeHtml(t.url || '')}"></audio>
+  `;
+}
+
+function libraryActionsHtml(t, videoBusy) {
+  return `
+    <div class="library-actions">
+      <button type="button" class="secondary-btn" data-act="download">Download song</button>
+      <button type="button" class="secondary-btn" data-act="lyric-video" ${videoBusy ? 'disabled' : ''}>Generate and download lyric video</button>
+    </div>
+  `;
+}
+
+function libraryListCardHtml(t, videoBusy) {
+  const art = t.coverArtUrl ? `url('${escapeHtml(t.coverArtUrl)}') center/cover` : (t.gradient || 'var(--bg-3)');
+  return `
+    <div class="library-card library-card--list${state.libraryPlayingId === t.id ? ' is-playing' : ''}" data-id="${t.id}">
+      <button type="button" class="library-remove" data-act="remove" aria-label="Remove from library">×</button>
+      <div class="library-art" style="background:${art}"></div>
+      <div class="library-main">
+        <div class="library-head">
+          <p class="card-title">${escapeHtml(t.title)}</p>
+        </div>
+        <p class="card-sub">${escapeHtml(t.mode || 'track')} · ${escapeHtml((t.prompt || '').slice(0, 48))}</p>
+        ${libraryMiniPlayerHtml(t)}
+        ${libraryCardVideoBlock(t.id)}
+        ${libraryActionsHtml(t, videoBusy)}
+      </div>
+    </div>
+  `;
+}
+
+function libraryTileCardHtml(t, videoBusy) {
+  const art = t.coverArtUrl ? `url('${escapeHtml(t.coverArtUrl)}') center/cover` : (t.gradient || 'var(--bg-3)');
+  const playing = state.libraryPlayingId === t.id;
+  return `
+    <div class="library-card library-card--tile${playing ? ' is-playing' : ''}" data-id="${t.id}">
+      <button type="button" class="library-remove" data-act="remove" aria-label="Remove from library">×</button>
+      <div class="library-tile-cover" style="background:${art}">
+        <button type="button" class="take-mini-play library-play library-play--tile${playing ? ' is-playing' : ''}" data-act="play" aria-label="${playing ? 'Pause' : 'Play'}">${playing ? '❚❚' : '▶'}</button>
+      </div>
+      <div class="library-tile-body">
+        <p class="card-title">${escapeHtml(t.title)}</p>
+        <p class="card-sub">${escapeHtml(t.mode || 'track')}</p>
+        <div class="take-mini-transport library-tile-seek">
+          <span class="take-mini-time" data-time>0:00 / —</span>
+          <input type="range" class="take-seek" min="0" max="100" value="0" step="0.1" aria-label="Seek through track">
+        </div>
+        <audio class="library-audio" preload="metadata" src="${escapeHtml(t.url || '')}"></audio>
+        ${libraryCardVideoBlock(t.id)}
+        ${libraryActionsHtml(t, videoBusy)}
+      </div>
+    </div>
+  `;
+}
+
+function bindLibraryCard(card, t) {
+  const audio = card.querySelector('.library-audio');
+  const playBtn = card.querySelector('[data-act="play"]');
+  const timeEl = card.querySelector('[data-time]');
+  const seekEl = card.querySelector('.take-seek');
+
+  if (audio) {
+    bindAudioTransport({
+      audio,
+      playBtn,
+      timeEl,
+      seekEl,
+      onBeforePlay: () => {
+        $$('.take-audio').forEach((a) => a.pause());
+        $$('.library-audio').forEach((a) => { if (a !== audio) a.pause(); });
+        state.libraryAudio = audio;
+        state.libraryPlayingId = t.id;
+        syncLibraryPlayUi(t.id);
+      },
+    });
+  }
+
+  playBtn?.addEventListener('click', (e) => e.stopPropagation());
+
+  card.querySelector('[data-act="download"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    downloadTrack(t);
+  });
+  card.querySelector('[data-act="lyric-video"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    createLyricVideoForTrack(t, null);
+  });
+  card.querySelector('[data-act="remove"]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    confirmRemoveLibraryTrack(t);
+  });
+}
+
+function setLibraryView(mode) {
+  state.libraryView = mode === 'tiles' ? 'tiles' : 'list';
+  localStorage.setItem(STORAGE.libraryView, state.libraryView);
+  const grid = $('#libraryGrid');
+  if (grid) {
+    grid.classList.toggle('library-grid--list', state.libraryView === 'list');
+    grid.classList.toggle('library-grid--tiles', state.libraryView === 'tiles');
+  }
+  $('#libraryViewList')?.classList.toggle('active', state.libraryView === 'list');
+  $('#libraryViewTiles')?.classList.toggle('active', state.libraryView === 'tiles');
+  $('#libraryViewList')?.setAttribute('aria-pressed', state.libraryView === 'list' ? 'true' : 'false');
+  $('#libraryViewTiles')?.setAttribute('aria-pressed', state.libraryView === 'tiles' ? 'true' : 'false');
+  renderLibrary();
+}
+
 // --- Library UI ---
 function renderLibrary() {
   loadLibrary();
-  const q = $('#librarySearch').value.toLowerCase();
+  const q = ($('#librarySearch')?.value || '').toLowerCase();
   const items = state.library.filter((t) =>
     !q || t.title.toLowerCase().includes(q) || (t.prompt || '').toLowerCase().includes(q),
   );
   $('#libraryEmpty').hidden = items.length > 0;
-  $('#libraryGrid').innerHTML = items.map((t) => `
-    <div class="library-card" data-id="${t.id}">
-      <div class="card-cover" style="background:${t.coverArtUrl ? `url('${t.coverArtUrl}') center/cover` : t.gradient}"></div>
-      <div class="card-body">
-        <div class="card-title">${escapeHtml(t.title)}</div>
-        <div class="card-sub">${t.mode} · ${escapeHtml((t.prompt || '').slice(0, 36))}</div>
-      </div>
-    </div>
-  `).join('');
+  const ve = state.videoExport;
+  const videoBusy = (id) => ve?.active && ve.trackId === id;
+  const grid = $('#libraryGrid');
+  if (grid) {
+    grid.classList.toggle('library-grid--list', state.libraryView === 'list');
+    grid.classList.toggle('library-grid--tiles', state.libraryView === 'tiles');
+  }
+
+  const html = state.libraryView === 'tiles'
+    ? items.map((t) => libraryTileCardHtml(t, videoBusy(t.id))).join('')
+    : items.map((t) => libraryListCardHtml(t, videoBusy(t.id))).join('');
+
+  $('#libraryGrid').innerHTML = html;
 
   $$('.library-card').forEach((card) => {
     const t = state.library.find((x) => x.id === card.dataset.id);
-    card.addEventListener('click', () => playTrack(t));
+    if (t) bindLibraryCard(card, t);
   });
+  renderVideoExportPanel();
 }
 
 function escapeHtml(s) {
@@ -872,34 +1400,26 @@ function refreshKeyStatus() {
   if (key) $('#userApiKey').value = key;
 }
 
-// --- Player events ---
-function attachPlayer() {
-  const a = $('#audioEl');
-  $('#playerPlay').addEventListener('click', () => (a.paused ? a.play() : a.pause()));
-  $('#waveformWrap').addEventListener('click', seekFromWaveformEvent);
-  window.addEventListener('resize', () => {
-    if (waveform.peaks && a.duration) drawWaveform(a.currentTime / a.duration);
-  });
-  a.addEventListener('timeupdate', () => {
-    if (!a.duration) return;
-    const pct = a.currentTime / a.duration;
-    drawWaveform(pct);
-    $('#currentTime').textContent = formatTime(a.currentTime);
-  });
-  a.addEventListener('loadedmetadata', () => {
-    $('#duration').textContent = formatTime(a.duration);
-  });
-  $('#coverArtBtn').addEventListener('click', () => state.currentTrack && generateCoverArt(state.currentTrack));
-  $('#useAsRefBtn').addEventListener('click', async () => {
-    if (!state.currentTrack) return;
-    const res = await fetch(state.currentTrack.url);
-    const blob = await res.blob();
-    const file = new File([blob], `ref-${state.currentTrack.id}.mp3`, { type: blob.type });
-    setCoverRef(file);
-    setView('covers');
-    $('#coverPrompt').value = state.currentTrack.prompt || '';
-    toast('Loaded as cover reference', 'success');
-  });
+// --- Session panel controls ---
+function attachSessionControls() {
+  $('#clearSessionBtn')?.addEventListener('click', clearSession);
+  const cancelVideoExport = () => {
+    if (state.videoExport?.abort) {
+      state.videoExport.abort.abort();
+    }
+    state.videoExport = {
+      active: false,
+      error: 'cancelled',
+      message: 'Cancelled',
+      progress: 0,
+    };
+    renderVideoExportPanel();
+    renderSessionList();
+    renderLibrary();
+    toast('Lyric video cancelled', '');
+  };
+  $('#videoExportCancel')?.addEventListener('click', cancelVideoExport);
+  $('#libraryVideoExportCancel')?.addEventListener('click', cancelVideoExport);
 }
 
 // --- Init UI ---
@@ -973,8 +1493,7 @@ function boot() {
     $('#lyrics').style.opacity = e.target.checked ? '0.45' : '1';
   });
 
-  $('#dualMode').addEventListener('change', () => syncOutputModes('dual'));
-  $('#streamMode').addEventListener('change', () => syncOutputModes('stream'));
+  $('#promptWandBtn').addEventListener('click', handlePromptWand);
 
   $('#createBtn').addEventListener('click', handleCreate);
   $('#coverGenerateBtn').addEventListener('click', handleCoverGenerate);
@@ -1025,6 +1544,9 @@ function boot() {
   });
 
   $('#librarySearch').addEventListener('input', renderLibrary);
+  $('#libraryViewList')?.addEventListener('click', () => setLibraryView('list'));
+  $('#libraryViewTiles')?.addEventListener('click', () => setLibraryView('tiles'));
+  setLibraryView(state.libraryView);
   $('#clearLibrary').addEventListener('click', () => {
     if (!confirm('Clear library metadata? Audio files on server remain.')) return;
     state.library = [];
@@ -1055,7 +1577,8 @@ function boot() {
     e.target.value = '';
   });
 
-  attachPlayer();
+  attachSessionControls();
+  updatePreviewChrome();
   refreshApiStatus();
   setView('create');
 }

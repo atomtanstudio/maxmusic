@@ -1,10 +1,14 @@
 node_modules/
+.env
+.env.*
+!.env.example
 uploads/*
 !uploads/.gitkeep
 public/tracks/*
 !public/tracks/.gitkeep
 public/covers/*
 !public/covers/.gitkeep
-.env
 .DS_Store
 _reference-music-studio/
+*.log
+npm-debug.log*

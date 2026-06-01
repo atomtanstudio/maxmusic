@@ -13,6 +13,22 @@ const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3001;
 const API_BASE = 'https://api.minimax.io';
+const IS_PROD = process.env.NODE_ENV === 'production';
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function redactSecrets(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+    .replace(/\bsk-[A-Za-z0-9]{8,}\b/gi, 'sk-[REDACTED]');
+}
+
+function safeErrorMessage(err) {
+  return redactSecrets(err?.message || String(err));
+}
 const TRACKS_DIR = path.join(__dirname, 'public', 'tracks');
 const COVERS_DIR = path.join(__dirname, 'public', 'covers');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -23,20 +39,49 @@ await fs.mkdir(COVERS_DIR, { recursive: true });
 await fs.mkdir(UPLOADS_DIR, { recursive: true });
 
 const app = express();
-app.use(cors());
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.length) {
+      return cb(null, ALLOWED_ORIGINS.includes(origin));
+    }
+    if (!IS_PROD) return cb(null, true);
+    return cb(null, false);
+  },
+}));
 app.use(express.json({ limit: '60mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+const UPLOAD_MIMES = new Set([
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/wave',
+  'audio/flac', 'audio/ogg', 'audio/mp4', 'audio/x-m4a', 'video/mp4',
+]);
 
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
     filename: (_req, file, cb) => {
       const id = crypto.randomBytes(8).toString('hex');
-      const ext = path.extname(file.originalname) || '.mp3';
-      cb(null, `${id}${ext}`);
+      const ext = path.extname(file.originalname).toLowerCase().slice(0, 8) || '.mp3';
+      const safeExt = /^\.(mp3|wav|flac|ogg|m4a|mp4)$/.test(ext) ? ext : '.mp3';
+      cb(null, `${id}${safeExt}`);
     },
   }),
   limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (UPLOAD_MIMES.has(file.mimetype) || file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio uploads are allowed'));
+    }
+  },
 });
 
 const ERROR_CODES = {
@@ -86,7 +131,7 @@ async function callMusicApi(payload, apiKey) {
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error(`Non-JSON response (${res.status}): ${text.slice(0, 200)}`);
+    throw new Error(`Non-JSON response (${res.status}): ${redactSecrets(text.slice(0, 200))}`);
   }
   return { status: res.status, json, raw: text };
 }
@@ -220,7 +265,7 @@ async function runGeneration(req, res) {
     res.json(result);
   } catch (err) {
     console.error('[generate]', err);
-    res.status(500).json({ error: err.message || 'Generation failed' });
+    res.status(500).json({ error: safeErrorMessage(err) || 'Generation failed' });
   }
 }
 
@@ -269,7 +314,7 @@ async function runDualGeneration(req, res) {
     });
   } catch (err) {
     console.error('[generate-dual]', err);
-    res.status(500).json({ error: err.message || 'Dual generation failed' });
+    res.status(500).json({ error: safeErrorMessage(err) || 'Dual generation failed' });
   }
 }
 
@@ -320,17 +365,34 @@ app.post('/api/generate-stream', async (req, res) => {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      res.write(`data: ${JSON.stringify({ chunk: decoder.decode(value) })}\n\n`);
+      const { events, rest } = extractStreamJsonObjects(buffer);
+      buffer = rest;
+      for (const json of events) {
+        const err = apiError(json);
+        if (err) {
+          res.write(`data: ${JSON.stringify({ error: err.body })}\n\n`);
+          continue;
+        }
+        const audio = json?.data?.audio;
+        const status = json?.data?.status;
+        if (audio && status === 1) {
+          res.write(`data: ${JSON.stringify({ partial: true, audio, status })}\n\n`);
+        }
+      }
     }
 
     let json = null;
     try {
       json = JSON.parse(buffer);
     } catch {
-      const start = buffer.lastIndexOf('{');
-      const end = buffer.lastIndexOf('}');
-      if (start >= 0 && end > start) {
-        try { json = JSON.parse(buffer.slice(start, end + 1)); } catch { /* ignore */ }
+      const { events } = extractStreamJsonObjects(buffer);
+      json = events[events.length - 1] || null;
+      if (!json) {
+        const start = buffer.lastIndexOf('{');
+        const end = buffer.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+          try { json = JSON.parse(buffer.slice(start, end + 1)); } catch { /* ignore */ }
+        }
       }
     }
     if (json) {
@@ -349,7 +411,7 @@ app.post('/api/generate-stream', async (req, res) => {
     }
     res.end();
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: safeErrorMessage(err) })}\n\n`);
     res.end();
   }
 });
@@ -421,9 +483,18 @@ app.post('/api/cover-preprocess', upload.single('audio'), async (req, res) => {
     if (err) return res.status(err.status).json(err.body);
     res.json({ ok: true, ...json });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
+
+function normalizeLyricsPayload(json) {
+  const data = json?.data && typeof json.data === 'object' ? json.data : json;
+  return {
+    song_title: data.song_title || json.song_title || '',
+    style_tags: data.style_tags || json.style_tags || '',
+    lyrics: data.lyrics || json.lyrics || '',
+  };
+}
 
 app.post('/api/lyrics', async (req, res) => {
   const apiKey = getApiKey(req);
@@ -442,11 +513,42 @@ app.post('/api/lyrics', async (req, res) => {
     const json = await r.json();
     const err = apiError(json);
     if (err) return res.status(err.status).json(err.body);
-    res.json({ ok: true, ...json });
+    res.json({ ok: true, ...normalizeLyricsPayload(json) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: safeErrorMessage(err) });
   }
 });
+
+function extractStreamJsonObjects(buffer) {
+  const events = [];
+  let rest = buffer;
+  while (rest.length) {
+    const start = rest.indexOf('{');
+    if (start < 0) break;
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < rest.length; i++) {
+      if (rest[i] === '{') depth++;
+      else if (rest[i] === '}') {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end < 0) {
+      rest = rest.slice(start);
+      break;
+    }
+    const slice = rest.slice(start, end + 1);
+    rest = rest.slice(end + 1);
+    try {
+      events.push(JSON.parse(slice));
+    } catch { /* partial */ }
+  }
+  return { events, rest };
+}
 
 const ASPECT_RATIOS = new Set(['1:1', '16:9', '9:16', '4:3', '3:4', '21:9', '2:3', '3:2']);
 
@@ -528,7 +630,7 @@ app.post('/api/cover-art', async (req, res) => {
     });
   } catch (err) {
     console.error('[cover-art]', err);
-    res.status(500).json({ error: err.message || 'Cover art failed' });
+    res.status(500).json({ error: safeErrorMessage(err) || 'Cover art failed' });
   }
 });
 

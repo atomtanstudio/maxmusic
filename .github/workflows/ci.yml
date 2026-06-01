@@ -19,6 +19,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Security check (no committed API keys)
+        run: npm run security:check
+
       - name: Smoke test server
         run: |
           npm start &
