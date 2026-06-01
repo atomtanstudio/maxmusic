@@ -31,7 +31,9 @@ const state = {
   referenceFile: null,
   coverFeatureId: null,
   currentTrack: null,
-  dualTakes: null,
+  dualTakes: null, // { A: { status }, B: { status } } while generating
+  dualMeta: null,
+  dualPlayedFirst: false,
   isGenerating: false,
   library: [],
 };
@@ -164,7 +166,7 @@ function removeFromLibrary(id) {
 
 // --- Navigation ---
 const PAGE_META = {
-  create: ['Create', 'Original songs — prompt, lyrics, dual takes, streaming'],
+  create: ['Create', 'Dual mode builds two versions — each becomes playable when ready'],
   covers: ['Covers', 'Restyle reference audio — quick or lyrics-first workflow'],
   lyrics: ['Lyrics', 'Write or edit lyrics, then send to Create'],
   library: ['Library', 'Local history — export and import supported'],
@@ -195,20 +197,27 @@ function setView(name) {
 
 // --- Preview / player ---
 function setPreviewLoading(on, msg = 'Generating…') {
-  $('#previewEmpty').hidden = on || state.currentTrack || state.dualTakes;
-  $('#previewLoading').hidden = !on;
-  $('#previewSingle').hidden = on || !state.currentTrack || state.dualTakes;
-  $('#previewDual').hidden = on || !state.dualTakes;
+  const dualActive = state.dualTakes && typeof state.dualTakes === 'object';
+  $('#previewEmpty').hidden = on || state.currentTrack || dualActive;
+  $('#previewLoading').hidden = !on || dualActive;
+  $('#previewSingle').hidden = on || !state.currentTrack || dualActive;
+  $('#previewDual').hidden = !dualActive;
   if (on) $('#loadingMsg').textContent = msg;
 }
 
-function playTrack(track) {
+function dualGradient(seed) {
+  return paletteFor(hashStr(String(seed)));
+}
+
+function playTrack(track, { keepDual = false } = {}) {
   state.currentTrack = track;
-  state.dualTakes = null;
+  if (!keepDual) {
+    state.dualTakes = null;
+    $('#previewDual').hidden = true;
+  }
   const a = $('#audioEl');
   a.src = track.url;
   $('#previewEmpty').hidden = true;
-  $('#previewDual').hidden = true;
   $('#previewSingle').hidden = false;
 
   $('#playerTitle').textContent = track.title;
@@ -376,33 +385,16 @@ async function handleCreate() {
   if (err) return;
 
   const payload = readCreatePayload();
+  const useDual = $('#dualMode').checked && !payload.stream;
   state.isGenerating = true;
   $('#createBtn').disabled = true;
-  setPreviewLoading(true);
+  if (!useDual) setPreviewLoading(true);
 
   try {
     if (payload.stream) {
       await handleStreamGenerate(payload);
-    } else if ($('#dualMode').checked) {
-      const body = { ...payload, stream: false };
-      const result = await api('/api/generate-dual', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const ok = renderDualTakesFixed(result.takes, {
-        prompt: payload.prompt,
-        lyrics: payload.lyrics,
-        mode: state.mode,
-        model: payload.model,
-        errors: result.errors,
-      });
-      if (!ok) {
-        const detail = result.errors?.map((e) => `Take ${e.slot}: ${e.error || e.details}`).join(' · ');
-        throw new Error(detail || 'Both takes failed');
-      }
-      const n = ['A', 'B'].filter((s) => result.takes[s]?.track).length;
-      toast(n === 2 ? 'Dual generation complete' : `Take ready (${n} of 2)`, 'success');
+    } else if (useDual) {
+      await handleDualGenerateProgressive(payload);
     } else {
       const result = await api('/api/generate', {
         method: 'POST',
@@ -431,47 +423,180 @@ async function handleCreate() {
   }
 }
 
-function renderDualTakesFixed(takes, meta) {
-  state.dualTakes = takes;
+function dualSlotLabel(slot) {
+  return slot === 'A' ? 'Version A' : 'Version B';
+}
+
+function initDualPanel(meta) {
+  state.dualTakes = { A: { status: 'creating' }, B: { status: 'creating' } };
+  state.dualMeta = meta;
+  state.dualPlayedFirst = false;
   state.currentTrack = null;
   $('#previewEmpty').hidden = true;
   $('#previewSingle').hidden = true;
   $('#previewDual').hidden = false;
+  $('#previewLoading').hidden = true;
+
+  const title = titleFromPrompt(meta.prompt, meta.mode);
   const el = $('#previewDual');
   el.innerHTML = '';
-  let successCount = 0;
-
   for (const slot of ['A', 'B']) {
-    const data = takes[slot];
-    const card = document.createElement('div');
-    card.className = 'take-card';
-    if (!data?.track) {
-      const errMsg = meta.errors?.find?.((e) => e.slot === slot);
-      const why = errMsg?.error || errMsg?.details || 'Generation failed';
-      card.innerHTML = `<div class="take-label">TAKE ${slot}</div><p class="field-hint">${escapeHtml(String(why))}</p>`;
-      el.appendChild(card);
-      continue;
-    }
-    successCount += 1;
-    const tr = trackFromResult(data, {
-      ...meta,
-      title: `${titleFromPrompt(meta.prompt, meta.mode)} (${slot})`,
-    });
-    card.innerHTML = `
-      <div class="take-label">TAKE ${slot}</div>
-      <div class="player-cover" style="background:${tr.gradient};margin-bottom:8px"></div>
-      <div style="font-size:13px;font-weight:600">${tr.title}</div>
-      <audio controls src="${tr.url}" style="width:100%;margin-top:8px"></audio>
-      <button class="secondary-btn" style="margin-top:8px;width:100%">Keep take ${slot}</button>
-    `;
-    card.querySelector('button').addEventListener('click', () => {
-      addToLibrary(tr);
-      playTrack(tr);
-      if ($('#autoCoverArt').checked) generateCoverArt(tr);
-    });
-    el.appendChild(card);
+    el.appendChild(buildDualCardElement(slot, {
+      status: 'creating',
+      title: `${title} (${slot})`,
+      gradient: dualGradient(meta.prompt + slot),
+    }));
   }
-  return successCount > 0;
+}
+
+function buildDualCardElement(slot, info) {
+  const card = document.createElement('div');
+  card.className = 'take-card';
+  card.dataset.slot = slot;
+  card.innerHTML = renderDualCardInner(slot, info);
+  bindDualCard(card, slot, info);
+  return card;
+}
+
+function renderDualCardInner(slot, info) {
+  const status = info.status || 'creating';
+  const statusLabel = status === 'creating' ? 'Creating…'
+    : status === 'ready' ? 'Ready'
+      : status === 'failed' ? 'Failed' : status;
+  const statusClass = status === 'ready' ? 'take-status--ready'
+    : status === 'failed' ? 'take-status--failed' : 'take-status--creating';
+
+  const artClass = `take-art${status === 'creating' ? ' is-generating' : ''}`;
+  const artStyle = info.coverArtUrl
+    ? `background-image:url('${info.coverArtUrl}');background-size:cover`
+    : `background:${info.gradient || dualGradient(slot)}`;
+
+  let body = '';
+  if (status === 'creating') {
+    body = `
+      <p class="take-title">${escapeHtml(info.title || dualSlotLabel(slot))}</p>
+      <p class="take-sub">Composing — usually 30–90s</p>
+    `;
+  } else if (status === 'ready' && info.track) {
+    body = `
+      <p class="take-title">${escapeHtml(info.track.title)}</p>
+      <p class="take-sub">Tap play when you're ready</p>
+      <audio class="take-audio" controls preload="metadata" src="${info.track.url}"></audio>
+      <div class="take-actions">
+        <button type="button" class="secondary-btn" data-act="open">Open in player</button>
+        <button type="button" class="secondary-btn" data-act="save">Save</button>
+      </div>
+    `;
+  } else if (status === 'failed') {
+    body = `<p class="take-error">${escapeHtml(info.error || 'Generation failed')}</p>`;
+  }
+
+  const playBtn = status === 'ready'
+    ? `<button type="button" class="take-art-play" data-act="play" aria-label="Play">▶</button>`
+    : `<button type="button" class="take-art-play" disabled aria-label="Waiting">▶</button>`;
+
+  return `
+    <div class="take-card-head">
+      <span class="take-label">${dualSlotLabel(slot)}</span>
+      <span class="take-status ${statusClass}">${statusLabel}</span>
+    </div>
+    <div class="${artClass}" style="${artStyle}">${playBtn}</div>
+    ${body}
+  `;
+}
+
+function bindDualCard(card, slot, info) {
+  const playBtn = card.querySelector('[data-act="play"]');
+  if (playBtn && info.track) {
+    playBtn.addEventListener('click', () => {
+      const audio = card.querySelector('.take-audio');
+      if (audio) audio.play();
+      else playTrack(info.track);
+    });
+  }
+  card.querySelector('[data-act="open"]')?.addEventListener('click', () => {
+    if (info.track) playTrack(info.track, { keepDual: true });
+  });
+  card.querySelector('[data-act="save"]')?.addEventListener('click', () => {
+    if (!info.track) return;
+    addToLibrary(info.track);
+    toast(`Saved ${dualSlotLabel(slot)}`, 'success');
+    if ($('#autoCoverArt').checked && !info.track.coverArtUrl) generateCoverArt(info.track);
+  });
+}
+
+function updateDualSlot(slot, status, data = {}) {
+  if (!state.dualTakes) state.dualTakes = {};
+  state.dualTakes[slot] = { status, ...data };
+
+  const card = $(`#previewDual .take-card[data-slot="${slot}"]`);
+  if (!card) return;
+
+  const info = {
+    status,
+    title: data.title,
+    gradient: data.gradient || dualGradient((state.dualMeta?.prompt || '') + slot),
+    track: data.track,
+    coverArtUrl: data.track?.coverArtUrl,
+    error: data.error,
+  };
+
+  if (status === 'ready') card.classList.add('is-ready');
+  if (status === 'failed') card.classList.add('is-failed');
+
+  card.innerHTML = renderDualCardInner(slot, info);
+  bindDualCard(card, slot, info);
+
+  if (status === 'ready' && data.track && !state.dualPlayedFirst) {
+    state.dualPlayedFirst = true;
+    toast(`${dualSlotLabel(slot)} is ready — play anytime`, 'success');
+    const audio = card.querySelector('.take-audio');
+    if (audio) audio.play().catch(() => {});
+  }
+}
+
+async function handleDualGenerateProgressive(payload) {
+  const meta = {
+    prompt: payload.prompt,
+    lyrics: payload.lyrics,
+    mode: state.mode,
+    model: payload.model,
+  };
+
+  initDualPanel(meta);
+
+  const variationB = payload.more_variation ? ', alternate arrangement, variation B' : '';
+
+  const runSlot = async (slot, variationSuffix) => {
+    const body = { ...payload, stream: false, variation_suffix: variationSuffix };
+    try {
+      const result = await api('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const track = trackFromResult(result, {
+        ...meta,
+        title: `${titleFromPrompt(meta.prompt, meta.mode)} (${slot})`,
+      });
+      updateDualSlot(slot, 'ready', { track });
+      return true;
+    } catch (e) {
+      const msg = e.data?.error || e.data?.details || e.message || 'Failed';
+      updateDualSlot(slot, 'failed', { error: msg });
+      return false;
+    }
+  };
+
+  const results = await Promise.all([
+    runSlot('A', ''),
+    runSlot('B', variationB),
+  ]);
+
+  const n = results.filter(Boolean).length;
+  if (n === 0) throw new Error('Both versions failed — check your prompt or API balance.');
+  if (n === 1) toast('One version is ready; the other failed', '');
+  else toast('Both versions ready', 'success');
 }
 
 async function handleStreamGenerate(payload) {
