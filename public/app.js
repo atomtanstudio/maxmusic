@@ -339,13 +339,34 @@ function readCreatePayload() {
   };
 }
 
+function syncOutputModes(changed) {
+  const dual = $('#dualMode');
+  const stream = $('#streamMode');
+  const hint = $('#outputModeHint');
+  if (dual.checked && stream.checked) {
+    if (changed === 'dual') stream.checked = false;
+    else dual.checked = false;
+    hint.hidden = false;
+    setTimeout(() => { hint.hidden = true; }, 4000);
+  }
+}
+
 function validateCreate() {
   const p = readCreatePayload();
   if (state.mode === 'instrumental' && !p.prompt) return 'Instrumental needs a style prompt.';
   if (state.mode === 'vocal' && !p.lyrics_optimizer && !p.lyrics.trim()) {
     return 'Add lyrics or enable auto-lyrics.';
   }
+  if ($('#dualMode').checked && $('#streamMode').checked) {
+    return 'Choose either Dual A/B or Stream — not both.';
+  }
   return null;
+}
+
+function streamErrorMessage(err) {
+  if (!err) return 'Stream failed';
+  if (typeof err === 'string') return err;
+  return err.error || err.details || err.status_msg || JSON.stringify(err);
 }
 
 async function handleCreate() {
@@ -363,18 +384,25 @@ async function handleCreate() {
     if (payload.stream) {
       await handleStreamGenerate(payload);
     } else if ($('#dualMode').checked) {
+      const body = { ...payload, stream: false };
       const result = await api('/api/generate-dual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
-      renderDualTakesFixed(result.takes, {
+      const ok = renderDualTakesFixed(result.takes, {
         prompt: payload.prompt,
         lyrics: payload.lyrics,
         mode: state.mode,
         model: payload.model,
+        errors: result.errors,
       });
-      toast('Dual generation complete', 'success');
+      if (!ok) {
+        const detail = result.errors?.map((e) => `Take ${e.slot}: ${e.error || e.details}`).join(' · ');
+        throw new Error(detail || 'Both takes failed');
+      }
+      const n = ['A', 'B'].filter((s) => result.takes[s]?.track).length;
+      toast(n === 2 ? 'Dual generation complete' : `Take ready (${n} of 2)`, 'success');
     } else {
       const result = await api('/api/generate', {
         method: 'POST',
@@ -411,16 +439,20 @@ function renderDualTakesFixed(takes, meta) {
   $('#previewDual').hidden = false;
   const el = $('#previewDual');
   el.innerHTML = '';
+  let successCount = 0;
 
   for (const slot of ['A', 'B']) {
     const data = takes[slot];
     const card = document.createElement('div');
     card.className = 'take-card';
     if (!data?.track) {
-      card.innerHTML = `<div class="take-label">TAKE ${slot}</div><p class="field-hint">Failed</p>`;
+      const errMsg = meta.errors?.find?.((e) => e.slot === slot);
+      const why = errMsg?.error || errMsg?.details || 'Generation failed';
+      card.innerHTML = `<div class="take-label">TAKE ${slot}</div><p class="field-hint">${escapeHtml(String(why))}</p>`;
       el.appendChild(card);
       continue;
     }
+    successCount += 1;
     const tr = trackFromResult(data, {
       ...meta,
       title: `${titleFromPrompt(meta.prompt, meta.mode)} (${slot})`,
@@ -439,14 +471,16 @@ function renderDualTakesFixed(takes, meta) {
     });
     el.appendChild(card);
   }
+  return successCount > 0;
 }
 
 async function handleStreamGenerate(payload) {
   setPreviewLoading(true, 'Streaming audio…');
+  const body = { ...payload, stream: true, output_format: 'hex' };
   const res = await fetch('/api/generate-stream', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
@@ -455,39 +489,58 @@ async function handleStreamGenerate(payload) {
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = '';
+  let sseBuffer = '';
+  let completed = false;
+
+  const finishFromEvent = (evt) => {
+    if (evt.error) throw new Error(streamErrorMessage(evt.error));
+    if (evt.done && evt.track) {
+      const track = trackFromResult(
+        { track: evt.track, extra_info: evt.extra_info, trace_id: evt.trace_id },
+        {
+          title: titleFromPrompt(payload.prompt, state.mode),
+          prompt: payload.prompt,
+          lyrics: payload.lyrics,
+          mode: state.mode,
+          model: payload.model,
+        },
+      );
+      addToLibrary(track);
+      playTrack(track);
+      if ($('#autoCoverArt').checked) generateCoverArt(track);
+      toast('Stream complete', 'success');
+      completed = true;
+      return true;
+    }
+    return false;
+  };
+
+  const processSseLine = (line) => {
+    if (!line.startsWith('data: ')) return;
+    let evt;
+    try {
+      evt = JSON.parse(line.slice(6));
+    } catch {
+      return;
+    }
+    if (finishFromEvent(evt)) return;
+    if (evt.error) throw new Error(streamErrorMessage(evt.error));
+  };
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      try {
-        const evt = JSON.parse(line.slice(6));
-        if (evt.done && evt.track) {
-          const track = trackFromResult(
-            { track: evt.track, extra_info: evt.extra_info, trace_id: evt.trace_id },
-            {
-              title: titleFromPrompt(payload.prompt, state.mode),
-              prompt: payload.prompt,
-              lyrics: payload.lyrics,
-              mode: state.mode,
-              model: payload.model,
-            },
-          );
-          addToLibrary(track);
-          playTrack(track);
-          if ($('#autoCoverArt').checked) generateCoverArt(track);
-          toast('Stream complete', 'success');
-        }
-        if (evt.error) throw new Error(typeof evt.error === 'string' ? evt.error : evt.error.error);
-      } catch (e) {
-        if (e.message && !e.message.includes('JSON')) throw e;
-      }
-    }
+    sseBuffer += decoder.decode(value, { stream: true });
+    const lines = sseBuffer.split('\n');
+    sseBuffer = lines.pop() || '';
+    for (const line of lines) processSseLine(line);
+  }
+  if (sseBuffer.trim()) processSseLine(sseBuffer.trim());
+
+  if (!completed) {
+    throw new Error(
+      'Stream ended without audio. MiniMax may not support streaming for this request — turn off Stream and use Dual A/B instead.',
+    );
   }
 }
 
@@ -794,6 +847,9 @@ function boot() {
     $('#lyrics').disabled = e.target.checked;
     $('#lyrics').style.opacity = e.target.checked ? '0.45' : '1';
   });
+
+  $('#dualMode').addEventListener('change', () => syncOutputModes('dual'));
+  $('#streamMode').addEventListener('change', () => syncOutputModes('stream'));
 
   $('#createBtn').addEventListener('click', handleCreate);
   $('#coverGenerateBtn').addEventListener('click', handleCoverGenerate);

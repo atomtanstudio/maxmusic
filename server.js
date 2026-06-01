@@ -323,9 +323,17 @@ app.post('/api/generate-stream', async (req, res) => {
       res.write(`data: ${JSON.stringify({ chunk: decoder.decode(value) })}\n\n`);
     }
 
-    // Try to parse final JSON from buffer
+    let json = null;
     try {
-      const json = JSON.parse(buffer);
+      json = JSON.parse(buffer);
+    } catch {
+      const start = buffer.lastIndexOf('{');
+      const end = buffer.lastIndexOf('}');
+      if (start >= 0 && end > start) {
+        try { json = JSON.parse(buffer.slice(start, end + 1)); } catch { /* ignore */ }
+      }
+    }
+    if (json) {
       const err = apiError(json);
       if (err) {
         res.write(`data: ${JSON.stringify({ error: err.body })}\n\n`);
@@ -334,10 +342,10 @@ app.post('/api/generate-stream', async (req, res) => {
         const track = await persistHexAudio(json.data.audio, format);
         res.write(`data: ${JSON.stringify({ done: true, track, extra_info: json.extra_info, trace_id: json.trace_id })}\n\n`);
       } else {
-        res.write(`data: ${JSON.stringify({ done: true, raw: json })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: 'No audio in stream response', raw: json })}\n\n`);
       }
-    } catch {
-      res.write(`data: ${JSON.stringify({ done: true, note: 'stream ended' })}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ error: 'Could not parse stream response from MiniMax' })}\n\n`);
     }
     res.end();
   } catch (err) {
