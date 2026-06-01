@@ -23,6 +23,8 @@ export MINIMAX_API_KEY=sk-your-key
 npm start
 ```
 
+If you see “port already in use”, the app may already be running, or run `npm run stop` then `npm start` again.
+
 Open http://localhost:3000 — paste your key under **Settings** if you did not set the env var.
 
 ## Why a Node server?

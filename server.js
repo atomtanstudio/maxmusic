@@ -2,6 +2,7 @@
 import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
+import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -527,7 +528,17 @@ app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '1h' }));
 app.use('/covers', express.static(COVERS_DIR, { maxAge: '1d' }));
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n  Port ${PORT} is already in use. Run:\n    npm run stop\n  or:\n    PORT=${Number(PORT) + 1} npm start\n`);
+    process.exit(1);
+  }
+  throw err;
+});
+
+server.listen(PORT, () => {
   console.log(`\n  maxmusic → http://localhost:${PORT}`);
   console.log(`  API: ${API_BASE}`);
   if (process.env.MINIMAX_API_KEY) {

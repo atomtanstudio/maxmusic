@@ -5,7 +5,9 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/start.mjs",
+    "stop": "node scripts/stop.mjs",
+    "restart": "npm run stop && npm start",
     "dev": "node --watch server.js"
   },
   "dependencies": {
