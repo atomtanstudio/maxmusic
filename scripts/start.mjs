@@ -8,7 +8,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3001;
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function portOpen() {

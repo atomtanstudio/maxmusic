@@ -25,7 +25,7 @@ npm start
 
 If you see “port already in use”, the app may already be running, or run `npm run stop` then `npm start` again.
 
-Open http://localhost:3000 — paste your key under **Settings** if you did not set the env var.
+Open http://localhost:3001 — paste your key under **Settings** if you did not set the env var.
 
 ## Why a Node server?
 
@@ -59,7 +59,7 @@ Every push/PR runs [.github/workflows/ci.yml](.github/workflows/ci.yml) — `npm
 
 ```bash
 docker build -t maxmusic .
-docker run -p 3000:3000 -e MINIMAX_API_KEY=sk-… maxmusic
+docker run -p 3001:3001 -e MINIMAX_API_KEY=sk-… maxmusic
 ```
 
 ### Local only

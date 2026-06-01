@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3001;
 
 try {
   const pids = execSync(`lsof -ti :${PORT}`, { encoding: 'utf8' }).trim();

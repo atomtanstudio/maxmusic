@@ -81,17 +81,12 @@ textarea { resize: vertical; }
   gap: 10px;
   padding: 4px 8px 24px;
 }
-.brand-mark {
+.brand-logo {
   width: 32px;
   height: 32px;
-  background: var(--bg-3);
-  border: 1px solid var(--line-strong);
+  flex-shrink: 0;
+  display: block;
   border-radius: var(--radius);
-  display: grid;
-  place-items: center;
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 13px;
 }
 .brand-name { font-weight: 600; font-size: 14px; letter-spacing: -0.02em; }
 .brand-sub { font-size: 10px; color: var(--text-3); display: block; }

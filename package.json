@@ -5,7 +5,7 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node scripts/start.mjs",
+    "start": "PORT=3001 node scripts/start.mjs",
     "stop": "node scripts/stop.mjs",
     "restart": "npm run stop && npm start",
     "dev": "node --watch server.js"
