@@ -1,0 +1,22 @@
+{
+  "name": "maxmusic",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "maxmusic",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "npm ci",
+  "customizations": {
+    "vscode": {
+      "portsAttributes": {
+        "3000": {
+          "label": "maxmusic",
+          "onAutoForward": "openBrowser"
+        }
+      }
+    }
+  }
+}

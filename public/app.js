@@ -573,15 +573,21 @@ function setView(name) {
   setMobileNavOpen(false);
   if (name === 'library') renderLibrary();
   if (name === 'settings') refreshKeyStatus();
+  updatePreviewChrome();
 }
 
 // --- Preview / session list ---
 function updatePreviewChrome() {
   const hasSession = state.sessionItems.length > 0;
   const creating = state.sessionItems.some((i) => i.status === 'creating');
-  $('#previewEmpty').hidden = hasSession || state.isGenerating || !!state.videoExport;
+  const previewActive = hasSession || state.isGenerating || !!state.videoExport;
+  $('#previewEmpty').hidden = previewActive;
   $('#previewSession').hidden = !hasSession;
   $('#previewLoading').hidden = !state.isGenerating || (hasSession && !creating);
+  $('#previewPanel')?.classList.toggle('panel-preview--idle', !previewActive);
+  $('#workspace')?.classList.toggle('has-preview-active', previewActive);
+  const allowMainScroll = previewActive || state.view === 'covers' || state.view === 'lyrics';
+  $('#workspace')?.classList.toggle('main-panel-scroll', allowMainScroll);
   renderVideoExportPanel();
 }
 

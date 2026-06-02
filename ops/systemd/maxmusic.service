@@ -1,0 +1,17 @@
+[Unit]
+Description=maxmusic MiniMax studio
+After=network.target
+
+[Service]
+Type=simple
+User=rich
+WorkingDirectory=/srv/maxmusic
+EnvironmentFile=-/srv/maxmusic/.env
+Environment=NODE_ENV=production
+Environment=PORT=3002
+ExecStart=/srv/maxmusic/scripts/start-hetzner.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

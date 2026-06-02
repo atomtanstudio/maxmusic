@@ -1,0 +1,7 @@
+# Add to your Caddy config (or import as a snippet).
+# TLS is automatic once DNS points maxmusic.atomtan.studio at the server.
+
+maxmusic.atomtan.studio {
+  encode gzip zstd
+  reverse_proxy 127.0.0.1:3002
+}

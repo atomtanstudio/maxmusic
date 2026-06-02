@@ -37,9 +37,9 @@ cp .env.example .env   # optional — edit locally, never commit .env
 npm start
 ```
 
-Open http://localhost:3001 → **Settings** → paste your [MiniMax API key](https://platform.minimax.io/).
+Open http://localhost:3000 → **Settings** → paste your [MiniMax API key](https://platform.minimax.io/).
 
-If port 3001 is busy: `npm run stop` then `npm start`.
+If port 3000 is busy: `npm run stop` then `npm start`.
 
 ## Features
 
@@ -49,53 +49,82 @@ If port 3001 is busy: `npm run stop` then `npm start`.
 - **Library** — list/tile view, play, download, lyric video export
 - **Cover art** — generated in parallel with tracks (optional)
 
-## Why Node (not GitHub Pages alone)?
+## On GitHub (this repo)
 
-The app proxies MiniMax and stores uploads under `/uploads/` and generated audio under `/tracks/`. **GitHub Pages cannot run that API.** Use Render (recommended), Fly, Railway, a VPS, or local `npm start`.
+**Source:** https://github.com/atomtanstudio/maxmusic
 
-## Deploy from GitHub (Render)
+The project already lives on GitHub. That is the right place for the code, issues, and CI. Pushing updates:
 
-1. Push this repo to GitHub (see below).
-2. [Render](https://render.com) → **New** → **Blueprint** → connect the repo (`render.yaml` is included).
-3. When prompted, set **`MINIMAX_API_KEY`** in Render’s **Environment** (Secret) — **not** in the repository.
-4. After deploy, open your Render URL and add your key in **Settings** if you skipped the server env var.
+```bash
+git add -A && git commit -m "your message" && git push origin main
+```
 
-Optional env vars:
+## Can I use GitHub Pages (`*.github.io`)?
+
+**Not for the full app.** GitHub Pages only hosts static files (HTML/CSS/JS). maxmusic needs **`server.js`** to:
+
+- Proxy MiniMax (API keys stay off the client bundle)
+- Save generated audio and cover art
+- Accept reference uploads for **Covers**
+
+So a `github.io` URL by itself **cannot** run Generate / Covers / Lyrics API calls. There is no Render requirement — but you do need *some* way to run Node, or users run it locally / in Codespaces.
+
+## Let people try it from GitHub (no Render)
+
+### Option A — **GitHub Codespaces** (browser, on GitHub’s cloud)
+
+Good for demos: visitors get a temporary VM tied to your repo.
+
+1. Open https://github.com/atomtanstudio/maxmusic
+2. **Code** → **Codespaces** → **Create codespace on main**
+3. Wait for setup (`npm ci` runs automatically)
+4. In the terminal: `npm start`
+5. When port **3000** is forwarded, open it in the browser (Codespaces usually prompts you)
+6. **Settings** → paste a [MiniMax API key](https://platform.minimax.io/) → **Save**
+7. Use **music-2.6-free** in Advanced if you want the free model tier
+
+Each person uses **their own** Codespace minutes (GitHub free tier has limits). Keys stay in that Codespace’s browser storage, not in your repo.
+
+### Option B — **Clone and run locally** (what most open-source apps do)
+
+Share the repo link and the Quick start steps above. Each user runs `npm start` on their machine — nothing to deploy.
+
+## Production (atomtan.studio / Hetzner)
+
+**Live URL (when deployed):** https://maxmusic.atomtan.studio
+
+Push to `main` triggers [.github/workflows/deploy-hetzner.yml](.github/workflows/deploy-hetzner.yml) — same pattern as PromptSilo: rsync to `/srv/maxmusic`, `npm ci`, restart `maxmusic` systemd unit, Caddy reverse-proxy on port **3002**.
+
+One-time server setup: [ops/README.md](ops/README.md). Reuse GitHub secrets `ATOMTANSTUDIO_HOST`, `ATOMTANSTUDIO_USER`, `ATOMTANSTUDIO_DEPLOY_SSH_KEY`.
+
+## Optional: other hosts (Render, Fly, Docker)
 
 | Variable | Purpose |
 |----------|---------|
-| `MINIMAX_API_KEY` | Server-wide key (private/solo deploys only) |
-| `ALLOWED_ORIGINS` | Comma-separated CORS origins in production |
-| `NODE_ENV` | Set to `production` on hosts (Render sets this) |
-| `PORT` | Set by the platform (default `3001` locally) |
+| `MINIMAX_API_KEY` | Optional server key (omit on public sites; use Settings per user) |
+| `ALLOWED_ORIGINS` | CORS allowlist in production |
+| `PORT` | Set by the host (default `3000` locally) |
 
-### Docker
+Optional Render blueprint: [`render.yaml`](render.yaml).
+
+### Docker (self-host)
 
 ```bash
 docker build -t maxmusic .
-docker run -p 3001:3001 -e MINIMAX_API_KEY=your-key-here maxmusic
+docker run -p 3000:3000 -e MINIMAX_API_KEY=your-key-here maxmusic
 ```
 
-Pass the key with `-e` or a secrets file — never bake it into the image.
+Never put the key in the image or in git.
 
-## Push to your GitHub repo
-
-```bash
-cd maxmusic
-git remote add origin https://github.com/atomtanstudio/maxmusic.git
-git branch -M main
-git push -u origin main
-```
-
-Replace `YOUR_USERNAME` with your GitHub username. Render (or another host) can then deploy from `main`.
-
-## CI
+## CI & deploy
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on push/PR:
 
 - `npm ci`
 - `npm run security:check`
 - Smoke test: start server, hit `/api/health` and `/`
+
+[.github/workflows/deploy-hetzner.yml](.github/workflows/deploy-hetzner.yml) deploys to Hetzner on push to `main`.
 
 ## API routes (proxy)
 

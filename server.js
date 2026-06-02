@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 const API_BASE = 'https://api.minimax.io';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')

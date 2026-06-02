@@ -57,7 +57,9 @@ textarea { resize: vertical; }
 
 .app {
   display: flex;
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
   position: relative;
   z-index: 1;
 }
@@ -187,6 +189,8 @@ textarea { resize: vertical; }
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .topbar {
@@ -233,24 +237,38 @@ textarea { resize: vertical; }
   grid-template-columns: 1fr var(--preview-w);
   gap: 0;
   min-height: 0;
+  overflow: hidden;
 }
 .workspace.single-col { grid-template-columns: 1fr; }
 
 .panel-main {
-  padding: 24px 28px 100px;
+  padding: 24px 28px 40px;
+  min-height: 0;
+  overflow-y: hidden;
+  overflow-x: hidden;
+}
+
+/* Center column scrolls after session starts, or on Covers/Lyrics/Library */
+.workspace.has-preview-active .panel-main,
+.workspace.main-panel-scroll .panel-main,
+.workspace.single-col .panel-main {
   overflow-y: auto;
-  max-height: calc(100vh - 65px);
 }
 
 .panel-preview {
   background: var(--bg-1);
   border-left: 1px solid var(--line);
   padding: 24px;
-  overflow-y: auto;
-  max-height: calc(100vh - 65px);
+  min-height: 0;
+  overflow-y: hidden;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.workspace.has-preview-active .panel-preview:not(.panel-preview--idle) {
+  overflow-y: auto;
 }
 .panel-preview #previewSingle:not([hidden]) {
   border-top: 1px solid var(--line);
@@ -540,11 +558,14 @@ textarea { resize: vertical; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
   flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+}
+.preview-session:not([hidden]) .session-list {
+  overflow-y: auto;
   min-height: 120px;
   max-height: calc(100vh - 200px);
-  padding-right: 4px;
 }
 .session-list.suno-clips {
   display: flex;

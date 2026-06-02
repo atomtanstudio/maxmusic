@@ -1,0 +1,96 @@
+# Push to main → rsync to Hetzner → npm ci → restart maxmusic (same pattern as PromptSilo / atomtan.studio)
+name: Deploy to Hetzner
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: maxmusic-hetzner-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          install -m 700 -d ~/.ssh
+          HOST_CLEAN="$(printf '%s' "${{ secrets.ATOMTANSTUDIO_HOST }}" | tr -d '\r' | xargs)"
+          KEY_CONTENT="${{ secrets.ATOMTANSTUDIO_DEPLOY_SSH_KEY }}"
+          CLEAN_KEY="$(printf '%s' "$KEY_CONTENT" | tr -d '\r')"
+          KEY_OK=0
+
+          printf '%s\n' "$CLEAN_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          if ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1; then
+            KEY_OK=1
+          else
+            printf '%s' "$CLEAN_KEY" | tr -d '\n ' | base64 -d > ~/.ssh/id_ed25519.decoded 2>/dev/null || true
+            if [ -f ~/.ssh/id_ed25519.decoded ]; then
+              chmod 600 ~/.ssh/id_ed25519.decoded
+            fi
+            if [ -f ~/.ssh/id_ed25519.decoded ] && ssh-keygen -y -f ~/.ssh/id_ed25519.decoded >/dev/null 2>&1; then
+              mv ~/.ssh/id_ed25519.decoded ~/.ssh/id_ed25519
+              KEY_OK=1
+            fi
+          fi
+
+          if [ "$KEY_OK" -ne 1 ]; then
+            echo "ATOMTANSTUDIO_DEPLOY_SSH_KEY is not a valid raw or base64-encoded SSH private key"
+            exit 1
+          fi
+
+          rm -f ~/.ssh/id_ed25519.decoded
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST_CLEAN" >> ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+
+      - name: Sync repo to server
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST_CLEAN="$(printf '%s' "${{ secrets.ATOMTANSTUDIO_HOST }}" | tr -d '\r' | xargs)"
+          USER_CLEAN="$(printf '%s' "${{ secrets.ATOMTANSTUDIO_USER }}" | tr -d '\r' | xargs)"
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'node_modules' \
+            --exclude '.env' \
+            --exclude '.env.local' \
+            --exclude '_reference-music-studio' \
+            --exclude 'uploads' \
+            --exclude 'public/tracks' \
+            --exclude 'public/covers' \
+            -e "ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10" \
+            ./ "$USER_CLEAN@$HOST_CLEAN:/srv/maxmusic/"
+
+      - name: Deploy on server
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST_CLEAN="$(printf '%s' "${{ secrets.ATOMTANSTUDIO_HOST }}" | tr -d '\r' | xargs)"
+          USER_CLEAN="$(printf '%s' "${{ secrets.ATOMTANSTUDIO_USER }}" | tr -d '\r' | xargs)"
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            "$USER_CLEAN@$HOST_CLEAN" \
+            "bash -lc '
+              set -euo pipefail
+              cd /srv/maxmusic
+              chmod +x ./scripts/deploy-hetzner.sh ./scripts/start-hetzner.sh
+              SKIP_GIT_SYNC=1 ./scripts/deploy-hetzner.sh
+            '"
