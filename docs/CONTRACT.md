@@ -11,6 +11,30 @@ work offline, so never reference an external host — no fonts, no scripts, no i
 
 ---
 
+## 0. Round 2 — what changed in the shell, and what it means for you
+
+Round 1 lost all five blind comparisons. Four of the fixes live in this file, and three of
+them are primitives you are expected to use rather than reinvent.
+
+| Round 1 defect | Round 2 shell answer | What you must do |
+|---|---|---|
+| `Backend online / 192.168.1.100:8190` card in the sidebar | Deleted. Connection state is a transient toast; the anchor slot now holds the workspace identity + a `New song` CTA. | Never print a host, a port, an endpoint path, a provider name, a model string or a byte size in resting UI. Read `ctx.health` and speak in customer language. |
+| Bare icon glyphs at 1.1:1, mixed fills and strokes, inline delete | `.actionchip` + `.actionbar` + `.menu` (§6a) | Build every icon action out of these. Do not hand-roll a bare `<button><svg>`. |
+| Sticky footers slicing cards and buttons in half | `.dock` (§6b), measured for you | Wrap any screen with a pinned action bar in `.dock`. |
+| Cyan + magenta + green + violet at once | Tokens retuned; `--ok`/`--info` are now colourless; one gradient per view, linted at runtime | Reach for `.btn--strong`, a container, or weight before you reach for a hue. |
+
+**Removed** — these no longer exist, do not reference them:
+`.status`, `.status__dot`, `.status__label`, `.status__detail`, `.brand__sub`, and the
+per-nav-item brand-gradient slice. `.iconbtn` still resolves (it is now an alias of
+`.actionchip`) but is deprecated — rename it when you touch a file.
+
+**Added** — `--surface-5`, `--action-size`, `--action-size-lg`, `--action-gap`,
+`--icon-stroke`, `.btn--strong`, `.actionbar`, `.actionchip`, `.menu`, `.dock`,
+`ctx.menu`, `ctx.attachMenu`, `ctx.registerDock`, `health.detail`,
+`i-chevron-up` / `i-share` / `i-pencil` / `i-user`.
+
+---
+
 ## 1. Screen module interface
 
 One file per screen, an ES module at `public/js/screens/<name>.js`.
@@ -89,6 +113,9 @@ Query strings are supported and parsed for you: `#/library?track=ab12` →
 | `ctx.storage` | `{get,set,remove}` | JSON localStorage under the `maxmusic:` prefix. |
 | `ctx.icon(name, cls?)` | `SVGSVGElement` | Sprite icon as a DOM node. |
 | `ctx.iconMarkup(name, cls?)` | string | Same icon as a markup string for template literals. |
+| `ctx.menu(config)` | `HTMLElement` | A ready-made `…` overflow menu (chip + list). §6a. |
+| `ctx.attachMenu(el, config)` | controller | Turn an element you already rendered into a menu trigger. Destroyed for you on unmount. §6a. |
+| `ctx.registerDock(root?)` | `number` | Force a sticky-footer measurement. Rarely needed — the shell scans automatically. §6b. |
 
 `window.MaxMusic` exists for console debugging only. Never import `app.js` and never
 reach for `window.MaxMusic` in shipped screen code — use `ctx`.
@@ -192,13 +219,136 @@ coverArtProvider, coverArtEnabled, hasServerKey, error, checkedAt }`. `lyricsEna
 
 Use these. They are the reason six independently built screens will look like one product.
 
-**Buttons** `.btn` · modifiers `.btn--primary` (the brand gradient — one per view, for the
-real action) `.btn--ghost` `.btn--outline` `.btn--danger` `.btn--sm` `.btn--lg`
-`.btn--block` `.btn--icon` · state `.is-active` · `:disabled` is styled, so use the real
-attribute. Also `.iconbtn` for a bare 32px icon button.
+**Buttons** `.btn` · modifiers `.btn--primary` (the brand gradient — **one per view**, for
+the real action) `.btn--strong` (second-emphasis: a solid high-contrast fill, no hue — use
+this instead of a second gradient) `.btn--ghost` `.btn--outline` `.btn--danger` `.btn--sm`
+`.btn--lg` `.btn--block` `.btn--icon` · state `.is-active` · `:disabled` is styled, so use
+the real attribute.
 
-**Selection** `.chip` (+ `.chip--mono`, `.is-active` / `aria-pressed="true"`),
-`.segment` > `.segment__item.is-active` for Simple/Advanced-style tab groups.
+**Selection** `.chip` (+ `.chip--mono`, `.is-active` / `aria-pressed="true"` — selected is
+a solid fill, not a tint), `.segment` > `.segment__item.is-active` for Simple/Advanced-style
+tab groups.
+
+### 6a. Icon actions — `.actionbar`, `.actionchip`, `.menu`
+
+The library's regenerate icon measured **1.1:1** against its row in round 1. These
+primitives make that impossible. Build every row-level or toolbar-level icon action out of
+them; never hand-roll a bare `<button><svg>`.
+
+```html
+<div class="actionbar">
+  <button class="actionchip" type="button" aria-label="Play">
+    <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>
+  </button>
+  <button class="actionchip actionchip--count" type="button" aria-label="Plays">
+    <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>
+    <span class="actionchip__num">12</span>
+  </button>
+  <button class="actionchip" type="button" aria-label="Download">…</button>
+  <span class="actionbar__sep"></span>
+  <!-- the overflow menu goes here; build it with ctx.menu() -->
+</div>
+```
+
+| Class | What it guarantees |
+|---|---|
+| `.actionbar` | One flex row at a fixed `--action-gap` (12px). Neighbours cannot crowd. `.actionbar--end` pushes it right; `.actionbar__sep` is the hairline divider. |
+| `.actionchip` | A **34px circular container that is visible at rest** (`--surface-4` + a 1px border) with the glyph at `--text-mid` = **5.2:1 on the chip**, rising to `--text-hi` = 10.4:1 on hover. Verified by measurement, not by eye. |
+| `.actionchip--lg` | 40px. For a row's primary affordance (play). Same look. |
+| `.actionchip--count` | Pill variant that also carries a numeral in `.actionchip__num`. Still 34px tall. |
+| `.actionchip--onground` | Use when the chip sits on `--surface-0`/`--surface-1` rather than on a card. |
+| `.actionchip.is-active` / `[aria-pressed="true"]` | Inverts to a solid fill. |
+| `.menu` | The standard overflow menu (below). |
+
+Three rules the primitives enforce, so do not work around them:
+
+1. **There is no small variant.** `--action-size` is 34px. If a chip does not fit, the row
+   is too dense — change the row.
+2. **There is no inline destructive chip.** Delete, Clear, Remove and Discard live in a
+   `.menu` as `.menu__item--danger`. A *labelled* destructive button (`.btn--danger`) may
+   sit in the open; a destructive *icon* may not.
+3. **One icon style, one stroke weight.** Every glyph comes from the sprite: 24×24,
+   `1.75` stroke, round caps and joins, `currentColor`. The only filled shapes in the whole
+   set are dots (`i-more`, `i-dice` pips). Do not inline a one-off SVG and do not add a
+   filled icon — ask the shell lane instead.
+
+**Building a menu.** Do not assemble `.menu__list` by hand; the shell owns positioning
+(viewport-fixed, mounted on `<body>` while open, flips up near the bottom, so a scrolling
+row or a `backdrop-filter` footer cannot clip it), outside-click, Escape, arrow-key
+navigation and focus restoration.
+
+```js
+const overflow = ctx.menu({
+  label: 'More actions',           // aria-label on the trigger chip
+  align: 'end',                    // 'end' (default) | 'start'
+  items: () => [                   // array, or a function for per-row state
+    { label: 'Rename',   icon: 'pencil',   onSelect: () => rename(id) },
+    { label: 'Download', icon: 'download', note: 'FLAC', href: url },
+    { separator: true },
+    { label: 'Delete',   icon: 'trash',    danger: true, onSelect: () => remove(id) },
+  ],
+});
+row.append(overflow);              // the wrapper is a compliant .actionchip trigger
+```
+
+`MenuItem` keys: `label`, `icon` (sprite name), `note` (right-aligned secondary text),
+`danger`, `disabled`, `href` (renders an anchor), `onSelect`, `separator`, `heading`.
+For an element you already rendered — a row's own `…` button, an account row, a
+`.btn` with a chevron — use `ctx.attachMenu(el, config)`; it is torn down on unmount.
+
+### 6b. Sticky footers — `.dock`
+
+Round 1 sliced a card header and a primary button in half on two screens. Any scroll
+region with a pinned action bar goes in a `.dock`.
+
+```html
+<div class="dock">                       <!-- height:100%, flex column -->
+  <div class="dock__scroll">…form, list, editor…</div>
+  <div class="dock__foot dock__foot--fade">
+    <button class="btn btn--primary btn--lg btn--block">Generate</button>
+  </div>
+</div>
+```
+
+- **Default (`.dock`)** — the footer is a flex sibling of the scroller, so overlap is
+  *structurally impossible*. Prefer this. `.dock__scroll` already carries 24px of bottom
+  breathing room.
+- **`.dock--overlay`** — opt in when you want a glass bar floating over the content. The
+  shell measures the footer with a `ResizeObserver` and sets `--dock-foot-h` on the
+  `.dock`; `.dock__scroll` is padded by `--dock-foot-h + 24px`, live, whatever the footer
+  grows into. Measured: an 80px footer produced 104px of scroll padding and 25px of
+  clearance below the last card at full scroll.
+- `.dock__foot--fade` adds a 32px gradient **above** the footer so text dissolves instead
+  of meeting a hard edge. Set `--dock-fade` on the `.dock` to match your background.
+
+You do not have to call anything: the shell scans on every mount and watches the outlet
+for docks added later. `ctx.registerDock(el)` exists for a dock you build inside a shadow
+of the outlet or after an unusual async paint.
+
+### 6c. Accent discipline — how the one-gradient rule is enforced
+
+We shipped cyan, magenta, green and violet simultaneously. The gradient is now spent on
+exactly three things: **the mark, ONE `.btn--primary` per view, and the waveform / actively
+generating state.** Nothing else.
+
+The rule is enforced in four places rather than by good intentions:
+
+1. **Tokens carry it.** `--ok` and `--info` resolve to `--text-hi` on a raised container —
+   there is no success green and no info blue to reach for. `--warn` is the ramp's amber
+   and `--danger` the ramp's red, so the only three non-neutral values left are all brand
+   stops, each with one job (warnings, destructive intent, and `--accent` for focus/links/
+   selection). `--surface-selected` is a white tint, not a cyan one.
+2. **The shared components already obey it.** Active chips, active nav items, checked
+   switches, filled sliders and selected states are all solid `--text-hi` fills — form,
+   not hue. The player bar lost its decorative gradient hairline.
+3. **`.btn--strong` exists** so "this is also important" has an obvious answer that is not
+   a second gradient.
+4. **The shell lints it.** After every mount it counts visible, enabled `.btn--primary`
+   elements and logs `[shell] accent discipline: N .btn--primary are visible at once` when
+   `N > 1`. Keep the console clean.
+
+If a screen needs to signal state, spend **weight, a container, position or size first**.
+Reach for hue only when the state is a warning or a destruction.
 
 **Forms** `.field` (label + control + hint column), `.label` (+ `.label__hint` for a
 right-aligned counter), `.input`, `.textarea` (+ `.textarea--mono`), `.select`, `.hint`
@@ -206,19 +356,27 @@ right-aligned counter), `.input`, `.textarea` (+ `.textarea--mono`), `.select`, 
 `.range` (set `--range-fill: <pct>%` on the element to colour the filled portion).
 `aria-invalid="true"` turns a field red.
 
+### 6d. The rest
+
 **Containers** `.panel` > `.panel__head` (`.panel__title`) + `.panel__body`; `.card`
 (+ `.card--hover`); `.divider`.
 
-**Status** `.badge` (+ `--ok --warn --danger --info --brand`), `.notice` >
-`.notice__icon` + `.notice__title` (+ `--warn --error --info`), `code.code` for inline code.
+**Status** `.badge` (+ `--ok --warn --danger --info --brand`; `--ok` and `--info` are
+deliberately colourless — see §6c), `.notice` > `.notice__icon` + `.notice__title`
+(+ `--warn --error --info`), `code.code` for inline code.
 
 **States** `.empty` > `.empty__icon` + `.empty__title` + `.empty__text`; `.spinner`
 (put it on an `.icon` using `#i-spinner`); `.skeleton`; `.brandline` (animated gradient
-hairline — use it on a panel that is generating).
+hairline — this counts as the view's brand gesture, so use it on a panel that is actually
+generating and not as decoration).
 
 **Layout** `.page` (+ `.page--narrow`, `.page--flush`, `.page__lead`), `.stack`, `.row`
 (+ `.row--wrap`, `.row--end`), `.spacer`, `.truncate`, `.mono`, `.gradient-text`
 (one number or one word — never a paragraph), `.visually-hidden`, `.brandmark` (see §8).
+
+**Toasts** `ctx.toast(msg, {kind, title, timeout, key, actions})`. `actions` is an array of
+`{label, onClick}` rendered as buttons in the toast body. `key` replaces a live toast with
+the same key instead of stacking a second one — use it for anything that can repeat.
 
 ---
 
@@ -235,14 +393,22 @@ Available ids (drop the `i-` prefix when calling `ctx.icon`):
 
 `i-create` `i-studio` `i-library` `i-lyrics` `i-covers` `i-settings`
 `i-play` `i-pause` `i-prev` `i-next` `i-shuffle` `i-repeat` `i-volume` `i-mute`
-`i-search` `i-plus` `i-close` `i-check` `i-chevron-down` `i-chevron-right` `i-chevron-left`
+`i-search` `i-plus` `i-close` `i-check` `i-chevron-down` `i-chevron-up`
+`i-chevron-right` `i-chevron-left`
 `i-download` `i-copy` `i-trash` `i-heart` `i-more` `i-refresh` `i-wand` `i-alert` `i-info`
 `i-dice` `i-clock` `i-wave` `i-mic` `i-external` `i-lock` `i-panel` `i-menu` `i-spinner`
+`i-share` `i-pencil` `i-user`
 
-All are 24×24 and inherit `currentColor`. `.icon` sizes them to 18px; override `width`/
-`height` on your own class when you need another size. If you need an icon that is not
-here, ask the shell lane to add it — do not inline a one-off SVG with a different stroke
-weight, and do not link an external icon font.
+**One style, one weight.** Every symbol is 24×24, drawn as a `1.75` stroke in
+`currentColor` with round caps and joins. The only filled shapes in the set are dots
+(`i-more`, the pips in `i-dice`). `i-play` and `i-pause` are stroked like everything else —
+round 1 lost partly on "play is a solid fill, download and trash are ~1.5px strokes",
+so a filled play glyph is no longer available anywhere.
+
+`.icon` sizes them to 18px; override `width`/`height` on your own class when you need
+another size (colour too — but keep it ≥3:1 against whatever it sits on). If you need an
+icon that is not here, ask the shell lane to add it — do not inline a one-off SVG with a
+different stroke weight, and do not link an external icon font.
 
 ---
 
@@ -270,15 +436,18 @@ Gradients: `--gradient-brand` (90°, all six stops) `--gradient-brand-135`
 `--gradient-brand-cool` (cyan→violet→magenta, primary actions)
 `--gradient-brand-warm` (magenta→red→amber). Glows: `--brand-glow` `--brand-glow-strong`.
 
-**The gradient is the brand's one loud gesture.** Mark, primary action, active/generating
-state, waveform. Everything else stays near-black and restrained. Do not rainbow the UI.
+**The gradient is the brand's one loud gesture.** Mark, ONE primary action per view,
+active/generating state, waveform. Everything else stays near-black and restrained. See
+§6c — this is linted at runtime.
 
 ### Surfaces (near-black ramp, faint blue cast)
 
 `--surface-0` `#06070b` app ground · `--surface-1` `#0b0d13` rail & player ·
-`--surface-2` `#10131a` cards & panels · `--surface-3` `#161a23` raised/popover ·
-`--surface-4` `#1e232e` hover/menu · `--surface-inset` `#08090e` wells & text areas ·
-`--surface-hover` `--surface-active` `--surface-selected` `--surface-scrim` `--surface-glass`
+`--surface-2` `#10131a` cards & panels · `--surface-3` `#161a23` raised ·
+`--surface-4` `#1e232e` action-chip rest / menu / tooltip · `--surface-5` `#272d3a` hover
+on a chip or menu item · `--surface-inset` `#08090e` wells & text areas ·
+`--surface-hover` `--surface-active` `--surface-selected` (a white tint, not a cyan one)
+`--surface-scrim` `--surface-glass`
 
 ### Text
 
@@ -290,10 +459,16 @@ state, waveform. Everything else stays near-black and restrained. Do not rainbow
 
 `--border-faint` `--border` `--border-strong` `--border-brand` `--focus-ring` `--focus-ring-tight`
 
-### Status
+### Status — three colours, each with one job
 
-`--ok` `--ok-bg` `--warn` `--warn-bg` `--danger` `--danger-bg` `--info` `--info-bg`
-`--busy` `--busy-bg`
+`--ok` / `--ok-bg` — **colourless on purpose**: full-contrast text on a raised container.
+There is no success green. Say "done" with a check glyph, weight and a container.
+`--info` / `--info-bg` — same, colourless. There is no info blue.
+`--warn` / `--warn-bg` — the ramp's amber. Transient warnings only.
+`--danger` / `--danger-bg` — the ramp's red. Destructive intent only.
+`--busy` / `--busy-bg` — the ramp's violet. The actively-generating state only.
+
+If you find yourself wanting a fifth colour, you want a container instead.
 
 ### Radii
 

@@ -483,6 +483,11 @@ export function attachMenu(trigger, config = {}) {
     focusable[next].focus();
   }
 
+  // A menu opened inside a scrolling list must not be killed by the scroll that
+  // brought its trigger into view. Ignore scroll for a beat, then behave.
+  let openedAt = 0;
+  const onScroll = () => { if (Date.now() - openedAt > 220) close(); };
+
   function open() {
     if (!list.hidden) return;
     liveMenu?.close();
@@ -495,12 +500,13 @@ export function attachMenu(trigger, config = {}) {
     list.style.visibility = '';
     trigger.setAttribute('aria-expanded', 'true');
     liveMenu = { close };
+    openedAt = Date.now();
 
     // Deferred so the click that opened the menu does not immediately close it.
     setTimeout(() => document.addEventListener('pointerdown', onDocPointer, true), 0);
     list.addEventListener('keydown', onKey);
     window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
   }
 
   function close() {
@@ -512,7 +518,7 @@ export function attachMenu(trigger, config = {}) {
     document.removeEventListener('pointerdown', onDocPointer, true);
     list.removeEventListener('keydown', onKey);
     window.removeEventListener('resize', close);
-    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('scroll', onScroll, true);
     if (trigger.isConnected) trigger.focus({ preventScroll: true });
   }
 

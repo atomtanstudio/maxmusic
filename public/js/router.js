@@ -84,21 +84,27 @@ export function createRouter(cfg) {
 
   /* --------------------------------------------------------------- render */
 
+  /**
+   * An honest failure, in customer language, with the real reason kept as
+   * secondary detail rather than as the headline. This is an error state, so
+   * technical text is allowed here — it never appears in a working frame.
+   */
   function renderLoadError(err, route) {
     const message = err?.message || String(err);
     outlet.replaceChildren();
     const wrap = document.createElement('div');
     wrap.className = 'empty';
     wrap.innerHTML = `
-      <span class="empty__icon" style="color:var(--danger)">
+      <span class="empty__icon">
         <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
       </span>
-      <h2 class="empty__title">The ${route.name} screen failed to load</h2>
-      <p class="empty__text"></p>
+      <h2 class="empty__title">This page didn’t load</h2>
+      <p class="empty__text">Something went wrong opening ${route.name}. Try again — if it keeps happening, reload MaxMusic.</p>
+      <p class="empty__text"><code class="code" data-reason></code></p>
       <button class="btn btn--sm" type="button" data-retry>
-        <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>Retry
+        <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>Try again
       </button>`;
-    wrap.querySelector('.empty__text').textContent = message;
+    wrap.querySelector('[data-reason]').textContent = message;
     wrap.querySelector('[data-retry]').addEventListener('click', () => reload());
     outlet.append(wrap);
   }

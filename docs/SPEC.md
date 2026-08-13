@@ -378,3 +378,58 @@ visual texture (warm/analogue vs clean/digital, intimate vs vast).
 
 The test: generate art for two very different tracks and the two suggested prompts must read as
 genuinely different art directions, not the same sentence with the genre swapped.
+
+---
+
+## 11. Album art runs on OpenAI gpt-image-2 — and the broker is currently broken
+
+Verified 2026-08-13 by direct inspection of the running processes.
+
+### 11a. The path is already OpenAI, as intended
+
+Backend env: `LOCAL_MEDIA_BROKER_URL=http://127.0.0.1:8788`, no `LOCAL_MEDIA_BROKER_MODEL`
+override, so `local-providers.js` uses its default **`openai/gpt-image-2`**. No
+`COMFY_COVER_WORKFLOW` is set, so the ComfyUI image path is not in play and `/api/health`
+correctly reports `coverArt: local-media-broker`. Lyrics run through the signed-in ChatGPT
+app's Codex binary at `/Applications/ChatGPT.app/Contents/Resources/codex`.
+
+So album art already routes to OpenAI image generation on the signed-in account. No change of
+provider is needed — build the Art screen straight against `POST /api/cover-art`.
+
+### 11b. It fails right now, and the fault is in the broker, not in us
+
+A live call to `POST /api/cover-art` returns:
+
+```
+Hermes image generate failed for openai/gpt-image-2.
+"error": "OpenAI image generation via Codex auth failed:
+ install_openai_codex_image_collector.<locals>.collect_with_retries()
+ got an unexpected keyword argument 'input_images'"
+```
+
+Isolated as follows: the ChatGPT account itself is healthy — `auth_mode: chatgpt`,
+`plan_type: pro`, `image_generation: true` — and a direct account-backed gpt-image-2
+generation succeeded, producing `public/demo/obsidian-temple.png`. So the account and the
+model work; only the broker hop is broken.
+
+Root cause, in `openclaw-media-broker/scripts/hermes-media-runner.py:306`:
+`install_openai_codex_image_collector()` monkey-patches the Hermes plugin with a local
+`collect_with_retries(token, *, prompt, size, quality)` (line 356). Upstream Hermes now calls
+that collector with an additional `input_images=` keyword, which the stale patch does not
+accept. The broker also carries its own `install_openai_reference_images()` shim, so the two
+reference-image mechanisms have collided.
+
+**This is a third repo and is out of scope for this build.** Do not edit it.
+
+### 11c. What that means for the Art screen
+
+Build the real generating screen against the documented contract. It will work unchanged once
+the broker is repaired. Until then:
+
+- `/api/health` reports cover art as **available**, but generation fails at runtime. Health is
+  therefore not sufficient — the screen must handle a runtime failure from an ostensibly
+  healthy service and surface the backend's own message.
+- Do not disable the screen based on this failure, and do not fake a result.
+- `public/demo/obsidian-temple.png` is a real gpt-image-2 render at the quality bar this
+  feature should hit. Use it as seed content so Library and Art frames are populated rather
+  than empty — the round 1 judges punished empty grids hard.

@@ -639,7 +639,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   height: var(--chip);
   padding: 0;
   border-radius: var(--r-circle);
-  border: 1px solid var(--border-faint);
+  border: 1px solid var(--border);
   background: var(--surface-4);
   color: var(--text-mid);
   font-size: var(--fs-2xs);
