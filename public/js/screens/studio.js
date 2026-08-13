@@ -517,10 +517,12 @@ function template(ctx) {
         <div class="panel__body studio__body">
           <div class="notice notice--info studio__twostep" data-twostep hidden>
             <span class="notice__icon">${i('info')}</span>
-            <div>
-              <p class="notice__title">A sung track needs words</p>
-              Write them here, or let <b>Write for me</b> draft a full set from your
-              description first. Switch to Instrumental if you want no vocals at all.
+            <div class="notice__body">
+              <p class="notice__head">
+                <span class="notice__title">A sung track needs words</span>
+              </p>
+              <p>Write them here, or let <b>Write for me</b> draft a full set from your
+              description first. Switch to Instrumental if you want no vocals at all.</p>
             </div>
           </div>
 
@@ -895,6 +897,24 @@ export async function mount(root, ctx) {
       (field.key === 'vocal' && state.instrumental ? field.instrumentalSummary : field.summary) || '';
   }
 
+  /**
+   * Grow a textarea to its content.
+   *
+   * The caption fields are documents, not one-liners. Left at a fixed height
+   * they cut a sentence in half at the bottom edge, which round 1 judged as a
+   * clipping bug rather than as a scroll region — and they nested a scrollbar
+   * inside a scrolling column, which is worse.
+   */
+  function autosizeArea(ta) {
+    if (!ta) return;
+    ta.style.height = 'auto';
+    // scrollHeight is the content box; height sets the border box. Add the
+    // difference back or the field lands two pixels short and clips its last
+    // line — the exact defect this is here to remove.
+    const chrome = ta.offsetHeight - ta.clientHeight;
+    ta.style.height = `${ta.scrollHeight + chrome}px`;
+  }
+
   function syncCaptionField(field) {
     const refs = el.caption[field.key];
     const text = state[field.key];
@@ -913,6 +933,7 @@ export async function mount(root, ctx) {
     refs.meter.textContent = words ? `${words} words` : '';
     refs.scaffold.hidden = present === parts.length;
     refs.scaffold.title = 'Add the parts this field is still missing';
+    autosizeArea(refs.area);
   }
 
   /* ----------------------------------------------------------- composing */
@@ -945,8 +966,7 @@ export async function mount(root, ctx) {
   /* -------------------------------------------------------------- render */
 
   function autosize() {
-    el.lyrics.style.height = 'auto';
-    el.lyrics.style.height = `${el.lyrics.scrollHeight}px`;
+    autosizeArea(el.lyrics);
   }
 
   function syncLyrics() {
@@ -1096,22 +1116,47 @@ export async function mount(root, ctx) {
     el.copyPrompt.disabled = !prompt;
   }
 
+  /**
+   * The studio itself is not ready to render.
+   *
+   * This is an environment state, not a fault in the draft, so it gets its own
+   * card rather than another red line: a labelled severity chip *inside* the
+   * surface, on the title row. The words come from `health.message`, which is
+   * written for customers. The verbatim technical reason (`health.detail`,
+   * `comfyError`) is deliberately absent — diagnostics belong on Settings and
+   * in transient failures, never in a working frame.
+   */
+  function notReadyNode() {
+    const box = document.createElement('div');
+    box.className = 'notice notice--warn foot__notice';
+    box.innerHTML = `
+      <span class="notice__icon">${ctx.iconMarkup('alert')}</span>
+      <div class="notice__body">
+        <p class="notice__head">
+          <span class="notice__title">Not ready to render</span>
+          <span class="sev sev--warn">Waiting</span>
+        </p>
+        <p data-notready></p>
+      </div>`;
+    box.querySelector('[data-notready]').textContent = `${
+      health?.message || 'Your studio is still starting up.'
+    } Generate switches back on by itself the moment it is.`;
+    return box;
+  }
+
   function syncValidation() {
     const v = api.validateGeneration(currentInput());
     el.issues.replaceChildren();
 
-    const blockedByBackend = health && health.status !== 'online'
-      ? (health.comfyError || health.message)
-      : '';
+    const notReady = Boolean(health && health.status !== 'online');
 
-    for (const text of v.errors) {
-      el.issues.append(issueNode('error', text));
-    }
-    if (blockedByBackend) el.issues.append(issueNode('error', blockedByBackend));
+    for (const text of v.errors) el.issues.append(issueNode('error', text));
     for (const text of v.warnings) el.issues.append(issueNode('warn', text));
+    // Sits closest to the button it is disabling.
+    if (notReady) el.issues.append(notReadyNode());
 
     const busy = Boolean(job);
-    el.generate.disabled = !v.valid || Boolean(blockedByBackend) || busy;
+    el.generate.disabled = !v.valid || notReady || busy;
     el.generateLabel.textContent = busy
       ? 'Rendering'
       : (state.takes === 'two' ? 'Generate two takes' : 'Generate');
@@ -1430,9 +1475,15 @@ export async function mount(root, ctx) {
     if (err?.name === 'AbortError') return;
     const box = document.createElement('div');
     box.className = 'notice notice--error take__error';
-    box.innerHTML = `<span class="notice__icon">${ctx.iconMarkup('alert')}</span><div>
-      <p class="notice__title">Render failed</p><span class="take__errmsg"></span>
-      <p class="take__errfoot mono"></p></div>`;
+    box.innerHTML = `<span class="notice__icon">${ctx.iconMarkup('alert')}</span>
+      <div class="notice__body">
+        <p class="notice__head">
+          <span class="notice__title">Render failed</span>
+          <span class="sev sev--error">Error</span>
+        </p>
+        <span class="take__errmsg"></span>
+        <p class="take__errfoot mono"></p>
+      </div>`;
     box.querySelector('.take__errmsg').textContent = api.errorText(err);
     // Diagnostics are legitimate here: this only exists when something broke.
     box.querySelector('.take__errfoot').textContent = [
@@ -1514,9 +1565,16 @@ export async function mount(root, ctx) {
       if (res?.takes?.B?.track) el.takesList.append(takeCard(res.takes.B, 'B', j));
       for (const e of res?.errors || []) {
         const p = document.createElement('div');
-        p.className = 'notice notice--error';
-        p.innerHTML = `<span class="notice__icon">${ctx.iconMarkup('alert')}</span><div><p class="notice__title">Take ${e.slot} failed</p><span></span></div>`;
-        p.querySelector('span:last-child').textContent = [e.error, e.details].filter(Boolean).join(' — ');
+        p.className = 'notice notice--error take__error';
+        p.innerHTML = `<span class="notice__icon">${ctx.iconMarkup('alert')}</span>
+          <div class="notice__body">
+            <p class="notice__head">
+              <span class="notice__title">Take ${escapeHtml(e.slot)} failed</span>
+              <span class="sev sev--error">Error</span>
+            </p>
+            <span class="take__errmsg"></span>
+          </div>`;
+        p.querySelector('.take__errmsg').textContent = [e.error, e.details].filter(Boolean).join(' — ');
         el.takesList.append(p);
       }
     } else if (res.track) {
@@ -1536,6 +1594,16 @@ export async function mount(root, ctx) {
   };
 
   on(el.title, 'input', () => { state.title = el.title.value; save(); });
+
+  // Re-wrapping at a new width changes how tall every grown textarea needs to
+  // be, so remeasure once the resize settles.
+  const remeasure = debounce(() => {
+    if (!alive) return;
+    autosize();
+    for (const f of CAPTION_FIELDS) autosizeArea(el.caption[f.key].area);
+  }, 120);
+  on(window, 'resize', remeasure);
+  listeners.push(() => remeasure.cancel());
 
   for (const b of el.modeBtns) {
     on(b, 'click', () => {

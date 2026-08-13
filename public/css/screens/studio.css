@@ -4,11 +4,24 @@
    other lane can be touched. Colour, space, type and motion come from
    tokens.css; nothing is hard-coded.
 
-   Round 2 rules held here:
-   - ONE accent. The brand gradient appears once (the Generate button, via
-     .btn--primary) plus the animated hairline while a render is actually
-     running. Cyan is used only as --accent: section tags, carets, focus.
-     Everything else is neutral; amber and red mean warning and failure.
+   Round 3 — the two banned patterns, and how this file avoids them:
+   - NO GRADIENTS. Not one ramp is declared here, in any property — not as a
+     fill, not as a border, not as a fade, and not as a mask either. The soft
+     bottom edge the main column used to wear was exactly that and it is gone.
+     Depth comes from elevation (--surface-*, --shadow-*) and border weight.
+     The dock's old fade variable was deleted from the shell, so the dock is
+     not re-tinted here either — .dock__foot--fade lifts on --shadow-lift.
+   - NO LEFT-EDGE ACCENT STRIPE. Nothing in this file paints a coloured bar on
+     the edge of a card, notice or row. The two 1px rules that do exist are a
+     neutral column divider between the editor and the render rail, and the
+     hairline sides of the fit meter's target band — both structural, both
+     --border-*, neither an accent. Severity is a labelled .sev chip set
+     INSIDE the surface (see .foot__notice).
+
+   Round 2 rules still held here:
+   - ONE accent. Cyan appears as --accent on section tags, the caret and focus
+     rings, plus the single .btn--primary in the dock. Everything else is
+     neutral; amber and red mean warning and failure, and nothing else.
    - ONE value, ONE control. Length is a single editable field with preset
      shortcuts. A setting that cannot act is disabled and looks it.
    - The rail is a .dock, so its action bar cannot bisect anything, and the
@@ -27,14 +40,14 @@
   overflow: hidden;
 }
 
-/* The column scrolls internally, so its last visible row meets the frame edge.
-   Round 1 was told a guillotined label reads as a clipping bug: dissolve the
-   final few pixels instead of cutting them. */
+/* The column scrolls internally. It used to dissolve its last few pixels
+   behind a soft-edged mask — a ramp, and therefore banned — so the document
+   now simply ends in a full band of breathing room (--space-12 below) and the
+   panel rhythm carries the eye instead of a fade. */
 .screen-studio .studio__main {
   min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
 }
 
 .screen-studio .studio__wrap {
@@ -46,15 +59,15 @@
   gap: var(--space-7);
 }
 
+/* The rail is separated by elevation (--surface-1 against --surface-0) with a
+   neutral 1px column rule — a structural divider between two regions, not an
+   accent bar on the edge of a card. */
 .screen-studio .studio__side {
   min-width: 0;
   overflow: hidden;
   background: var(--surface-1);
   border-left: 1px solid var(--border-faint);
 }
-
-/* .dock is shell-owned; only the fade colour is ours to set. */
-.screen-studio .studio__dock { --dock-fade: var(--surface-1); }
 
 /* ----------------------------------------------------------- doc header -- */
 
@@ -270,6 +283,8 @@
   background: var(--surface-inset);
   box-shadow: inset 0 0 0 1px var(--border-faint);
   overflow: hidden;
+  /* Keep the band's blend (below) inside the meter. */
+  isolation: isolate;
 }
 .screen-studio .fit__fill {
   position: absolute;
@@ -279,13 +294,23 @@
   background: var(--text-mid);
   transition: width var(--t-base), background var(--t-base);
 }
+/* The target band: a neutral window drawn on the meter, its two edges marked
+   by symmetrical 1px hairlines drawn as insets. Not a stripe, not an accent —
+   it is the "aim between here and here" range, and it is colourless.
+
+   It inverts against whatever is under it, so the lower edge stays readable
+   where the bar has already run past it. A single flat white hairline vanished
+   on top of the filled portion, which is exactly the case a writer is in when
+   the fit is good. */
 .screen-studio .fit__band {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-left: 1px solid rgba(255, 255, 255, .34);
-  border-right: 1px solid rgba(255, 255, 255, .34);
-  background: rgba(255, 255, 255, .06);
+  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--text-hi) 34%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--text-hi) 34%, transparent);
+  mix-blend-mode: difference;
 }
 
 /* State through weight, not hue — amber only when it is a real warning. */
@@ -442,10 +467,14 @@
 .screen-studio .partchip.is-active .partchip__tick { opacity: 1; color: var(--ok); }
 .screen-studio .partbar__add { height: 26px; font-size: var(--fs-2xs); }
 
+/* Grown to its content by the screen (autosizeArea) so a sentence is never cut
+   in half at the bottom edge and the column carries one scrollbar, not four. */
 .screen-studio .capfield__text {
-  min-height: 128px;
+  min-height: 116px;
   background: var(--surface-inset);
   line-height: var(--lh-normal);
+  overflow: hidden;
+  resize: none;
 }
 
 .screen-studio .capfield__suggest {
@@ -730,6 +759,27 @@
 }
 .screen-studio .foot__issues:empty { display: none; }
 
+/* The studio-not-ready card. Severity is carried by a labelled chip on the
+   title row — the sanctioned replacement for an edge stripe — plus a full
+   border on all four sides. It never quotes the machine: the copy comes from
+   health.message, which is written for customers. */
+.screen-studio .foot__notice {
+  gap: var(--space-4);
+  padding: var(--space-5);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+.screen-studio .foot__notice .notice__icon { margin-top: 0; }
+.screen-studio .foot__notice .notice__icon .icon { width: 15px; height: 15px; }
+.screen-studio .foot__notice .notice__head { gap: var(--space-3); margin-bottom: var(--space-3); }
+.screen-studio .foot__notice .notice__title { font-size: var(--fs-xs); }
+.screen-studio .foot__notice p { color: var(--text-mid); }
+
+/* What is missing from the draft, as a checklist. The container is neutral and
+   the glyph carries the severity: stacking two saturated blocks above the one
+   primary button is how a 380px column ends up with three hues in it, which is
+   the fault round 1 lost on. At most ONE tinted surface lives down here — the
+   not-ready card — and only while the studio actually cannot render. */
 .screen-studio .render__issue {
   display: grid;
   grid-template-columns: 16px 1fr;
@@ -739,19 +789,13 @@
   border-radius: var(--r-sm);
   font-size: var(--fs-xs);
   line-height: var(--lh-snug);
-  border: 1px solid transparent;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-faint);
 }
 .screen-studio .render__issue .icon { width: 14px; height: 14px; margin-top: 1px; }
-.screen-studio .render__issue--error {
-  color: var(--danger);
-  background: var(--danger-bg);
-  border-color: color-mix(in srgb, var(--danger) 26%, transparent);
-}
-.screen-studio .render__issue--warn {
-  color: var(--warn);
-  background: var(--warn-bg);
-  border-color: color-mix(in srgb, var(--warn) 22%, transparent);
-}
+.screen-studio .render__issue--error .icon { color: var(--danger); }
+.screen-studio .render__issue--warn .icon { color: var(--warn); }
 
 .screen-studio .foot__busy {
   display: flex;
@@ -786,8 +830,8 @@
     height: auto;
     overflow: visible;
   }
-  /* Stacked, the column no longer ends at a frame edge — nothing to dissolve. */
-  .screen-studio .studio__main { overflow: visible; mask-image: none; }
+  /* Stacked, the page itself scrolls and the column has no frame edge. */
+  .screen-studio .studio__main { overflow: visible; }
   .screen-studio .studio__side {
     overflow: visible;
     border-left: 0;

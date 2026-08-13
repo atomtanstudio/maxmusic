@@ -59,6 +59,19 @@ const FILTERS = [
 
 const DEFAULT_PREFS = { view: 'list', sort: 'newest', filter: 'all' };
 
+/**
+ * The three sleeves in the empty state are real renders from this product's own
+ * art model, shipped with the app. An empty library is the one moment a person
+ * has not yet seen what comes out of it, so it shows the actual output rather
+ * than an abstraction of it. If a file is ever missing the plate falls back to
+ * a drawn one — a broken image is worse than a plainer one.
+ */
+const EMPTY_PLATES = [
+  { src: '/demo/cover-blues.png', motif: 2, seed: 11 },
+  { src: '/demo/cover-soul.png', motif: 0, seed: 48 },
+  { src: '/demo/cover-synthwave.png', motif: 1, seed: 85 },
+];
+
 /* ========================================================================== *
  * Module-scope state that must outlive one mount
  *
@@ -125,6 +138,19 @@ function fmtStamp(ts) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/**
+ * What the file should be called once it lands in someone's Downloads folder.
+ * The name the studio wrote it under is a twenty-character hash — correct for a
+ * disk, useless to a person, and exactly the kind of plumbing that has no place
+ * in front of a customer.
+ */
+function downloadName(record) {
+  const ext = String(record.format || String(record.filename || '').split('.').pop() || 'flac')
+    .toLowerCase().replace(/[^a-z0-9]/g, '') || 'flac';
+  const title = String(record.title || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return `${title || 'MaxMusic song'}.${ext}`;
+}
+
 function fmtSampleRate(hz) {
   if (!Number.isFinite(hz) || hz <= 0) return '—';
   const k = hz / 1000;
@@ -148,19 +174,127 @@ function humaniseAttributes(text) {
     .replace(/\s*·\s*·\s*/g, ' · ');
 }
 
-/** One-line caption excerpt in customer language. */
-function excerpt(record) {
+/** The caption, label-stripped and turned back into prose. */
+function captionText(record) {
   const raw = String(record.prompt || '').replace(CAPTION_LABELS, '').replace(/\s+/g, ' ').trim();
-  const text = humaniseAttributes(raw)
+  return humaniseAttributes(raw)
     .replace(/\s+/g, ' ')
     .replace(/^[·\s]+/, '')
     /* Stripping the caption's labels leaves sentences starting lower-case.
        Put the capital back so the row reads as prose, not as a dumped field. */
     .replace(/(^|[.!?]\s+)([a-z])/g, (_, lead, c) => lead + c.toUpperCase())
     .trim();
-  if (text) return text;
-  if (record.isInstrumental) return 'Instrumental — no caption was saved with this song.';
-  return 'No caption was saved with this song.';
+}
+
+const sentencesOf = (text) => String(text || '').split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+
+const normSentence = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Captions written by the same flow share whole sentences — "A lead vocal
+ * delivers the written lyrics with natural phrasing." was ending every row in
+ * the list, which made eight different songs read as eight copies of one
+ * template. A sentence that appears in more than one *distinct* caption is not
+ * describing this song, so the row drops it.
+ *
+ * Counted over distinct captions, never over records: a re-run repeats its
+ * parent's caption verbatim, and that pair must not delete each other's text.
+ *
+ * @param {Array<Object>} records
+ * @returns {Set<string>} normalised sentences that belong to no single song.
+ */
+function sharedSentencesOf(records) {
+  const captions = new Set(records.map(captionText).filter(Boolean));
+  const tally = new Map();
+  for (const caption of captions) {
+    for (const s of new Set(sentencesOf(caption).map(normSentence))) {
+      tally.set(s, (tally.get(s) || 0) + 1);
+    }
+  }
+  const shared = new Set();
+  for (const [s, count] of tally) if (count > 1) shared.add(s);
+  return shared;
+}
+
+/**
+ * A simple-mode caption is "<the idea> <the style tags>", and the tag list
+ * nearly always opens by restating the idea's genre: "A defiant punk anthem
+ * about staying up far too late defiant punk rock, fast tempo, raw vocals…".
+ * Find where the tags start — the first word pair that has already been said —
+ * and cut from there to the first comma, so the row keeps the idea and the
+ * tags and says the genre once.
+ *
+ * Deliberately timid: it only fires when the repeat sits in the last few words
+ * before that comma and well past the middle of the phrase, because a caption
+ * that genuinely repeats itself early ("a song about a song") must survive.
+ */
+const DANGLERS = /^(a|an|the|and|or|of|with|for|in|on|at|to|about|by|from|into|that|this)$/i;
+
+function dropRestatedGenre(text) {
+  const stop = text.indexOf(',');
+  if (stop < 0) return text;
+  const head = text.slice(0, stop).split(' ').filter(Boolean);
+  if (head.length < 6) return text;
+  const floor = Math.max(2, Math.ceil(head.length * 0.4));
+  const seen = new Map();
+  for (let i = 0; i + 1 < head.length; i += 1) {
+    const pair = normSentence(`${head[i]} ${head[i + 1]}`);
+    if (!/^[a-z]+ [a-z]+$/.test(pair)) continue;
+    /* Cutting must leave a finished clause. If what remains trails off on
+       "…about a" the repeat was part of the sentence, not the start of a list. */
+    if (seen.has(pair) && i >= floor && head.length - i <= 6 && !DANGLERS.test(head[i - 1])) {
+      return `${head.slice(0, i).join(' ')}${text.slice(stop)}`;
+    }
+    if (!seen.has(pair)) seen.set(pair, i);
+  }
+  return text;
+}
+
+/**
+ * Drop the second run of any phrase of three words or more, keeping the
+ * punctuation that hung off its last word.
+ */
+function dropRepeatedPhrase(text) {
+  let words = text.split(' ').filter(Boolean);
+  for (let pass = 0; pass < 2; pass += 1) {
+    const limit = Math.min(8, Math.floor(words.length / 2));
+    let cut = null;
+    for (let n = limit; n >= 3 && !cut; n -= 1) {
+      const seen = new Set();
+      for (let i = 0; i + n <= words.length; i += 1) {
+        const phrase = normSentence(words.slice(i, i + n).join(' '));
+        if (phrase.split(' ').length < n) continue;
+        if (seen.has(phrase)) { cut = { at: i, len: n }; break; }
+        seen.add(phrase);
+      }
+    }
+    if (!cut) break;
+    const tail = (words[cut.at + cut.len - 1].match(/[,.;:]$/) || [''])[0];
+    words.splice(cut.at, cut.len);
+    const prev = cut.at - 1;
+    if (tail && prev >= 0 && !/[,.;:]$/.test(words[prev])) words[prev] += tail;
+    words = words.join(' ').replace(/\s+([,.;:])/g, '$1').split(' ').filter(Boolean);
+  }
+  return words.join(' ').replace(/[\s,;:]+$/, '').trim();
+}
+
+/**
+ * One-line caption excerpt in customer language.
+ * @param {Object} record
+ * @param {Set<string>} [shared] Sentences the whole library has in common.
+ */
+function excerpt(record, shared) {
+  const text = captionText(record);
+  if (!text) {
+    return record.isInstrumental
+      ? 'Instrumental — no caption was saved with this song.'
+      : 'No caption was saved with this song.';
+  }
+  const parts = sentencesOf(text);
+  const own = shared ? parts.filter((s) => !shared.has(normSentence(s))) : parts;
+  /* A song whose caption is *entirely* shared still gets a line: better a
+     familiar sentence than a blank row. */
+  return dropRepeatedPhrase(dropRestatedGenre((own.length ? own : parts).join(' '))) || text;
 }
 
 /* ========================================================================== *
@@ -171,6 +305,11 @@ function excerpt(record) {
  * its own seed, using the brand ramp read straight off tokens.css — so the art
  * is reproducible, offline, and never hard-codes a colour. Each plate keeps to
  * one narrow slice of the ramp: album art may be vivid, the interface may not.
+ *
+ * ROUND 3: these plates are FLAT. There is no `linearGradient`, no
+ * `radialGradient` and no `stop` anywhere below. A soft neon mesh was exactly
+ * the tell that got gradients banned from the product; hard-edged shapes in
+ * two inks on a tinted black read as a pressed sleeve instead of a render.
  * ========================================================================== */
 
 /** @type {?{ramp: string[], base: string}} */
@@ -182,12 +321,12 @@ function readPalette() {
   const pick = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
   palette = {
     ramp: [
-      pick('--brand-cyan', '#0bf3fd'),
-      pick('--brand-blue', '#1b7bf7'),
-      pick('--brand-violet', '#7b22e6'),
-      pick('--brand-magenta', '#e927d9'),
-      pick('--brand-red', '#f32f55'),
-      pick('--brand-amber', '#fbbf3f'),
+      pick('--brand-cyan', '#00c0e0'),
+      pick('--brand-blue', '#0090f0'),
+      pick('--brand-violet', '#7060f0'),
+      pick('--brand-magenta', '#b040f0'),
+      pick('--brand-red', '#f04060'),
+      pick('--brand-amber', '#e0a040'),
     ],
     base: pick('--surface-0', '#06070b'),
   };
@@ -227,12 +366,12 @@ function rngFrom(seed) {
   };
 }
 
-let artUid = 0;
-
 /**
- * Build the SVG plate for a record. Deterministic in the record's seed/id.
+ * Build the SVG plate for a record. Deterministic in the record's seed/id, and
+ * flat by rule — every shape below is a solid fill or a solid stroke.
+ *
  * @param {Object} record
- * @param {number} [forceMotif] Only the empty state uses this, to show all three.
+ * @param {number} [forceMotif] Only the empty state uses this, to show a spread.
  * @returns {string} SVG markup, safe to inject (all values are numbers/hex).
  */
 function coverSvg(record, forceMotif) {
@@ -240,127 +379,82 @@ function coverSvg(record, forceMotif) {
   const key = `${record.seed ?? ''}|${record.id ?? ''}|${record.title ?? ''}`;
   const h = hash32(key);
   const rnd = rngFrom(h);
-  const uid = `a${(artUid += 1).toString(36)}${(h % 4096).toString(36)}`;
 
-  /* One narrow, adjacent slice of the ramp per plate: a duotone reads as art
-     direction, a full rainbow reads as a colour-picker demo. Every stop is
-     pulled back toward the app ground so the plates sit in the page instead of
-     shouting over it — album art may be vivid, the interface may not. */
+  /* Two inks off one narrow slice of the ramp, on a tinted near-black. Two
+     inks is a duotone sleeve; six is a colour-picker demo. */
   const i0 = h % 6;
-  const c1 = mix(ramp[i0], base, 0.2);
-  const c2 = mix(ramp[(i0 + 1) % 6], base, 0.24);
-  const c3 = mix(ramp[(i0 + 2) % 6], base, 0.42);
-  const plate = mix(base, c2, 0.1);
+  const ink = mix(ramp[i0], base, 0.1);
+  const ink2 = mix(ramp[(i0 + 2) % 6], base, 0.36);
+  const ground = mix(base, ramp[i0], 0.13);
   const n = (v) => v.toFixed(2);
-
-  const angle = (h >>> 6) % 4;
-  const [x1, y1, x2, y2] = [
-    ['0', '0', '1', '1'], ['0', '1', '1', '0'], ['0', '0', '1', '0'], ['0', '0', '0', '1'],
-  ][angle];
-
-  const defs = [
-    `<linearGradient id="${uid}l" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">`
-    + `<stop offset="0" stop-color="${c1}"/><stop offset=".52" stop-color="${c2}"/>`
-    + `<stop offset="1" stop-color="${c3}"/></linearGradient>`,
-    `<radialGradient id="${uid}v" cx=".5" cy=".42" r=".8">`
-    + `<stop offset=".5" stop-color="${base}" stop-opacity="0"/>`
-    + `<stop offset="1" stop-color="${base}" stop-opacity=".62"/></radialGradient>`,
-  ];
 
   let body = '';
   const motif = Number.isInteger(forceMotif) ? forceMotif : h % 4;
 
   if (motif === 0) {
-    /* spectrum — a symmetric waveform read across the plate */
-    const bars = 19;
+    /* spectrum — a symmetric bar read, each bar one flat fill */
+    const bars = 17;
     const step = 100 / bars;
     let rects = '';
     for (let i = 0; i < bars; i += 1) {
       const t = (i + 0.5) / bars;
-      const envelope = Math.sin(Math.PI * t) ** 0.5;
-      const hh = Math.max(6, (18 + 74 * envelope) * (0.5 + 0.5 * rnd()));
-      const w = step * 0.52;
-      rects += `<rect x="${n(i * step + step * 0.24)}" y="${n((100 - hh) / 2)}"`
-        + ` width="${n(w)}" height="${n(hh)}" rx="${n(w / 2)}"/>`;
+      const env = Math.sin(Math.PI * t) ** 0.6;
+      const hh = Math.max(8, (16 + 70 * env) * (0.58 + 0.42 * rnd()));
+      const w = step * 0.5;
+      rects += `<rect x="${n(i * step + step * 0.25)}" y="${n((100 - hh) / 2)}"`
+        + ` width="${n(w)}" height="${n(hh)}" rx="${n(w / 2)}" fill="${i % 3 === 1 ? ink2 : ink}"/>`;
     }
-    defs.push(`<radialGradient id="${uid}g" cx=".5" cy=".5" r=".55">`
-      + `<stop offset="0" stop-color="${c2}" stop-opacity=".5"/>`
-      + `<stop offset="1" stop-color="${c2}" stop-opacity="0"/></radialGradient>`);
-    body = `<rect width="100" height="100" fill="url(#${uid}g)"/>`
-      + `<g fill="url(#${uid}l)">${rects}</g>`;
+    body = `<rect x="0" y="49.3" width="100" height="1.4" fill="${ink2}"/>${rects}`;
   } else if (motif === 1) {
-    /* orbit — a record cut by concentric rings */
-    const cx = 24 + rnd() * 52;
-    const cy = 24 + rnd() * 52;
-    const gap = 5.5 + rnd() * 6;
-    const count = 4 + Math.floor(rnd() * 6);
+    /* orbit — concentric rings cut by one hard band */
+    const cx = 30 + rnd() * 40;
+    const cy = 30 + rnd() * 40;
+    const gap = 6 + rnd() * 5;
+    const count = 4 + Math.floor(rnd() * 4);
     let rings = '';
     for (let i = 0; i < count; i += 1) {
-      const r = 6 + i * gap + rnd() * 3;
-      const sw = 0.8 + rnd() * 3.4;
-      rings += `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(r)}"`
-        + ` stroke-width="${n(sw)}" opacity="${n(0.45 + 0.5 * rnd())}"/>`;
+      rings += `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(7 + i * gap)}" fill="none"`
+        + ` stroke="${i % 2 ? ink2 : ink}" stroke-width="${n(1.2 + rnd() * 2.4)}"/>`;
     }
-    defs.push(`<radialGradient id="${uid}d" cx=".5" cy=".5" r=".5">`
-      + `<stop offset="0" stop-color="${c1}" stop-opacity=".65"/>`
-      + `<stop offset="1" stop-color="${c3}" stop-opacity=".1"/></radialGradient>`);
-    const disc = 6 + count * gap;
-    const cut = rnd();
-    body = `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(disc)}" fill="url(#${uid}d)"/>`
-      + `<g fill="none" stroke="url(#${uid}l)">${rings}</g>`
-      + `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(2.6 + rnd() * 2.6)}" fill="${c2}"/>`
-      + (cut < 0.45
-        ? `<rect x="-10" y="${n(58 + rnd() * 26)}" width="120" height="${n(6 + rnd() * 22)}" fill="${plate}" opacity=".88"/>`
-        : '');
+    body = `${rings}<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(4 + rnd() * 4)}" fill="${ink}"/>`
+      + `<rect x="0" y="${n(58 + rnd() * 24)}" width="100" height="${n(5 + rnd() * 14)}" fill="${ground}"/>`;
   } else if (motif === 2) {
-    /* horizon — a sun over banded ground */
-    const hy = 54 + rnd() * 18;
-    const sx = 28 + rnd() * 44;
-    const sr = 15 + rnd() * 9;
-    defs.push(`<linearGradient id="${uid}s" x1="0" y1="0" x2="0" y2="1">`
-      + `<stop offset="0" stop-color="${c1}" stop-opacity=".1"/>`
-      + `<stop offset="1" stop-color="${c2}" stop-opacity=".5"/></linearGradient>`);
-    defs.push(`<linearGradient id="${uid}u" x1="0" y1="0" x2="0" y2="1">`
-      + `<stop offset="0" stop-color="${c3}"/><stop offset="1" stop-color="${c2}"/></linearGradient>`);
-    let lines = '';
+    /* horizon — a slatted sun over a ruled ground */
+    const hy = 52 + rnd() * 16;
+    const sx = 26 + rnd() * 48;
+    const sr = 16 + rnd() * 8;
+    let slats = '';
+    for (let i = 0; i < 5; i += 1) {
+      slats += `<rect x="0" y="${n(hy - sr * 0.95 + i * sr * 0.4)}" width="100"`
+        + ` height="${n(1 + i * 0.7)}" fill="${ground}"/>`;
+    }
+    let rules = '';
     for (let i = 0; i < 6; i += 1) {
-      const y = hy + 2 + i * i * 1.5 + i * 2;
+      const y = hy + 2.5 + i * i * 1.4 + i * 2.2;
       if (y > 99) break;
-      lines += `<rect x="0" y="${n(y)}" width="100" height="${n(0.7 + i * 0.25)}"`
-        + ` fill="${c1}" opacity="${n(0.5 - i * 0.07)}"/>`;
+      rules += `<rect x="0" y="${n(y)}" width="100" height="${n(0.8 + i * 0.3)}" fill="${ink2}"/>`;
     }
-    body = `<rect width="100" height="${n(hy)}" fill="url(#${uid}s)"/>`
-      + `<circle cx="${n(sx)}" cy="${n(hy - sr * 0.35)}" r="${n(sr)}" fill="url(#${uid}u)" opacity=".95"/>`
-      + `<rect x="0" y="${n(hy)}" width="100" height="${n(100 - hy)}" fill="${plate}"/>`
-      + `<rect x="0" y="${n(hy - 0.5)}" width="100" height="1" fill="${c1}" opacity=".7"/>${lines}`;
+    body = `<circle cx="${n(sx)}" cy="${n(hy - sr * 0.3)}" r="${n(sr)}" fill="${ink}"/>${slats}`
+      + `<rect x="0" y="${n(hy)}" width="100" height="${n(100 - hy)}" fill="${ground}"/>`
+      + `<rect x="0" y="${n(hy - 0.7)}" width="100" height="1.4" fill="${ink}"/>${rules}`;
   } else {
-    /* prism — hard bands with a knocked-out disc */
-    const rot = (rnd() < 0.5 ? -1 : 1) * (4 + rnd() * 48);
-    const cols = [c1, c2, c3, c2, c1, c3, c1];
-    const count = 3 + Math.floor(rnd() * 4);
+    /* prism — hard rotated bands with a knocked-out disc */
+    const rot = (rnd() < 0.5 ? -1 : 1) * (6 + rnd() * 40);
+    const cols = [ink, ink2, ink, ink2, ink];
+    const count = 3 + Math.floor(rnd() * 3);
     let bands = '';
-    let x = -34;
+    let x = -30;
     for (let i = 0; i < count; i += 1) {
-      const w = 6 + rnd() * (i === 0 ? 34 : 24);
-      bands += `<rect x="${n(x)}" y="-46" width="${n(w)}" height="192" fill="${cols[i]}"`
-        + ` opacity="${n(0.6 + 0.35 * rnd())}"/>`;
-      x += w + 2 + rnd() * 16;
+      const w = 8 + rnd() * 24;
+      bands += `<rect x="${n(x)}" y="-50" width="${n(w)}" height="200" fill="${cols[i % cols.length]}"/>`;
+      x += w + 4 + rnd() * 14;
     }
-    const disc = rnd();
     body = `<g transform="rotate(${n(rot)} 50 50)">${bands}</g>`
-      + (disc < 0.72
-        ? `<circle cx="${n(22 + rnd() * 56)}" cy="${n(20 + rnd() * 56)}" r="${n(9 + rnd() * 15)}" fill="${plate}" opacity=".92"/>`
-        : `<rect x="0" y="${n(62 + rnd() * 20)}" width="100" height="40" fill="${plate}" opacity=".9"/>`);
+      + `<circle cx="${n(28 + rnd() * 44)}" cy="${n(26 + rnd() * 44)}" r="${n(11 + rnd() * 12)}" fill="${ground}"/>`;
   }
 
-  /* A flat scrim keeps the hue but drops the luminance, so a generated plate
-     sits at the same weight as a real rendered cover instead of glowing next
-     to it. Then the vignette rolls the edges into the page. */
   return `<svg class="cover__art" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">`
-    + `<defs>${defs.join('')}</defs>`
-    + `<rect width="100" height="100" fill="${plate}"/>${body}`
-    + `<rect width="100" height="100" fill="${base}" opacity=".16"/>`
-    + `<rect width="100" height="100" fill="url(#${uid}v)"/></svg>`;
+    + `<rect width="100" height="100" fill="${ground}"/>${body}</svg>`;
 }
 
 /** The same plate as a data: URI, so the player can show identical art offline. */
@@ -463,6 +557,8 @@ export function mount(root, ctx) {
   let records = loadRecords(ctx.storage);
   let query = '';
   let visible = [];
+  /** Sentences every caption shares; recomputed whenever the library changes. */
+  let shared = sharedSentencesOf(records);
   let health = ctx.health;
   let playing = { id: null, isPlaying: false };
   /** @type {?HTMLElement} */
@@ -536,6 +632,7 @@ export function mount(root, ctx) {
   }
 
   function compute() {
+    shared = sharedSentencesOf(records);
     const q = query.trim().toLowerCase();
     let list = records.filter((r) => {
       if (prefs.filter === 'vocal' && r.isInstrumental) return false;
@@ -625,7 +722,7 @@ export function mount(root, ctx) {
         ${ctx.iconMarkup('menu')}<span class="lib-view__label">List</span>
       </button>
       <button class="segment__item" type="button" data-view="grid" title="Grid view">
-        ${ctx.iconMarkup('covers')}<span class="lib-view__label">Grid</span>
+        ${ctx.iconMarkup('art')}<span class="lib-view__label">Grid</span>
       </button>
     </div>`;
   ctx.headerSlot.append(headerTools);
@@ -696,12 +793,12 @@ export function mount(root, ctx) {
     const canPlay = Boolean(record.url);
     return `
       <div class="actionbar lib-actions">
-        <button class="actionchip" type="button" data-act="play"
+        <button class="actionchip actionchip--lg" type="button" data-act="play"
                 ${canPlay ? '' : 'aria-disabled="true"'}
                 title="${canPlay ? 'Play' : esc(noFile)}" aria-label="Play">${ctx.iconMarkup('play')}</button>
         ${canPlay
           ? `<a class="actionchip" data-act="download" href="${esc(api.mediaUrl(record.url))}"
-                download="${esc(record.filename || `${record.title}.${record.format || 'audio'}`)}"
+                download="${esc(downloadName(record))}"
                 title="Download" aria-label="Download">${ctx.iconMarkup('download')}</a>`
           : `<button class="actionchip" type="button" data-act="blocked" aria-disabled="true"
                 title="${esc(noFile)}" aria-label="Download">${ctx.iconMarkup('download')}</button>`}
@@ -770,7 +867,7 @@ export function mount(root, ctx) {
       ${coverMarkup(record)}
       <div class="lib-row__main">
         <p class="lib-row__title"><span class="lib-row__name truncate">${esc(record.title)}</span>${badgesMarkup(record)}</p>
-        <p class="lib-row__excerpt">${esc(excerpt(record))}</p>
+        <p class="lib-row__excerpt">${esc(excerpt(record, shared))}</p>
         ${actionsMarkup(record)}
       </div>
       <span class="lib-row__when">${esc(fmtWhen(record.createdAt))}</span>
@@ -864,9 +961,10 @@ export function mount(root, ctx) {
   });
 
   function emptyLibraryMarkup() {
-    const plates = [2, 0, 1]
-      .map((motif, i) => `<span class="lib-empty__plate lib-empty__plate--${i + 1}">`
-        + `${coverSvg({ id: `maxmusic-plate-${i}`, seed: 11 + i * 37, title: 'MaxMusic' }, motif)}</span>`)
+    const plates = EMPTY_PLATES
+      .map((plate, i) => `<span class="lib-empty__plate lib-empty__plate--${i + 1}">`
+        + `<img class="cover__img" src="${plate.src}" alt="" data-plate="${i}">`
+        + `</span>`)
       .join('');
     return `<div class="lib-empty">
       <div class="lib-empty__art" aria-hidden="true">${plates}</div>
@@ -898,6 +996,20 @@ export function mount(root, ctx) {
     </div>`;
   }
 
+  /** A missing sleeve degrades to a drawn plate instead of a broken image. */
+  function wireEmptyPlates() {
+    for (const img of body.querySelectorAll('[data-plate]')) {
+      img.addEventListener('error', () => {
+        const i = Number(img.dataset.plate) || 0;
+        const plate = EMPTY_PLATES[i] || EMPTY_PLATES[0];
+        const holder = img.parentElement;
+        if (holder) {
+          holder.innerHTML = coverSvg({ id: `maxmusic-plate-${i}`, seed: plate.seed, title: 'MaxMusic' }, plate.motif);
+        }
+      }, { once: true });
+    }
+  }
+
   function emptyResultsMarkup() {
     return `<div class="lib-noresults">
       <span class="lib-noresults__icon">${ctx.iconMarkup('search')}</span>
@@ -916,6 +1028,7 @@ export function mount(root, ctx) {
 
     if (!records.length) {
       body.innerHTML = emptyLibraryMarkup();
+      wireEmptyPlates();
       wireRowMenus();
       return;
     }
@@ -1216,7 +1329,7 @@ export function mount(root, ctx) {
           ${ctx.iconMarkup('play')}Play
         </button>
         ${record.url
-          ? `<a class="btn" data-act="download" href="${esc(api.mediaUrl(record.url))}" download="${esc(record.filename)}">
+          ? `<a class="btn" data-act="download" href="${esc(api.mediaUrl(record.url))}" download="${esc(downloadName(record))}">
                ${ctx.iconMarkup('download')}Download</a>`
           : `<button class="btn" type="button" disabled title="No audio was saved for this song">${ctx.iconMarkup('download')}Download</button>`}
         <button class="btn" type="button" data-act="regenerate" ${reason ? 'disabled' : ''} title="${esc(reason)}">
@@ -1248,7 +1361,9 @@ export function mount(root, ctx) {
       </section>
 
       <footer class="lib-sheet__foot">
-        <span class="lib-sheet__file truncate">${esc(record.filename || 'No audio file was saved.')}</span>
+        <span class="lib-sheet__file truncate">${record.url
+          ? `Saves as <b>${esc(downloadName(record))}</b>`
+          : 'No audio file was saved for this song.'}</span>
         <button class="btn btn--sm btn--danger" type="button" data-act="delete">
           ${ctx.iconMarkup('trash')}Delete
         </button>

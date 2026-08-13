@@ -15,7 +15,7 @@
  * The only writable settings are client-side defaults, persisted to
  * localStorage under the single key `maxmusic:defaults`:
  *   { duration: number, format: 'flac'|'mp3'|'wav', bitrate: number,
- *     startScreen: 'create'|'studio'|'library'|'lyrics'|'covers'|'settings' }
+ *     startScreen: 'create'|'studio'|'library'|'lyrics'|'art'|'settings' }
  *
  * @module screens/settings
  */
@@ -44,7 +44,7 @@ const START_SCREENS = [
   ['studio', 'Studio'],
   ['library', 'Library'],
   ['lyrics', 'Lyrics'],
-  ['covers', 'Covers'],
+  ['art', 'Art'],
   ['settings', 'Settings'],
 ];
 
@@ -217,7 +217,7 @@ function template(iconMarkup) {
     <div class="set-caps">
       ${capCard('music', 'wave', 'Music generation', 'create')}
       ${capCard('lyrics', 'mic', 'Lyrics', 'lyrics')}
-      ${capCard('cover', 'covers', 'Cover art', 'covers')}
+      ${capCard('cover', 'art', 'Cover art', 'art')}
       ${capCard('key', 'lock', 'Server API key', '')}
     </div>
   </section>

@@ -3,6 +3,20 @@
    Owned by the shell lane. Screens must not restyle .rail / .topbar /
    .playerbar. Everything below the "SHARED PRIMITIVES" banner is public API:
    use those classes so all six screens read as one product.
+
+   ---------------------------------------------------------------------------
+   THE TWO BANNED PATTERNS (tokens.css carries the full note):
+
+   1. No gradients. `--accent` is a SOLID cyan fill; hover and active move
+      lightness, never hue. The only gradient token in the product is
+      `--ramp-logo-waveform-only` and it is not used in this file at all.
+   2. No left-edge accent stripe on a card, notice, callout or toast. Severity
+      goes INSIDE the surface as a labelled `.sev` chip.
+
+   Grep this file for `linear-gradient` and you get exactly one hit: the
+   `.range` track, where a two-stop HARD STOP (both colours at the same
+   position) is the only single-element way to paint slider progress. It
+   renders as two flat colours with no ramp anywhere in it.
    ========================================================================= */
 
 /* ---------------------------------------------------------------- reset -- */
@@ -41,7 +55,7 @@ a:hover { color: var(--accent-hover); }
 
 img, svg, audio, canvas { display: block; max-width: 100%; }
 
-::selection { background: rgba(53, 200, 245, 0.28); color: var(--text-hi); }
+::selection { background: rgba(0, 192, 224, 0.3); color: var(--text-hi); }
 
 :focus { outline: none; }
 :focus-visible {
@@ -184,12 +198,13 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   gap: var(--space-5);
   height: 42px;
   padding-inline: var(--space-5);
+  border: 1px solid transparent; /* reserved so the active hairline costs no layout */
   border-radius: var(--r-md);
   color: var(--text-mid);
   font-size: var(--fs-md);
   font-weight: var(--fw-medium);
   white-space: nowrap;
-  transition: color var(--t-fast), background var(--t-fast);
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
 }
 .navitem:hover { color: var(--text-hi); background: var(--surface-hover); }
 .navitem__icon { width: 19px; height: 19px; flex: none; }
@@ -204,22 +219,18 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   padding: 1px 7px;
 }
 
-/* Active is said with a container, full-contrast text and a marker in a fixed
-   position — three form signals, no hue. The rail used to slice the brand
-   gradient differently per item, which put four accents on screen at once. */
+/* Active is said with three FORM signals and no hue: a raised container, a
+   hairline that proves the container, and full-contrast semibold text.
+   There is deliberately no coloured bar on the left edge — see the banner. */
 .navitem.is-active {
   color: var(--text-hi);
   background: var(--surface-3);
+  border-color: var(--border);
+  font-weight: var(--fw-semibold);
+  box-shadow: var(--shadow-inset);
 }
-.navitem.is-active::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 50%;
-  width: 3px; height: 18px;
-  margin-top: -9px;
-  border-radius: 0 var(--r-pill) var(--r-pill) 0;
-  background: var(--text-hi);
-}
+.navitem.is-active .navitem__icon { color: var(--text-hi); }
+.navitem.is-active .navitem__count { background: var(--surface-5); color: var(--text-mid); }
 
 .rail__spacer { flex: 1 1 auto; min-height: var(--space-6); }
 .rail__nav--foot { margin-bottom: var(--space-5); }
@@ -300,7 +311,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .workspace__rename[hidden] { display: none; }
 .workspace__rename:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-softer); }
 
-/* Deliberately NOT .btn--primary: the gradient belongs to the one action on
+/* Deliberately NOT .btn--primary: the accent belongs to the one action on
    the screen you are looking at, not to persistent chrome.
    Scoped under .rail so it outranks the .btn primitives declared further down. */
 .rail .railfoot__cta {
@@ -422,8 +433,9 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   border-top: 1px solid var(--border-faint);
   transition: left var(--t-base);
 }
-/* No gradient hairline here. The player's own waveform is the brand gesture in
-   this bar; a second ramp behind it is exactly the "four accents" problem. */
+/* No hairline, no ramp, no glow on this bar. The played portion of the player's
+   own waveform is the ONE place the brand ramp is allowed to appear; a second
+   ramp behind it is exactly the "four accents" problem. */
 .playerbar__fallback {
   height: 100%;
   display: flex;
@@ -447,6 +459,11 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   width: min(420px, calc(100vw - var(--space-12)));
   pointer-events: none;
 }
+/* A toast used to carry a 2px coloured bar down its left edge. That bar is one
+   of the two banned patterns. Severity is now said three ways, all of them
+   inside the surface: the icon in the content, a labelled `.sev` chip on the
+   title row, and — for the two kinds that report a real problem — a border on
+   all four sides. Never one edge. */
 .toast {
   --toast-accent: var(--text-hi);
   pointer-events: auto;
@@ -455,7 +472,6 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   padding: var(--space-5) var(--space-6);
   border-radius: var(--r-lg);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--toast-accent);
   background: var(--surface-4);
   box-shadow: var(--shadow-3);
   animation: toast-in var(--dur-base) var(--ease-out) both;
@@ -463,6 +479,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .toast[data-leaving] { animation: toast-out var(--dur-fast) var(--ease-in-out) both; }
 .toast__icon { color: var(--toast-accent); margin-top: 1px; }
 .toast__body { min-width: 0; flex: 1; }
+.toast__head { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
 .toast__title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
@@ -482,10 +499,11 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 }
 .toast__close:hover { color: var(--text-hi); }
 .toast__close .icon { width: 15px; height: 15px; }
-/* Only the two toasts that report a real problem carry a hue. Success and
-   info are said with the glyph and the words. */
-.toast[data-kind="error"]   { --toast-accent: var(--danger); }
-.toast[data-kind="warn"]    { --toast-accent: var(--warn); }
+/* Only the two toasts that report a real problem carry a hue, and it is worn
+   as a full border plus the content icon — never as an edge stripe. Success
+   and info are said with the glyph and the words. */
+.toast[data-kind="error"]   { --toast-accent: var(--danger); border-color: color-mix(in srgb, var(--danger) 34%, transparent); }
+.toast[data-kind="warn"]    { --toast-accent: var(--warn);   border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
 .toast[data-kind="success"] { --toast-accent: var(--text-hi); }
 .toast[data-kind="info"]    { --toast-accent: var(--text-mid); }
 .toast[data-kind="info"] .toast__icon { color: var(--text-lo); }
@@ -546,36 +564,40 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .btn--icon.btn--sm { width: var(--control-h-sm); }
 .btn--icon.btn--lg { width: var(--control-h-lg); }
 
-/* THE one loud gesture. Exactly one per view — the shell logs a warning in the
-   console if it finds a second. If you need a second emphatic action, that is
-   what .btn--strong is for. */
+/* THE one loud gesture — and it is SOLID. Exactly one per view; the shell logs
+   a warning in the console if it finds a second. If you need a second emphatic
+   action, that is what .btn--strong is for.
+
+   Round 2 filled this button with the brand ramp and hung a magenta bloom
+   behind it. Both are banned. A flat, confident accent reads as designed; a
+   gradient fill with a halo reads as generated. Every state below is the same
+   hue at a different lightness — 44% rest, 53% hover, 38% press, 26% disabled
+   — and nothing here glows. */
 .btn--primary {
   position: relative;
   border-color: transparent;
-  background: var(--gradient-brand-cool);
-  background-size: 180% 100%;
-  background-position: 0% 50%;
-  color: var(--text-inverse);
+  background: var(--accent);
+  color: var(--accent-ink);
   font-weight: var(--fw-semibold);
-  transition: background-position var(--t-slow), box-shadow var(--t-base),
+  transition: background var(--t-fast), color var(--t-fast),
               transform var(--dur-instant) var(--ease-out), opacity var(--t-fast);
 }
 .btn--primary:hover {
-  background: var(--gradient-brand-cool);
-  background-size: 180% 100%;
-  background-position: 100% 50%;
+  background: var(--accent-hover);
   border-color: transparent;
-  color: var(--text-inverse);
-  box-shadow: var(--shadow-glow-magenta);
+  color: var(--accent-ink);
 }
+.btn--primary:active { background: var(--accent-press); transform: translateY(1px); }
 .btn--primary:disabled, .btn--primary[aria-disabled="true"] {
-  background: var(--surface-3);
-  color: var(--text-lo);
+  background: var(--accent-disabled);
+  border-color: transparent;
+  color: var(--accent-ink);
+  opacity: 1; /* the dimmer fill IS the disabled signal — no double-fading */
   box-shadow: none;
 }
 
 /* Second-emphasis action. Loud through contrast and fill, not through hue —
-   reach for this instead of a second gradient. */
+   reach for this instead of a second accent fill. */
 .btn--strong {
   background: var(--text-hi);
   border-color: transparent;
@@ -777,7 +799,6 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  --dock-fade: var(--surface-0);
 }
 .dock__scroll {
   flex: 1 1 auto;
@@ -811,15 +832,10 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   padding-bottom: calc(var(--dock-foot-h, 104px) + var(--space-8));
 }
 
-/* Optional: content dissolves into the footer instead of meeting a hard edge. */
-.dock__foot--fade::before {
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: 100%;
-  height: var(--space-9);
-  background: linear-gradient(to top, var(--dock-fade), transparent);
-  pointer-events: none;
-}
+/* Optional: the footer reads as raised over the content rather than painted on
+   top of it. This used to be a fade-to-surface gradient; separation is now said
+   with ELEVATION, which is the legal way to say "this sits above that". */
+.dock__foot--fade { box-shadow: var(--shadow-lift); }
 
 /* --------------------------------------------------------------- chips -- */
 .chip {
@@ -909,16 +925,21 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   font-family: inherit;
 }
 .textarea--mono { font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.65; }
+/* The caret is the sprite's own chevron, inlined as a data URI so it matches
+   #i-chevron-down exactly. It used to be drawn with two clipped
+   `linear-gradient`s — a real triangle costs nothing and keeps this file's
+   gradient count honest. The stroke is --text-lo; a data URI cannot read a
+   custom property, so this is the one hard-coded neutral in the file. */
 .select {
   appearance: none;
   padding-right: var(--space-9);
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-lo) 50%),
-                    linear-gradient(135deg, var(--text-lo) 50%, transparent 50%);
-  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
-  background-size: 5px 5px, 5px 5px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e7889' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6.6 9.4 5.4 5.2 5.4-5.2'/></svg>");
   background-repeat: no-repeat;
+  background-position: right var(--space-5) center;
+  background-size: 13px 13px;
   cursor: pointer;
 }
+.select:hover { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238c94a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6.6 9.4 5.4 5.2 5.4-5.2'/></svg>"); }
 .select option { background: var(--surface-3); color: var(--text-hi); }
 
 .input::placeholder, .textarea::placeholder { color: var(--text-faint); }
@@ -971,8 +992,12 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   background: none;
   cursor: pointer;
 }
-/* Monochrome fill. A gradient on every slider in the app is not one loud
-   gesture, it is wallpaper. */
+/* THE ONE `linear-gradient` IN THIS FILE, and it is not a gradient in the
+   sense the house rule bans: both stops sit at the SAME position, so it
+   renders as two flat colours meeting at a hard edge — the filled part of the
+   track and the rest of it. WebKit gives no other single-element way to paint
+   `::-webkit-slider-runnable-track` progress (Firefox has ::-moz-range-progress,
+   used below). It is monochrome. Do not add a colour stop to it. */
 .range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: var(--r-pill);
@@ -1047,10 +1072,68 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .badge--info { background: var(--info-bg); color: var(--info); }
 .badge--warn { background: var(--warn-bg); color: var(--warn); }
 .badge--danger { background: var(--danger-bg); color: var(--danger); }
-/* Reserved for the live/generating state. Not a decoration. */
-.badge--brand { background: var(--gradient-brand-cool); color: var(--text-inverse); }
+/* Reserved for the live/generating state. Solid accent, not the ramp. */
+.badge--brand { background: var(--accent); color: var(--accent-ink); }
+
+/* ============================================================== SEVERITY ==
+   `.sev` — the labelled severity chip. THIS is how a surface says how serious
+   it is. It replaces the 2–4px coloured bar on the left edge of a card, which
+   is banned outright (SPEC §9b).
+
+   It is a chip with WORDS in it, and it lives INSIDE the surface, on the title
+   row. A reader learns "this is a warning" by reading the word "Warning", not
+   by decoding an edge colour. Keep the label to one word where you can.
+
+     <div class="notice notice--warn">
+       <svg class="icon notice__icon">…</svg>
+       <div>
+         <p class="notice__head">
+           <span class="notice__title">Not ready to render</span>
+           <span class="sev sev--warn">Warning</span>
+         </p>
+         …
+       </div>
+     </div>
+   ======================================================================== */
+.sev {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  height: 19px;
+  padding-inline: var(--space-4);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-4);
+  color: var(--text-mid);
+  font-size: var(--fs-3xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.sev--warn {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
+}
+.sev--error {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
+}
+/* Live/working. The accent, solid. */
+.sev--live {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: transparent;
+}
+/* Resolved. Colourless on purpose — see the accent note in tokens.css. */
+.sev--ok { color: var(--text-hi); background: var(--surface-5); border-color: var(--border-strong); }
 
 /* ------------------------------------------------------ notice / empty -- */
+/* Severity is a full border plus a `.sev` chip on the title row. There is no
+   left-edge variant of this component and there must never be one. */
 .notice {
   display: flex;
   gap: var(--space-5);
@@ -1063,7 +1146,16 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   line-height: var(--lh-snug);
 }
 .notice__icon { color: var(--text-lo); margin-top: 1px; }
+.notice__body { min-width: 0; flex: 1; }
+.notice__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
 .notice__title { font-weight: var(--fw-semibold); color: var(--text-hi); margin-bottom: var(--space-2); }
+.notice__head .notice__title { margin-bottom: 0; }
 .notice--warn { border-color: color-mix(in srgb, var(--warn) 30%, transparent); background: var(--warn-bg); }
 .notice--warn .notice__icon { color: var(--warn); }
 .notice--error { border-color: color-mix(in srgb, var(--danger) 30%, transparent); background: var(--danger-bg); }
@@ -1109,38 +1201,43 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* A placeholder block. The sweeping sheen was a moving gradient; a breathing
+   surface says "not here yet" just as well and adds no ramp to the frame. */
 .skeleton {
   position: relative;
   overflow: hidden;
   background: var(--surface-3);
   border-radius: var(--r-sm);
+  animation: skeleton-pulse 1.5s var(--ease-in-out) infinite;
 }
-.skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.05), transparent);
-  animation: shimmer 1.3s var(--ease-in-out) infinite;
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
 }
-@keyframes shimmer { to { transform: translateX(100%); } }
 
-/* Generating/active gradient hairline — use on the top edge of a panel. */
+/* Indeterminate progress hairline — put it on the top edge of a panel that is
+   actively generating. SOLID accent, one travelling segment. It used to be the
+   brand ramp scrolling sideways, which put a second gradient on five screens.
+   The bar spans the full width, so it is not an edge stripe. */
 .brandline {
+  position: relative;
+  overflow: hidden;
   height: 2px;
   border-radius: var(--r-pill);
-  background: var(--gradient-brand);
-  background-size: 220% 100%;
-  animation: brandline 3.2s linear infinite;
+  background: var(--accent-softer);
 }
-@keyframes brandline { to { background-position: 220% 0; } }
-
-/* Gradient text — for one number or one word, never a paragraph. */
-.gradient-text {
-  background: var(--gradient-brand);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+.brandline::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 34%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: brandline 1.5s var(--ease-in-out) infinite;
+}
+@keyframes brandline {
+  from { transform: translateX(-110%); }
+  to   { transform: translateX(320%); }
 }
 
 /* --------------------------------------------------------- page layout -- */

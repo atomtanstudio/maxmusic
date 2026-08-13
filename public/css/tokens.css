@@ -4,27 +4,39 @@
    Owned by the shell lane. Do not edit from a screen lane — use these, or a
    local value scoped to your own screen's CSS file.
 
-   Palette derived by sampling public/logo.png:
-     background      #000000 with a faint blue cast (#01010a average)
-     wave ramp       hue 180 #0bf3fd -> 210 #1281f4 -> 265 #7422e6
-                     -> 300 #eb33ec -> 345 #e42a5a -> 40 #f6c057
+   ---------------------------------------------------------------------------
+   TWO HOUSE RULES. Both were called out by name as reading "AI-generated".
+   Neither is a matter of taste. Break either one and the build fails review.
+
+   1. NO GRADIENTS.
+      There is exactly ONE gradient in this product and it has exactly one
+      token: `--ramp-logo-waveform-only`. Its name is its scope. It is legal on
+      two surfaces and nowhere else:
+          a. the logo mark (which is a PNG, so in practice: nothing in CSS),
+          b. the PLAYED portion of the waveform.
+      Not buttons. Not text. Not borders. Not cards. Not rules or dividers.
+      Not badges. Not hairlines. Not glows, halos or bloom — those tokens no
+      longer exist, deliberately.
+      Everything emphatic is a SOLID fill of `--accent`.
+
+   2. NO LEFT-EDGE ACCENT STRIPE.
+      The 2–4px coloured bar down the left side of a card, notice or callout is
+      banned outright, on every surface including docs and status pages.
+      Distinguish surfaces with elevation (`--surface-*`), border weight
+      (`--border-*`), spacing, type weight — or put a LABELLED severity chip
+      (`.sev`, shell.css) inside the card. Never on its edge.
 
    ---------------------------------------------------------------------------
-   ACCENT DISCIPLINE — read before you reach for a colour.
+   ACCENT DISCIPLINE
 
-   The product is near-monochrome. There is exactly one loud gesture, the brand
-   gradient, and it is spent on:
-       1. the mark,
-       2. ONE primary action per view (`.btn--primary`),
-       3. the live waveform / actively-generating state.
-   Nothing else. Two gradient fills in one frame is the bug, not the feature.
+   The product is near-monochrome with ONE accent: cyan `#00C0E0`, the first
+   stop of the brand ramp. Its four states are the same hue and the same
+   saturation — only lightness moves. A state never shifts hue.
 
-   For everything else, express state through FORM before hue — weight, a
-   container, position, size, an icon. Only three non-neutral values remain and
-   each has one job:
-       --accent   cyan, from the ramp: focus rings, links, carets, selection.
-       --warn     amber, from the ramp: transient warnings only.
-       --danger   red,   from the ramp: destructive intent only.
+   Only three non-neutral values exist, each with one job:
+       --accent   cyan   the one accent: primary action, focus, links, live.
+       --warn     amber  transient warnings only.
+       --danger   red    destructive intent only.
    There is no success green and no info blue: "done" is a check glyph plus
    full-contrast text in a container, not a colour.
    ========================================================================= */
@@ -33,89 +45,58 @@
   color-scheme: dark;
 
   /* --------------------------------------------------------------------
-     1. BRAND — the gradient is the one loud gesture. Six stops, in order.
+     1. BRAND RAMP — six stops, sampled from the logo, SPEC §2 verbatim.
+
+     These six stops exist so the player can paint the waveform and so the
+     library can generate placeholder artwork. They are NOT a palette to
+     decorate the interface with: cyan is the accent, and the other five have
+     no job in product chrome. Reaching for --brand-violet to tint a card is
+     the "four accents at once" bug that lost round 1.
      -------------------------------------------------------------------- */
-  --brand-cyan: #0bf3fd;
-  --brand-blue: #1b7bf7;
-  --brand-violet: #7b22e6;
-  --brand-magenta: #e927d9;
-  --brand-red: #f32f55;
-  --brand-amber: #fbbf3f;
+  --brand-cyan: #00C0E0;
+  --brand-blue: #0090F0;
+  --brand-indigo: #2090F0;
+  --brand-violet: #7060F0;
+  --brand-magenta: #B040F0;
+  --brand-red: #F04060;
+  --brand-amber: #E0A040;
 
-  /* Deepened stops — for fills that sit under text. */
-  --brand-cyan-deep: #06a8c4;
-  --brand-blue-deep: #1355ae;
-  --brand-violet-deep: #56179f;
-  --brand-magenta-deep: #a11a97;
-  --brand-red-deep: #ab1f3b;
-  --brand-amber-deep: #b0842b;
-
-  /* Single-hue accent, used where a gradient would be noise
-     (focus rings, links, carets, selection). */
-  --accent: #35c8f5;
-  --accent-hover: #6ad9fa;
-  --accent-press: #16a8d8;
-  --accent-soft: rgba(53, 200, 245, 0.14);
-  --accent-softer: rgba(53, 200, 245, 0.07);
-
-  /* Gradients */
-  --gradient-brand: linear-gradient(
+  /* THE ONLY GRADIENT IN THE PRODUCT.
+     Legal on: the logo mark, and the played portion of the waveform.
+     Illegal everywhere else — buttons, text, borders, cards, rules, badges,
+     hairlines, glows. If you are about to use this token and you are not the
+     player lane painting the played waveform, you want --accent instead. */
+  --ramp-logo-waveform-only: linear-gradient(
     90deg,
-    var(--brand-cyan) 0%,
-    var(--brand-blue) 20%,
-    var(--brand-violet) 40%,
-    var(--brand-magenta) 60%,
-    var(--brand-red) 80%,
-    var(--brand-amber) 100%
+    #00c0e0 0%,
+    #0090f0 20%,
+    #7060f0 40%,
+    #b040f0 60%,
+    #f04060 80%,
+    #e0a040 100%
   );
-  --gradient-brand-135: linear-gradient(
-    135deg,
-    var(--brand-cyan) 0%,
-    var(--brand-blue) 20%,
-    var(--brand-violet) 40%,
-    var(--brand-magenta) 60%,
-    var(--brand-red) 80%,
-    var(--brand-amber) 100%
-  );
-  --gradient-brand-vertical: linear-gradient(
-    180deg,
-    var(--brand-cyan) 0%,
-    var(--brand-blue) 20%,
-    var(--brand-violet) 40%,
-    var(--brand-magenta) 60%,
-    var(--brand-red) 80%,
-    var(--brand-amber) 100%
-  );
-  --gradient-brand-conic: conic-gradient(
-    from 0deg,
-    var(--brand-cyan),
-    var(--brand-blue),
-    var(--brand-violet),
-    var(--brand-magenta),
-    var(--brand-red),
-    var(--brand-amber),
-    var(--brand-cyan)
-  );
-  /* Low-alpha wash for hairlines, hovers and generating states. */
-  --gradient-brand-wash: linear-gradient(
-    90deg,
-    rgba(11, 243, 253, 0.16) 0%,
-    rgba(27, 123, 247, 0.16) 20%,
-    rgba(123, 34, 230, 0.16) 40%,
-    rgba(233, 39, 217, 0.16) 60%,
-    rgba(243, 47, 85, 0.16) 80%,
-    rgba(251, 191, 63, 0.16) 100%
-  );
-  /* Two-stop cool slice — primary buttons, small accents. */
-  --gradient-brand-cool: linear-gradient(120deg, var(--brand-cyan), var(--brand-violet) 55%, var(--brand-magenta));
-  /* Two-stop warm slice — destructive-adjacent and "live" markers. */
-  --gradient-brand-warm: linear-gradient(120deg, var(--brand-magenta), var(--brand-red) 55%, var(--brand-amber));
-
-  --brand-glow: 0 0 0 1px rgba(11, 243, 253, 0.25), 0 6px 26px -8px rgba(123, 34, 230, 0.65);
-  --brand-glow-strong: 0 0 0 1px rgba(11, 243, 253, 0.4), 0 10px 40px -10px rgba(233, 39, 217, 0.7);
 
   /* --------------------------------------------------------------------
-     2. SURFACE RAMP — near-black, faint blue cast, six steps.
+     2. ACCENT — solid, single hue, states derived by LIGHTNESS ONLY.
+
+     All four are hsl(188.6 100% L). Only L moves:
+       rest 44%  ·  hover 53%  ·  press 38%  ·  disabled 26%
+     Contrast of --accent-ink on each fill:
+       rest 8.5:1   hover 11.3:1   press 6.4:1   disabled 3.3:1 (inert).
+     -------------------------------------------------------------------- */
+  --accent: #00c0e0; /* L 44% — rest. The product's one accent. */
+  --accent-hover: #0fddff; /* L 53% — lighter, never a different hue. */
+  --accent-press: #00a6c1; /* L 38% — darker, pairs with a 1px press shift. */
+  --accent-disabled: #007285; /* L 26% — plainly inert, still the accent. */
+  --accent-ink: #04161a; /* text and glyphs ON an accent fill. */
+
+  /* Low-alpha washes of the same cyan — focus halo, selection, quiet fills. */
+  --accent-soft: rgba(0, 192, 224, 0.14);
+  --accent-softer: rgba(0, 192, 224, 0.07);
+
+  /* --------------------------------------------------------------------
+     3. SURFACE RAMP — near-black, faint blue cast, six steps.
+     Elevation is how surfaces are distinguished. Not an edge stripe.
      -------------------------------------------------------------------- */
   --surface-0: #06070b; /* app ground, behind everything */
   --surface-1: #0b0d13; /* nav rail, player bar, sticky chrome */
@@ -133,30 +114,31 @@
   --surface-glass: rgba(16, 19, 26, 0.92);
 
   /* --------------------------------------------------------------------
-     3. TEXT RAMP
+     4. TEXT RAMP
      -------------------------------------------------------------------- */
   --text-hi: #f2f5fa; /* headings, primary values */
   --text: #ccd2de; /* body */
   --text-mid: #8c94a6; /* secondary, labels */
   --text-lo: #6e7889; /* meta, timestamps, helper text */
   --text-faint: #4a5364; /* placeholder, disabled */
-  --text-inverse: #06070b; /* on top of a brand fill */
+  --text-inverse: #06070b; /* on top of a full-contrast (white) fill */
   --text-link: var(--accent);
 
   /* --------------------------------------------------------------------
-     4. BORDER RAMP
+     5. BORDER RAMP
      -------------------------------------------------------------------- */
   --border-faint: rgba(255, 255, 255, 0.045);
   --border: rgba(255, 255, 255, 0.085);
   --border-strong: rgba(255, 255, 255, 0.16);
-  /* Reserved for focus and for the caret on a live field. A brand border is
-     not a way to say "selected" — use --border-strong and a container. */
-  --border-brand: rgba(53, 200, 245, 0.45);
+  /* Accent border. Reserved for focus and for the caret on a live field.
+     A coloured border is not a way to say "selected" — use --border-strong
+     and a container. And never as a left edge only: all four sides or none. */
+  --border-brand: rgba(0, 192, 224, 0.45);
   --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent);
-  --focus-ring-tight: 0 0 0 2px rgba(53, 200, 245, 0.75);
+  --focus-ring-tight: 0 0 0 2px rgba(0, 192, 224, 0.75);
 
   /* --------------------------------------------------------------------
-     5. STATUS — three colours, each with one job. See the accent note above.
+     6. STATUS — three colours, each with one job. See the accent note above.
 
      "Success" is deliberately colourless: it resolves to full-contrast text
      in a raised container. A green tick is a fourth accent and we shipped
@@ -165,17 +147,18 @@
   --ok: var(--text-hi);
   --ok-bg: var(--surface-4);
   --warn: var(--brand-amber);
-  --warn-bg: rgba(251, 191, 63, 0.11);
+  --warn-bg: rgba(224, 160, 64, 0.11);
   --danger: #f8536f; /* --brand-red, lifted for text contrast on near-black */
-  --danger-bg: rgba(243, 47, 85, 0.13);
+  --danger-bg: rgba(240, 64, 96, 0.13);
   --info: var(--text-hi);
   --info-bg: var(--surface-4);
-  /* Actively generating — the one state allowed to borrow the ramp. */
-  --busy: var(--brand-violet);
-  --busy-bg: rgba(123, 34, 230, 0.14);
+  /* Actively generating. It is the accent — not a fourth colour, and not the
+     ramp. Round 2 spent violet here, which put a second hue on every screen. */
+  --busy: var(--accent);
+  --busy-bg: var(--accent-soft);
 
   /* --------------------------------------------------------------------
-     6. RADII
+     7. RADII
      -------------------------------------------------------------------- */
   --r-xs: 4px;
   --r-sm: 6px;
@@ -187,7 +170,7 @@
   --r-circle: 50%;
 
   /* --------------------------------------------------------------------
-     7. SPACE — 2 4 6 8 12 16 20 24 32 40 48 64
+     8. SPACE — 2 4 6 8 12 16 20 24 32 40 48 64
      -------------------------------------------------------------------- */
   --space-1: 2px;
   --space-2: 4px;
@@ -203,7 +186,7 @@
   --space-12: 64px;
 
   /* --------------------------------------------------------------------
-     8. TYPE
+     9. TYPE
      -------------------------------------------------------------------- */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
@@ -238,18 +221,20 @@
   --tracking-caps: 0.11em;
 
   /* --------------------------------------------------------------------
-     9. SHADOW
+     10. SHADOW — elevation, the legal way to say "raised" or "hovered".
+     There are no coloured glow tokens. A halo behind a button is bloom, and
+     bloom is one of the two banned patterns.
      -------------------------------------------------------------------- */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-2: 0 4px 14px -4px rgba(0, 0, 0, 0.6);
   --shadow-3: 0 12px 32px -10px rgba(0, 0, 0, 0.72);
   --shadow-4: 0 28px 64px -18px rgba(0, 0, 0, 0.8);
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --shadow-glow-cyan: 0 0 24px -6px rgba(11, 243, 253, 0.55);
-  --shadow-glow-magenta: 0 0 24px -6px rgba(233, 39, 217, 0.55);
+  /* Lift a sticky footer off the content it sits over. Elevation, not a fade. */
+  --shadow-lift: 0 -10px 22px -14px rgba(0, 0, 0, 0.9);
 
   /* --------------------------------------------------------------------
-     10. MOTION
+     11. MOTION
      -------------------------------------------------------------------- */
   --dur-instant: 80ms;
   --dur-fast: 130ms;
@@ -267,7 +252,7 @@
   --t-slow: var(--dur-slow) var(--ease-emphasized);
 
   /* --------------------------------------------------------------------
-     11. LAYOUT
+     12. LAYOUT
      -------------------------------------------------------------------- */
   --rail-w: 244px;
   --rail-w-narrow: 72px;
@@ -294,7 +279,7 @@
   --icon-stroke: 1.75;
 
   /* --------------------------------------------------------------------
-     12. Z-INDEX
+     13. Z-INDEX
      -------------------------------------------------------------------- */
   --z-base: 0;
   --z-sticky: 20;

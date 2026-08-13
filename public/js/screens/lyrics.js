@@ -5,10 +5,19 @@
  * itself (SPEC §3e), so this screen is the first half of "one idea → one song":
  * write the words here, then hand them to Create or Studio.
  *
- * House rule 0 (CONTRACT §9.0) is load-bearing in this file: nothing a customer
- * sees while the app is working prints a host, a port, an endpoint, a provider
- * name, a model string or a spec reference. Diagnostics live in Settings and in
- * transient error toasts carrying the backend's own words.
+ * Three house rules are load-bearing here:
+ *
+ *  0. No engineering internals in resting UI. Nothing a customer sees while the
+ *     app is working prints a host, a port, an endpoint, a provider name, a
+ *     model string, a byte size or a spec reference — including the writing
+ *     rules themselves, which are stated as songwriting advice ("roughly 12–16
+ *     sung words every 10 seconds"), never as rule numbers. Diagnostics live in
+ *     Settings and in transient error toasts carrying the backend's own words.
+ *  7. No gradient. There is none in this screen's stylesheet and none set from
+ *     here; emphasis is a solid accent and states move lightness.
+ *  8. No left-edge accent stripe. Every card that has something to say about
+ *     severity says it with a labelled `.sev` chip on its title row — the
+ *     offline notice and each writing check below.
  *
  * Layout — both vertical boundaries are shell `.dock`s (CONTRACT §6b), so a
  * pinned footer can never slice the content above it:
@@ -192,8 +201,8 @@ function checkRules(text, allowed, targetSeconds) {
         level: 'error',
         title: `${match[2]} is not a section`,
         detail: guess
-          ? `Sections are marked with one of the nine tags. Closest match: ${guess}.`
-          : `Sections are marked with one of the nine tags in the row above the editor.`,
+          ? `Section tags come from the row above the editor. Closest match: ${guess}.`
+          : 'Section tags come from the row above the editor — anything else is sung as a lyric.',
         line: index,
         fix: guess ? { label: `Use ${guess}`, kind: 'retag', line: index, tag: guess } : null,
       });
@@ -341,11 +350,15 @@ function highlight(text, allowed) {
   return `${text.split('\n').map((raw) => {
     const match = TAG_LINE.exec(raw);
     if (!match) return escapeHtml(raw) || '&nbsp;';
-    const [, indent, tag, rest] = match;
+    const [, indent, tag] = match;
+    /* Everything after the tag, INCLUDING the spaces the parser skips over.
+       This layer sits on the textarea character for character, so swallowing
+       one space here would slide the caret a space away from its glyphs. */
+    const after = raw.slice(indent.length + tag.length);
     const ok = allowed.includes(tag.toLowerCase());
     const tagSpan = `<span class="${ok ? 'hl-tag' : 'hl-tag hl-tag--bad'}">${escapeHtml(tag)}</span>`;
-    const restSpan = rest.trim() ? `<span class="hl-dropped">${escapeHtml(rest)}</span>` : escapeHtml(rest);
-    return `${escapeHtml(indent)}${tagSpan}${restSpan}`;
+    const afterSpan = after.trim() ? `<span class="hl-dropped">${escapeHtml(after)}</span>` : escapeHtml(after);
+    return `${escapeHtml(indent)}${tagSpan}${afterSpan}`;
   }).join('\n')}\n`;
 }
 
@@ -446,20 +459,34 @@ export async function mount(root, ctx) {
      offers three real starting shapes. It sits over the (empty) document and
      steps out of the way the moment the writer takes the surface. */
   const blank = el('div', { class: 'lyr-blank' }, [
-    el('span', { class: 'empty__icon lyr-blank__icon', html: ctx.iconMarkup('lyrics') }),
-    el('p', { class: 'lyr-blank__title', text: 'A blank sheet' }),
-    el('p', { class: 'lyr-blank__text', text: 'Say what the song is about on the right and it gets written for you — or lay out the sections and fill them in yourself.' }),
+    /* No illustration tile: the heading sits exactly where the first sung line
+       will land, so the invitation is the page itself. The two blocks are
+       pinned to the top and the bottom of the sheet, which gives the empty
+       state a floor instead of one small card afloat in the middle. */
+    el('div', { class: 'lyr-blank__lead' }, [
+      el('p', { class: 'lyr-blank__title', text: 'A blank sheet' }),
+      el('p', { class: 'lyr-blank__text', text: 'Say what the song is about on the right and it gets written for you — or lay out the sections and fill them in yourself.' }),
+    ]),
     el('div', { class: 'lyr-starters' }, [
       el('span', { class: 'lyr-starters__label', text: 'Start from a structure' }),
+      /* Each card shows the sections it will actually lay down, so the choice
+         is legible before it is made — and so the sparse state is a designed
+         surface rather than three thin buttons on a dark field. */
       el('div', { class: 'lyr-starters__row' }, STARTERS.map((starter) => el('button', {
         class: 'lyr-starter', type: 'button',
+        'aria-label': `${starter.name} — ${plural(starter.tags.length, 'section')} for a ${clock(starter.target)} song`,
         onclick: () => applyStarter(starter),
       }, [
-        el('span', { class: 'lyr-starter__name', text: starter.name }),
-        el('span', {
-          class: 'lyr-starter__meta mono',
-          text: `${starter.tags.length} sections · ${clock(starter.target)}`,
-        }),
+        el('span', { class: 'lyr-starter__head' }, [
+          el('span', { class: 'lyr-starter__name', text: starter.name }),
+          el('span', { class: 'lyr-starter__meta mono', text: clock(starter.target) }),
+        ]),
+        el('span', { class: 'lyr-starter__tags', 'aria-hidden': 'true' }, [
+          ...starter.tags.slice(0, 3).map((tag) => el('span', { class: 'lyr-starter__tag mono', text: tag })),
+          starter.tags.length > 3
+            ? el('span', { class: 'lyr-starter__tag lyr-starter__tag--more mono', text: `+${starter.tags.length - 3}` })
+            : null,
+        ]),
       ]))),
     ]),
   ]);
@@ -505,11 +532,16 @@ export async function mount(root, ctx) {
     onclick: () => handoff('create', 'Create'),
   }, [ctx.icon('create'), 'Send to Create']);
 
+  /* The chips and the hand-off button travel together, so when the column
+     narrows they wrap as one right-aligned group instead of the button
+     stranding itself on a line of its own. */
   const editorFoot = el('div', { class: 'dock__foot dock__foot--fade lyr-foot' }, [
     el('div', { class: 'lyr-stats' }, [statWords, statLength, statSections, statCheck]),
     el('span', { class: 'spacer' }),
-    el('div', { class: 'actionbar' }, [copyChip, docMenu]),
-    sendBtn,
+    el('div', { class: 'lyr-foot__actions' }, [
+      el('div', { class: 'actionbar' }, [copyChip, docMenu]),
+      sendBtn,
+    ]),
   ]);
 
   const editor = el('section', { class: 'lyr-editor' }, [
@@ -528,11 +560,16 @@ export async function mount(root, ctx) {
   ];
   const segment = el('div', { class: 'segment lyr-modes', role: 'group', 'aria-label': 'Assistant mode' }, modeButtons);
 
+  /* Severity is a labelled chip on the title row (CONTRACT §0b/§6d) — never a
+     coloured bar down the left edge. */
   const offlineNotice = el('div', { class: 'notice notice--warn lyr-offline', hidden: true }, [
     el('span', { class: 'notice__icon', html: ctx.iconMarkup('alert') }),
-    el('div', {}, [
-      el('p', { class: 'notice__title', text: 'Writing help is offline' }),
-      el('p', { text: 'You can still write and check lyrics by hand. Settings has the details.' }),
+    el('div', { class: 'notice__body' }, [
+      el('p', { class: 'notice__head' }, [
+        el('span', { class: 'notice__title', text: 'Writing help is offline' }),
+        el('span', { class: 'sev sev--warn', text: 'Warning' }),
+      ]),
+      el('p', { text: 'You can still write and check the words by hand.' }),
       el('button', {
         class: 'btn btn--sm lyr-offline__btn', type: 'button', text: 'Open Settings',
         onclick: () => ctx.navigate('settings'),
@@ -1010,13 +1047,17 @@ export async function mount(root, ctx) {
           onclick: () => applyFix(issue.fix),
         }));
       }
+      const error = issue.level === 'error';
       checkBody.append(el('div', { class: `lyr-check lyr-check--${issue.level}` }, [
-        el('span', { class: 'lyr-check__icon', html: ctx.iconMarkup(issue.level === 'error' ? 'alert' : 'info') }),
-        el('div', { class: 'lyr-check__body' }, [
+        el('div', { class: 'lyr-check__head' }, [
           el('p', { class: 'lyr-check__title', text: issue.title }),
-          el('p', { class: 'lyr-check__detail', text: issue.detail }),
-          actions.length ? el('div', { class: 'lyr-check__actions' }, actions) : null,
+          el('span', {
+            class: `sev ${error ? 'sev--error' : 'sev--warn'}`,
+            text: error ? 'Fix' : 'Look at',
+          }),
         ]),
+        el('p', { class: 'lyr-check__detail', text: issue.detail }),
+        actions.length ? el('div', { class: 'lyr-check__actions' }, actions) : null,
       ]));
     }
   }
@@ -1092,7 +1133,7 @@ export async function mount(root, ctx) {
       writeHint.className = 'hint';
       writeHint.textContent = hasText
         ? 'Replaces the current draft. One undo brings it back.'
-        : 'A title, a set of style words and a full tagged lyric come back.';
+        : 'You get a title, a few style words, and the whole song with its sections marked.';
     } else {
       const hasInstruction = instructionInput.value.trim().length > 0;
       const selected = selectionLength() > 0;

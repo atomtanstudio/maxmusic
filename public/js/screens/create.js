@@ -51,6 +51,31 @@ const STARTERS = [
   { idea: 'a slow-burn trip hop track about a phone that never rings', tag: 'Trip hop' },
 ];
 
+/**
+ * Once there is an idea in the field, the starters stop being useful and these
+ * take their place: one click appends a musical detail to the line the person
+ * already wrote. They edit the same single value the field holds — the caption
+ * — so there is still exactly one authoritative control for it.
+ */
+const DETAILS = [
+  { text: 'a female lead vocal', vocal: true },
+  { text: 'a male lead vocal', vocal: true },
+  { text: 'a gospel choir behind the last chorus', vocal: true },
+  { text: 'close, breathy delivery', vocal: true },
+  { text: 'call-and-response backing vocals', vocal: true },
+  { text: 'a slower, heavier tempo' },
+  { text: 'a faster, driving tempo' },
+  { text: 'live drums, played not programmed' },
+  { text: 'warm analogue tape character' },
+  { text: 'a big final chorus' },
+  { text: 'sparse and intimate' },
+  { text: 'a string section' },
+  { text: 'vinyl crackle and room noise' },
+  { text: 'fingerpicked acoustic guitar' },
+  { text: 'a saxophone solo' },
+  { text: 'a long instrumental outro' },
+];
+
 const LENGTHS = [30, 60, 120, 180, 300];
 
 const SORTS = [
@@ -256,13 +281,22 @@ export function mount(root, ctx) {
   history = Array.isArray(history) ? history.map(normalise).filter(Boolean) : [];
   let liked = new Set(Array.isArray(ctx.storage.get(LIKES_KEY, [])) ? ctx.storage.get(LIKES_KEY, []) : []);
   const starters = STARTERS.slice();
-  const pickIdeas = (n) => {
-    const pool = STARTERS.slice();
+  const sample = (pool, n) => {
+    const rest = pool.slice();
     const out = [];
-    while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    while (out.length < n && rest.length) out.push(rest.splice(Math.floor(Math.random() * rest.length), 1)[0]);
     return out;
   };
-  let hintIdeas = pickIdeas(3);
+  const pickIdeas = (n) => sample(STARTERS, n);
+  const pickDetails = (n) => {
+    const line = state.idea.toLowerCase();
+    return sample(
+      DETAILS.filter((d) => (!d.vocal || !state.instrumental) && !line.includes(d.text.toLowerCase())),
+      n,
+    );
+  };
+  let hintMode = null;      // 'start' while the field is empty, 'detail' after
+  let hintItems = [];
 
   let health = ctx.health;
   let controller = null;
@@ -289,9 +323,9 @@ export function mount(root, ctx) {
 
           <div class="hints" data-hints>
             <div class="hints__head">
-              <span class="hints__label">Try one of these</span>
+              <span class="hints__label" data-hints-label>Try one of these</span>
               <button class="actionchip hints__dice" type="button" data-surprise
-                aria-label="Show three other ideas">${iconMarkup('dice')}</button>
+                aria-label="Show other ideas">${iconMarkup('dice')}</button>
             </div>
             <div class="hints__list" data-hint-list></div>
           </div>
@@ -380,6 +414,7 @@ export function mount(root, ctx) {
           <button class="btn btn--primary btn--lg btn--block cta" type="button" data-go>
             <span class="cta__icon" data-cta-icon>${iconMarkup('create')}</span>
             <span class="cta__label">Create song</span>
+            <span class="cta__kbd" data-cta-kbd aria-hidden="true"></span>
           </button>
           <div class="compose__under">
             <button class="btn btn--sm btn--ghost cancel" type="button" data-cancel hidden>
@@ -426,6 +461,7 @@ export function mount(root, ctx) {
     idea: $('#cr-idea'),
     ideaCount: $('[data-idea-count]'),
     hints: $('[data-hints]'),
+    hintsLabel: $('[data-hints-label]'),
     hintList: $('[data-hint-list]'),
     surprise: $('[data-surprise]'),
     modes: $('[data-modes]'),
@@ -449,6 +485,7 @@ export function mount(root, ctx) {
     cta: $('[data-go]'),
     ctaLabel: $('.cta__label'),
     ctaIcon: $('[data-cta-icon]'),
+    ctaKbd: $('[data-cta-kbd]'),
     cancel: $('[data-cancel]'),
     footHint: $('[data-foot-hint]'),
     ws: $('.ws'),
@@ -463,6 +500,11 @@ export function mount(root, ctx) {
     scroll: $('[data-scroll]'),
     body: $('[data-body]'),
   };
+
+  /* The accelerator is real (see the keydown handler below), so the button
+     wears it — labelled the way the keyboard in front of the person is. */
+  const APPLE = /mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || '');
+  el.ctaKbd.textContent = APPLE ? '⌘↵' : 'Ctrl ↵';
 
   /* --------------------------------------------------- topbar mode switch -- */
 
@@ -535,11 +577,22 @@ export function mount(root, ctx) {
   function blocker() {
     if (state.running) return null;
     if (health) {
-      if (health.status === 'offline' || !health.comfyReachable) {
+      if (health.status === 'offline') {
         return {
           title: 'Your studio is offline',
           text: health.message || 'MaxMusic can’t reach your studio right now.',
           kind: 'error',
+          retry: true,
+        };
+      }
+      // Answered, but not able to render yet — a different state and a
+      // different word for it. The title must not argue with the sentence
+      // underneath it.
+      if (!health.comfyReachable) {
+        return {
+          title: 'Not ready to render',
+          text: `${health.message} New songs will fail until it has finished starting up.`,
+          kind: 'warn',
           retry: true,
         };
       }
@@ -587,23 +640,73 @@ export function mount(root, ctx) {
     el.idea.setSelectionRange(idea.length, idea.length);
   }
 
-  function paintHints() {
+  /** Append a detail to the line the person already wrote, and leave the caret there. */
+  function addDetail(text) {
+    const base = state.idea.replace(/[\s,]+$/, '');
+    state.idea = `${base}, ${text}`.slice(0, LIMITS.PROMPT_MAX);
+    persistForm();
+    paintHints(true);
+    paintForm();
+    el.idea.focus();
+    el.idea.setSelectionRange(state.idea.length, state.idea.length);
+  }
+
+  /**
+   * The block under the field is never empty and never decorative: starters
+   * while there is nothing to work with, details once there is.
+   * @param {boolean} [reroll] force a fresh draw even if the mode has not changed
+   */
+  function paintHints(reroll = false) {
+    const mode = state.idea.trim() ? 'detail' : 'start';
+    if (reroll || mode !== hintMode) {
+      hintMode = mode;
+      hintItems = mode === 'start' ? pickIdeas(3) : pickDetails(3);
+    }
+
+    el.hintsLabel.textContent = mode === 'start' ? 'Try one of these' : 'Add a detail';
+    el.surprise.setAttribute('aria-label', mode === 'start' ? 'Show other ideas' : 'Show other details');
+    el.hintList.classList.toggle('hints__list--wrap', mode === 'detail');
+    el.hints.hidden = mode === 'detail' && !hintItems.length;
+
     el.hintList.replaceChildren();
-    for (const s of hintIdeas) {
+    for (const item of hintItems) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'chip hint-chip';
-      b.textContent = s.idea;
-      b.addEventListener('click', () => useIdea(s.idea));
+      if (mode === 'start') {
+        b.textContent = item.idea;
+        b.addEventListener('click', () => useIdea(item.idea));
+      } else {
+        b.append(ctx.icon('plus', 'icon hint-chip__plus'), document.createTextNode(item.text));
+        b.addEventListener('click', () => addDetail(item.text));
+      }
       el.hintList.append(b);
     }
   }
 
-  function paintForm() {
-    if (document.activeElement !== el.idea) el.idea.value = state.idea;
+  /**
+   * What the collapsed disclosure is holding, in three words. Kept in its own
+   * function so every control inside it can refresh the line it summarises
+   * without repainting the whole form.
+   */
+  function paintSummary() {
+    el.moreSummary.textContent = state.advanced ? '' : [
+      state.format.toUpperCase(),
+      state.seedAuto ? 'random seed' : `seed ${state.seed}`,
+      state.dual ? 'two versions' : 'one version',
+    ].join(' · ');
+  }
+
+  /** The field's own furniture: the counter, and the block of chips under it. */
+  function paintIdeaFoot() {
     const len = state.idea.length;
     el.ideaCount.textContent = len > LIMITS.PROMPT_MAX * 0.7 ? `${len} / ${LIMITS.PROMPT_MAX}` : '';
-    el.hints.hidden = state.idea.trim().length > 0;
+    paintHints();
+  }
+
+  function paintForm() {
+    if (document.activeElement !== el.idea) el.idea.value = state.idea;
+    paintIdeaFoot();
 
     for (const b of el.modes.querySelectorAll('[data-mode]')) {
       b.classList.toggle('is-active', (b.dataset.mode === 'instrumental') === state.instrumental);
@@ -621,11 +724,7 @@ export function mount(root, ctx) {
     el.moreToggle.setAttribute('aria-expanded', String(state.advanced));
     el.moreBody.hidden = !state.advanced;
     el.more.classList.toggle('is-open', state.advanced);
-    el.moreSummary.textContent = state.advanced ? '' : [
-      state.format.toUpperCase(),
-      state.seedAuto ? 'random seed' : `seed ${state.seed}`,
-      state.dual ? 'two versions' : 'one version',
-    ].join(' · ');
+    paintSummary();
 
     for (const b of el.formats.querySelectorAll('[data-format]')) {
       b.classList.toggle('is-active', b.dataset.format === state.format);
@@ -647,22 +746,40 @@ export function mount(root, ctx) {
     paintFooter();
   }
 
+  /**
+   * A notice whose severity is a labelled chip on its own title row, inside the
+   * card — SPEC §9b. There is no edge stripe on any surface in this screen.
+   * @returns {{node: HTMLElement, body: HTMLElement}}
+   */
+  function notice(kind, title, text) {
+    const node = document.createElement('div');
+    node.className = `notice notice--${kind}`;
+    node.innerHTML = `<span class="notice__icon">${iconMarkup('alert')}</span><div class="notice__body"></div>`;
+    const body = node.querySelector('.notice__body');
+
+    const head = document.createElement('p');
+    head.className = 'notice__head';
+    const t = document.createElement('span');
+    t.className = 'notice__title';
+    t.textContent = title;
+    const sev = document.createElement('span');
+    sev.className = `sev sev--${kind === 'error' ? 'error' : 'warn'}`;
+    sev.textContent = kind === 'error' ? 'Error' : 'Warning';
+    head.append(t, sev);
+
+    const p = document.createElement('p');
+    p.className = 'notice__text';
+    p.textContent = text;
+    body.append(head, p);
+    return { node, body };
+  }
+
   function paintFooter() {
     const block = blocker();
     el.notices.replaceChildren();
 
     if (block && !block.quiet) {
-      const n = document.createElement('div');
-      n.className = `notice notice--${block.kind === 'error' ? 'error' : 'warn'}`;
-      n.innerHTML = `<span class="notice__icon">${iconMarkup('alert')}</span><div class="notice__body"></div>`;
-      const body = n.querySelector('.notice__body');
-      const title = document.createElement('p');
-      title.className = 'notice__title';
-      title.textContent = block.title;
-      const text = document.createElement('p');
-      text.className = 'notice__text';
-      text.textContent = block.text;
-      body.append(title, text);
+      const { node: n, body } = notice(block.kind === 'error' ? 'error' : 'warn', block.title, block.text);
 
       if (block.retry) {
         const b = document.createElement('button');
@@ -689,6 +806,8 @@ export function mount(root, ctx) {
     el.cta.disabled = state.running || Boolean(block);
     el.cancel.hidden = !state.running;
     el.ctaIcon.innerHTML = state.running ? iconMarkup('spinner', 'icon spinner') : iconMarkup('create');
+    // a shortcut that cannot fire is not advertised
+    el.ctaKbd.hidden = el.cta.disabled;
 
     if (state.running) {
       el.ctaLabel.textContent = state.step === 'lyrics' ? 'Writing lyrics…' : 'Rendering…';
@@ -704,8 +823,42 @@ export function mount(root, ctx) {
   /* ------------------------------------------------------------- artwork -- */
 
   /**
-   * Real cover art when a track has it; otherwise a deterministic monochrome
-   * motif so every row has a distinct, designed tile. No hue — §7f.
+   * The stand-in mark for a track with no cover art: a short waveform whose
+   * bar heights come from the track's own id, so two tracks never look alike
+   * and the same track looks the same every time. Stroked, round-capped and
+   * monochrome — the icon set's language, not a decorative wash.
+   */
+  function artMark(seed) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 64 64');
+    svg.setAttribute('class', 'art__mark');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const bars = 11;
+    const step = 5.4;
+    const x0 = (64 - (bars - 1) * step) / 2;
+    let h = seed || 1;
+
+    for (let i = 0; i < bars; i += 1) {
+      h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+      // an envelope so the mark reads as a waveform rather than as noise
+      const envelope = 0.44 + 0.56 * Math.sin((Math.PI * (i + 0.5)) / bars);
+      const len = (8 + ((h % 1000) / 1000) * 30) * envelope + 6;
+      const x = (x0 + i * step).toFixed(2);
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', x);
+      line.setAttribute('x2', x);
+      line.setAttribute('y1', (32 - len / 2).toFixed(2));
+      line.setAttribute('y2', (32 + len / 2).toFixed(2));
+      svg.append(line);
+    }
+    return svg;
+  }
+
+  /**
+   * Real cover art when a track has it; otherwise the generated mark above on a
+   * flat tile at a deterministic lightness. No hue — §7f — and no ramp — §9a.
    */
   function artTile(rec, cls = '') {
     const tile = document.createElement('span');
@@ -720,11 +873,8 @@ export function mount(root, ctx) {
       tile.append(img);
     } else {
       const h = hashOf(rec.id || rec.title);
-      tile.dataset.motif = String(h % 3);
-      tile.style.setProperty('--lift', `${3 + (h % 4) * 3}%`);
-      tile.style.setProperty('--ang', `${20 + (h % 7) * 22}deg`);
-      tile.style.setProperty('--fx', `${18 + (h % 5) * 16}%`);
-      tile.style.setProperty('--fy', `${14 + ((h >> 3) % 5) * 17}%`);
+      tile.style.setProperty('--lift', `${3 + (h % 5) * 2}%`);
+      tile.append(artMark(h));
     }
 
     if (Number.isFinite(rec.duration) && rec.duration > 0) {
@@ -986,20 +1136,11 @@ export function mount(root, ctx) {
   }
 
   function errorBlock(err, actions = []) {
-    const n = document.createElement('div');
-    n.className = 'notice notice--error';
-    n.innerHTML = `<span class="notice__icon">${iconMarkup('alert')}</span><div class="notice__body"></div>`;
-    const body = n.querySelector('.notice__body');
-
-    const title = document.createElement('p');
-    title.className = 'notice__title';
-    title.textContent = err?.name === 'ValidationError'
+    const title = err?.name === 'ValidationError'
       ? 'This request cannot be sent'
       : state.errorStep === 'lyrics' ? 'The lyrics could not be written' : 'The render stopped';
-    const text = document.createElement('p');
-    text.className = 'notice__text';
-    text.textContent = api.errorText(err);
-    body.append(title, text);
+    // the backend's own words, verbatim — house rule 3
+    const { node: n, body } = notice('error', title, api.errorText(err));
 
     const row = document.createElement('div');
     row.className = 'row row--wrap notice__actions';
@@ -1041,8 +1182,9 @@ export function mount(root, ctx) {
     const title = document.createElement('h3');
     title.className = 'trk__title';
     title.textContent = state.song?.title || titleFromIdea(state.idea);
+    // the shell's sanctioned "working" signal: a labelled chip, solid accent
     const badge = document.createElement('span');
-    badge.className = 'trk__badge trk__badge--live';
+    badge.className = 'sev sev--live';
     badge.textContent = state.step === 'lyrics' ? 'Writing lyrics' : 'Rendering';
     line.append(title, badge);
 
@@ -1054,15 +1196,16 @@ export function mount(root, ctx) {
         ? 'Two versions are rendering. This usually takes a couple of minutes.'
         : 'Rendering the audio. This usually takes a couple of minutes.');
 
-    const meter = document.createElement('div');
+    // progress motion lives on the session's own hairline; this is just the clock
+    const meter = document.createElement('p');
     meter.className = 'live__meter';
-    const bar = document.createElement('span');
-    bar.className = 'live__bar';
+    const label = document.createElement('span');
+    label.textContent = 'Elapsed';
     const t = document.createElement('span');
     t.className = 'live__time';
     t.dataset.elapsed = '1';
     t.textContent = elapsedText();
-    meter.append(bar, t);
+    meter.append(label, t);
 
     main.append(line, desc, meter);
     row.append(art, main);
@@ -1097,7 +1240,11 @@ export function mount(root, ctx) {
     h.textContent = 'Lyrics';
     const sub = document.createElement('span');
     sub.className = 'drawer__sub';
-    sub.textContent = `${state.song.lyrics.length} of ${LIMITS.LYRICS_MAX} characters`;
+    const chars = state.song.lyrics.length;
+    // the ceiling is only worth naming when it is close enough to matter
+    sub.textContent = chars > LIMITS.LYRICS_MAX * 0.7
+      ? `${chars.toLocaleString()} of ${LIMITS.LYRICS_MAX.toLocaleString()} characters`
+      : `${chars.toLocaleString()} characters`;
 
     const acts = document.createElement('div');
     acts.className = 'actionbar actionbar--end';
@@ -1232,17 +1379,11 @@ export function mount(root, ctx) {
     }
 
     for (const e of state.takeErrors) {
-      const n = document.createElement('div');
-      n.className = 'notice notice--warn';
-      n.innerHTML = `<span class="notice__icon">${iconMarkup('alert')}</span><div class="notice__body"></div>`;
-      const t = document.createElement('p');
-      t.className = 'notice__title';
-      t.textContent = `Version ${e.slot} did not finish`;
-      const p = document.createElement('p');
-      p.className = 'notice__text';
-      p.textContent = [e.error, e.details].filter(Boolean).join(' — ');
-      n.querySelector('.notice__body').append(t, p);
-      wrap.append(n);
+      wrap.append(notice(
+        'warn',
+        `Version ${e.slot} did not finish`,
+        [e.error, e.details].filter(Boolean).join(' — '),
+      ).node);
     }
 
     if (state.song?.lyrics && state.lyricsOpen && !state.instrumental) wrap.append(lyricsDrawer());
@@ -1399,6 +1540,7 @@ export function mount(root, ctx) {
   function setInstrumental(on) {
     state.instrumental = Boolean(on);
     persistForm();
+    paintHints(true);   // vocal details are nonsense on an instrumental
     paintForm();
   }
 
@@ -1572,17 +1714,12 @@ export function mount(root, ctx) {
 
   el.idea.addEventListener('input', () => {
     state.idea = el.idea.value;
-    const len = state.idea.length;
-    el.ideaCount.textContent = len > LIMITS.PROMPT_MAX * 0.7 ? `${len} / ${LIMITS.PROMPT_MAX}` : '';
-    el.hints.hidden = state.idea.trim().length > 0;
+    paintIdeaFoot();
     persistForm();
     paintFooter();
   });
 
-  el.surprise.addEventListener('click', () => {
-    hintIdeas = pickIdeas(3);
-    paintHints();
-  });
+  el.surprise.addEventListener('click', () => paintHints(true));
 
   page.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !state.running && !el.cta.disabled) {
@@ -1655,6 +1792,7 @@ export function mount(root, ctx) {
       state.seed = clamp(Number(digits), LIMITS.SEED_MIN, LIMITS.SEED_MAX);
     }
     persistForm();
+    paintSummary();
     paintFooter();
   });
   el.seed.addEventListener('blur', () => paintForm());

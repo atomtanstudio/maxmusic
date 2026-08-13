@@ -11,7 +11,117 @@ work offline, so never reference an external host — no fonts, no scripts, no i
 
 ---
 
-## 0. Round 2 — what changed in the shell, and what it means for you
+## 0. Round 3 — READ THIS FIRST
+
+Two patterns were named directly by the product owner as the things that make this build
+read as AI-generated. They are house style now, not preferences. Both are enforced in
+`tokens.css` and `shell.css`; if your screen still shows one, it is your screen's bug.
+
+### 0a. No gradients
+
+The brand ramp survives in **one token with a self-documenting name**:
+
+```
+--ramp-logo-waveform-only
+```
+
+Legal on exactly two surfaces: **the logo mark** and **the played portion of the
+waveform**. Nowhere else. Not buttons, not text, not borders, not card backgrounds, not
+rules or dividers, not badges, not hairlines. No glow, halo or bloom behind anything.
+
+Everything emphatic is a **solid fill of one accent — cyan `#00C0E0`**. Hover and active
+move **lightness**, never hue.
+
+| Token | Value | Job |
+|---|---|---|
+| `--accent` | `#00C0E0` | rest. The product's one accent. |
+| `--accent-hover` | `#0FDDFF` | hover — the same hue, 9% lighter. |
+| `--accent-press` | `#00A6C1` | active/pressed — the same hue, 6% darker. |
+| `--accent-disabled` | `#007285` | disabled — the same hue, 18% darker. Plainly inert. |
+| `--accent-ink` | `#04161A` | text and glyphs **on** an accent fill (8.5:1). |
+| `--accent-soft` / `--accent-softer` | cyan at 14% / 7% | focus halo, quiet fills, track. |
+
+All four states are `hsl(188.6 100% L)` — only `L` moves. Do not invent a fifth state and
+do not shift the hue for one.
+
+**Tokens that no longer exist.** They were deleted, not renamed to something you can find.
+A `var()` on any of them makes the whole declaration invalid, which is the intended
+outcome — the gradient disappears instead of surviving under a new name:
+
+| Deleted | Use instead |
+|---|---|
+| `--gradient-brand` | `--ramp-logo-waveform-only` **only if** you are painting the played waveform; otherwise `--accent`. |
+| `--gradient-brand-cool` / `--gradient-brand-warm` | `--accent` (solid). |
+| `--gradient-brand-135` / `-vertical` / `-conic` / `-wash` | nothing. Use a surface step. |
+| `--brand-glow` / `--brand-glow-strong` | nothing. Bloom is banned. |
+| `--shadow-glow-cyan` / `--shadow-glow-magenta` | `--shadow-2` / `--shadow-3` (elevation). |
+| `.gradient-text` | plain `--text-hi`. Gradient text is banned outright. |
+| `--dock-fade` | nothing — `.dock__foot--fade` is now elevation (`--shadow-lift`). |
+| `--brand-*-deep` (six) | nothing. They were only ever gradient fodder. |
+
+The six ramp stops (`--brand-cyan` … `--brand-amber`) **do** still exist, retuned to the
+SPEC §2 values, because the player paints the waveform from them and the library generates
+placeholder artwork from them. They are not a palette to decorate chrome with. Reaching for
+`--brand-violet` to tint a card is the "four accents at once" bug that lost round 1.
+
+`--busy` / `--busy-bg` were violet; they are now `--accent` / `--accent-soft`.
+
+### 0b. No left-edge accent stripe
+
+The 2–4px coloured bar down the left side of a card, notice, callout, toast or code block
+is banned outright, on every surface including docs and status pages.
+
+Distinguish surfaces with the things real design systems use: **elevation**
+(`--surface-*`), **border weight** (`--border-*`, on all four sides or none), **spacing**,
+**type weight and size**, an **icon in the content** — or a **labelled severity chip inside
+the card**:
+
+```html
+<div class="notice notice--warn">
+  <svg class="icon notice__icon" aria-hidden="true"><use href="#i-alert"/></svg>
+  <div class="notice__body">
+    <p class="notice__head">
+      <span class="notice__title">Not ready to render</span>
+      <span class="sev sev--warn">Warning</span>
+    </p>
+    <p>New tracks will fail until your studio finishes starting up.</p>
+  </div>
+</div>
+```
+
+`.sev` variants: `.sev--warn`, `.sev--error`, `.sev--live` (solid accent), `.sev--ok`
+(colourless). The chip carries a **word**, so severity is read, not decoded from an edge.
+Shell toasts already render one for `warn` and `error` — that is what replaced the stripe
+they used to wear.
+
+Removed with the stripe: the `::before` marker on `.navitem.is-active`. An active nav item
+is now a raised container + a hairline + semibold full-contrast text — three form signals,
+no bar.
+
+### 0c. "Covers" is now "Art"
+
+Cover **songs** are impossible on MiniMax Music 3 (the pipeline accepts no audio) and were
+cut. The screen that remains generates **album art**. Everything renamed:
+
+| Was | Now |
+|---|---|
+| route `#/covers` | `#/art` |
+| `public/js/screens/covers.js` | `public/js/screens/art.js` |
+| `public/css/screens/covers.css` | `public/css/screens/art.css` |
+| nav label `Covers`, page title `Cover art` | `Art` |
+| sprite `#i-covers` | `#i-art` |
+| CSS namespace `.screen-covers` / `.cov-*` | `.screen-art` / `.art-*` |
+| bus `covers:new` | `art:new` |
+| storage `maxmusic:covers.history` / `.draft` | `maxmusic:art.history` / `.draft` |
+
+`#/covers` is not a route any more; the router rewrites unknown hashes to `#/create`.
+The word "cover" survives **only as a noun for the image on a track** — "cover art", the
+`/api/cover-art` endpoint, the `/covers/*` static mount, `record.cover`. Never as a
+destination, a nav label, a section heading or a verb.
+
+---
+
+## 0.1. Round 2 — what changed in the shell, and what it means for you
 
 Round 1 lost all five blind comparisons. Four of the fixes live in this file, and three of
 them are primitives you are expected to use rather than reinvent.
@@ -21,7 +131,7 @@ them are primitives you are expected to use rather than reinvent.
 | `Backend online / 192.168.1.100:8190` card in the sidebar | Deleted. Connection state is a transient toast; the anchor slot now holds the workspace identity + a `New song` CTA. | Never print a host, a port, an endpoint path, a provider name, a model string or a byte size in resting UI. Read `ctx.health` and speak in customer language. |
 | Bare icon glyphs at 1.1:1, mixed fills and strokes, inline delete | `.actionchip` + `.actionbar` + `.menu` (§6a) | Build every icon action out of these. Do not hand-roll a bare `<button><svg>`. |
 | Sticky footers slicing cards and buttons in half | `.dock` (§6b), measured for you | Wrap any screen with a pinned action bar in `.dock`. |
-| Cyan + magenta + green + violet at once | Tokens retuned; `--ok`/`--info` are now colourless; one gradient per view, linted at runtime | Reach for `.btn--strong`, a container, or weight before you reach for a hue. |
+| Cyan + magenta + green + violet at once | Tokens retuned; `--ok`/`--info` are now colourless; one accent per view, linted at runtime (round 3 made that accent solid — see §0a) | Reach for `.btn--strong`, a container, or weight before you reach for a hue. |
 
 **Removed** — these no longer exist, do not reference them:
 `.status`, `.status__dot`, `.status__label`, `.status__detail`, `.brand__sub`, and the
@@ -84,7 +194,7 @@ make your own wrapper `height: 100%; overflow: hidden` and scroll the columns in
 | studio | `#/studio` | `screens/studio.js` | `css/screens/studio.css` |
 | library | `#/library` | `screens/library.js` | `css/screens/library.css` |
 | lyrics | `#/lyrics` | `screens/lyrics.js` | `css/screens/lyrics.css` |
-| covers | `#/covers` | `screens/covers.js` | `css/screens/covers.css` |
+| art | `#/art` | `screens/art.js` | `css/screens/art.css` |
 | settings | `#/settings` | `screens/settings.js` | `css/screens/settings.css` |
 
 Query strings are supported and parsed for you: `#/library?track=ab12` →
@@ -128,8 +238,9 @@ Emit and listen with `ctx.bus`. Payloads are plain objects.
 
 | Event | Emitted by | Payload | Meaning |
 |---|---|---|---|
-| `track:new` | create, studio, covers | `{ track, meta }` | A generation finished. `track` is the backend `{id, filename, url, size}`. `meta` carries whatever the screen knows: `{title, prompt, lyrics, duration, seed, format, isInstrumental, extra_info, createdAt}`. |
-| `library:changed` | library | `{ count }` | Library contents changed. The shell paints the count badge in the nav rail. |
+| `track:new` | create, studio | `{ track, meta }` | A generation finished. `track` is the backend `{id, filename, url, size}`. `meta` carries whatever the screen knows: `{title, prompt, lyrics, duration, seed, format, isInstrumental, extra_info, createdAt}`. |
+| `art:new` | art | `{ cover, meta }` | Album art finished rendering. Was `covers:new`. |
+| `library:changed` | library | `{ count }` | Library contents changed. The shell paints the count badge in the nav rail — and **only** there. The workspace anchor deliberately does not mirror it (see §6e). |
 | `player:play` | any screen | `{ track, title?, cover?, meta?, queue? }` | Request playback. **If no player is loaded the shell toasts an honest "player unavailable" message** — you do not have to check first. |
 | `player:state` | player | `{ playing, track, time, duration }` | Playback state changed. |
 | `player:ready` | shell | controller | The player module finished mounting. |
@@ -163,7 +274,8 @@ Rules for screen CSS:
 
 - Scope every rule under a root class you own, e.g. `.screen-create …`. Two lanes must
   never be able to collide.
-- Never restyle `.rail`, `.topbar`, `.playerbar`, `.toast`, `.railfoot` or `.workspace`.
+- Never restyle `.rail`, `.topbar`, `.playerbar`, `.toast`, `.sev`, `.railfoot` or
+  `.workspace`.
   The rail's bottom anchor (workspace identity + `New song`) is shell-owned; nothing may
   be added to it, and nothing may report connection state anywhere in the chrome.
 - Never restyle `.actionchip`, `.actionbar`, `.menu*` or `.dock*` geometry. Colour and
@@ -217,7 +329,9 @@ lyricsEnabled, coverArtProvider, coverArtEnabled, hasServerKey, error, checkedAt
   `backend`, `comfyUrl`, `comfyError`, `modelKeys` and the provider strings. Putting any of
   those in a working frame is house rule 0.
 - `lyricsEnabled` and `coverArtEnabled` are derived from the provider strings — use them to
-  degrade honestly. Cover art is currently **enabled**; read the flag, never hardcode.
+  degrade honestly. **Always read the flag, never hardcode either state.** Cover art
+  reports as off whenever the operator's image service is not running; that is correct
+  behaviour, not a bug. Build the Art screen so it works the moment it returns.
 - The shell polls every 30s and raises a **transient toast** on a real change of state
   (and a one-line "Reconnected" when it recovers). Screens do not need to render
   connection state at all — just disable what cannot work and say why.
@@ -234,11 +348,13 @@ lyricsEnabled, coverArtProvider, coverArtEnabled, hasServerKey, error, checkedAt
 
 Use these. They are the reason six independently built screens will look like one product.
 
-**Buttons** `.btn` · modifiers `.btn--primary` (the brand gradient — **one per view**, for
-the real action) `.btn--strong` (second-emphasis: a solid high-contrast fill, no hue — use
-this instead of a second gradient) `.btn--ghost` `.btn--outline` `.btn--danger` `.btn--sm`
-`.btn--lg` `.btn--block` `.btn--icon` · state `.is-active` · `:disabled` is styled, so use
-the real attribute.
+**Buttons** `.btn` · modifiers `.btn--primary` (a **solid** `--accent` fill — **one per
+view**, for the real action; hover/press/disabled are lightness steps of the same cyan and
+there is no glow behind it) `.btn--strong` (second-emphasis: a solid high-contrast white
+fill, no hue) `.btn--ghost` `.btn--outline` `.btn--danger` `.btn--sm` `.btn--lg`
+`.btn--block` `.btn--icon` · state `.is-active` · `:disabled` is styled, so use the real
+attribute. Do not restyle `.btn--primary`'s background in a screen sheet — a second fill
+is how the "one accent" rule dies.
 
 **Selection** `.chip` (+ `.chip--mono`, `.is-active` / `aria-pressed="true"` — selected is
 a solid fill, not a tint), `.segment` > `.segment__item.is-active` for Simple/Advanced-style
@@ -333,37 +449,52 @@ region with a pinned action bar goes in a `.dock`.
   `.dock`; `.dock__scroll` is padded by `--dock-foot-h + 24px`, live, whatever the footer
   grows into. Measured: an 80px footer produced 104px of scroll padding and 25px of
   clearance below the last card at full scroll.
-- `.dock__foot--fade` adds a 32px gradient **above** the footer so text dissolves instead
-  of meeting a hard edge. Set `--dock-fade` on the `.dock` to match your background.
+- `.dock__foot--fade` now lifts the footer with a shadow (`--shadow-lift`) so it reads as
+  sitting **above** the content. It used to be a fade-to-surface gradient, which is banned;
+  elevation says the same thing. `--dock-fade` is gone — delete any `--dock-fade` you set.
 
 You do not have to call anything: the shell scans on every mount and watches the outlet
 for docks added later. `ctx.registerDock(el)` exists for a dock you build inside a shadow
 of the outlet or after an unusual async paint.
 
-### 6c. Accent discipline — how the one-gradient rule is enforced
+### 6c. Accent discipline — how the one-accent rule is enforced
 
-We shipped cyan, magenta, green and violet simultaneously. The gradient is now spent on
-exactly three things: **the mark, ONE `.btn--primary` per view, and the waveform / actively
-generating state.** Nothing else.
+We shipped cyan, magenta, green and violet simultaneously. Then we filled every primary
+button with a six-stop ramp. Both are gone. The accent is now spent on exactly two things:
+**ONE `.btn--primary` per view, and the actively-generating state.** The ramp itself is
+spent on **the mark and the played waveform**, and nothing else, ever.
 
-The rule is enforced in four places rather than by good intentions:
+The rule is enforced in five places rather than by good intentions:
 
-1. **Tokens carry it.** `--ok` and `--info` resolve to `--text-hi` on a raised container —
-   there is no success green and no info blue to reach for. `--warn` is the ramp's amber
-   and `--danger` the ramp's red, so the only three non-neutral values left are all brand
-   stops, each with one job (warnings, destructive intent, and `--accent` for focus/links/
-   selection). `--surface-selected` is a white tint, not a cyan one.
-2. **The shared components already obey it.** Active chips, active nav items, checked
+1. **The gradient tokens were deleted, not deprecated.** There is one ramp token and its
+   name (`--ramp-logo-waveform-only`) states its scope. A stale `var(--gradient-brand-cool)`
+   resolves to nothing, so the gradient vanishes rather than surviving quietly. See §0a.
+2. **Tokens carry the palette limit.** `--ok` and `--info` resolve to `--text-hi` on a
+   raised container — there is no success green and no info blue to reach for. `--warn` is
+   the ramp's amber and `--danger` the ramp's red, each with one job. `--busy` is now the
+   accent, not violet. `--surface-selected` is a white tint, not a cyan one.
+3. **The shared components already obey it.** Active chips, active nav items, checked
    switches, filled sliders and selected states are all solid `--text-hi` fills — form,
-   not hue. The player bar lost its decorative gradient hairline.
-3. **`.btn--strong` exists** so "this is also important" has an obvious answer that is not
-   a second gradient.
-4. **The shell lints it.** After every mount it counts visible, enabled `.btn--primary`
+   not hue. `.brandline` is a solid accent segment travelling across a quiet track, not a
+   scrolling ramp. `.badge--brand` and `.sev--live` are flat `--accent`.
+4. **`.btn--strong` exists** so "this is also important" has an obvious answer that is not
+   a second accent fill.
+5. **The shell lints it.** After every mount it counts visible, enabled `.btn--primary`
    elements and logs `[shell] accent discipline: N .btn--primary are visible at once` when
    `N > 1`. Keep the console clean.
 
-If a screen needs to signal state, spend **weight, a container, position or size first**.
-Reach for hue only when the state is a warning or a destruction.
+If a screen needs to signal state, spend **weight, a container, elevation, position or
+size first**. Reach for hue only when the state is a warning or a destruction — and when
+you do, wear it as a full border plus a labelled `.sev` chip, never as an edge.
+
+**Self-check before you hand a screen over.** Both of these must come back empty for your
+own files:
+
+```
+grep -n "gradient" public/css/screens/<yours>.css
+grep -n "border-left" public/css/screens/<yours>.css   # a 1px column divider is fine;
+                                                       # anything ≥2px and coloured is not
+```
 
 **Forms** `.field` (label + control + hint column), `.label` (+ `.label__hint` for a
 right-aligned counter), `.input`, `.textarea` (+ `.textarea--mono`), `.select`, `.hint`
@@ -371,27 +502,57 @@ right-aligned counter), `.input`, `.textarea` (+ `.textarea--mono`), `.select`, 
 `.range` (set `--range-fill: <pct>%` on the element to colour the filled portion).
 `aria-invalid="true"` turns a field red.
 
-### 6d. The rest
+### 6d. Severity — `.sev`, the chip that replaced the edge stripe
+
+`.sev` is a small uppercase chip carrying a **word**. It goes **inside** the surface, on
+the title row — never on its edge. This is the sanctioned way for a card, notice, panel or
+toast to say how serious it is.
+
+| Class | Reads as | Colour |
+|---|---|---|
+| `.sev` | neutral label | `--surface-4` + `--text-mid` |
+| `.sev--warn` | `Warning` | `--warn` on `--warn-bg`, full border |
+| `.sev--error` | `Error` | `--danger` on `--danger-bg`, full border |
+| `.sev--live` | `Working` | solid `--accent` + `--accent-ink` |
+| `.sev--ok` | `Ready` | colourless — `--text-hi` on `--surface-5` |
+
+Pair it with `.notice__head` (or `.toast__head`, which the shell fills in for you) so the
+title and the chip sit on one baseline. Markup is in §0b.
+
+### 6e. The rest
 
 **Containers** `.panel` > `.panel__head` (`.panel__title`) + `.panel__body`; `.card`
-(+ `.card--hover`); `.divider`.
+(+ `.card--hover`); `.divider`. Cards are distinguished by **elevation and border weight**
+— there is no left-edge variant of any of them and there must never be one.
 
 **Status** `.badge` (+ `--ok --warn --danger --info --brand`; `--ok` and `--info` are
-deliberately colourless — see §6c), `.notice` > `.notice__icon` + `.notice__title`
+deliberately colourless, `--brand` is now a flat `--accent` fill — see §6c), `.notice` >
+`.notice__icon` + `.notice__body` > `.notice__head` (`.notice__title` + `.sev`)
 (+ `--warn --error --info`), `code.code` for inline code.
 
 **States** `.empty` > `.empty__icon` + `.empty__title` + `.empty__text`; `.spinner`
-(put it on an `.icon` using `#i-spinner`); `.skeleton`; `.brandline` (animated gradient
-hairline — this counts as the view's brand gesture, so use it on a panel that is actually
-generating and not as decoration).
+(put it on an `.icon` using `#i-spinner`); `.skeleton` (a breathing surface — the sweeping
+sheen was a moving gradient and is gone); `.brandline` (indeterminate progress hairline: a
+**solid accent** segment travelling across a quiet track, full width, so it is not an edge
+stripe. Use it on a panel that is actually generating, not as decoration).
 
 **Layout** `.page` (+ `.page--narrow`, `.page--flush`, `.page__lead`), `.stack`, `.row`
-(+ `.row--wrap`, `.row--end`), `.spacer`, `.truncate`, `.mono`, `.gradient-text`
-(one number or one word — never a paragraph), `.visually-hidden`, `.brandmark` (see §8).
+(+ `.row--wrap`, `.row--end`), `.spacer`, `.truncate`, `.mono`, `.visually-hidden`,
+`.brandmark` (see §8). `.gradient-text` **no longer exists** — gradient text is banned.
+
+**The rail anchor** — the workspace block at the bottom of the nav is shell-owned and is an
+**identity** statement, not a readout. Its second line is the constant
+`Private to this computer`: true on every screen, in every state, before anything has
+loaded. Round 2 derived a song count there and it contradicted itself inside one session
+("Local workspace" on Create, "No songs yet" on Library) because only the Library screen
+reports the count. A count has exactly one home — the Library nav badge, fed by
+`library:changed`. Do not add a second readout to the anchor and do not restyle it.
 
 **Toasts** `ctx.toast(msg, {kind, title, timeout, key, actions})`. `actions` is an array of
 `{label, onClick}` rendered as buttons in the toast body. `key` replaces a live toast with
 the same key instead of stacking a second one — use it for anything that can repeat.
+`warn` and `error` automatically get a labelled `.sev` chip on the title row; the toast's
+2px left edge stripe was removed in round 3.
 
 ---
 
@@ -406,7 +567,7 @@ Sprite lives in `index.html`. Use `ctx.icon('play')` or
 
 Available ids (drop the `i-` prefix when calling `ctx.icon`):
 
-`i-create` `i-studio` `i-library` `i-lyrics` `i-covers` `i-settings`
+`i-create` `i-studio` `i-library` `i-lyrics` `i-art` `i-settings`
 `i-play` `i-pause` `i-prev` `i-next` `i-shuffle` `i-repeat` `i-volume` `i-mute`
 `i-search` `i-plus` `i-close` `i-check` `i-chevron-down` `i-chevron-up`
 `i-chevron-right` `i-chevron-left`
@@ -432,28 +593,41 @@ different stroke weight, and do not link an external icon font.
 `tokens.css` is the single source of truth for colour. Every value below is a CSS custom
 property on `:root`. Use them; do not hard-code hex values, and do not redefine them.
 
-### Brand — palette sampled from `public/logo.png`
+### Brand ramp — SPEC §2 values, verbatim
 
 ```
---brand-cyan      #0bf3fd      --brand-cyan-deep      #06a8c4
---brand-blue      #1b7bf7      --brand-blue-deep      #1355ae
---brand-violet    #7b22e6      --brand-violet-deep    #56179f
---brand-magenta   #e927d9      --brand-magenta-deep   #a11a97
---brand-red       #f32f55      --brand-red-deep       #ab1f3b
---brand-amber     #fbbf3f      --brand-amber-deep     #b0842b
+--brand-cyan      #00C0E0        --brand-magenta   #B040F0
+--brand-blue      #0090F0        --brand-red       #F04060
+--brand-indigo    #2090F0        --brand-amber     #E0A040
+--brand-violet    #7060F0
 ```
 
-Single-hue accent for focus rings, links, carets, selection — a gradient there is noise:
-`--accent` `--accent-hover` `--accent-press` `--accent-soft` `--accent-softer`
+These six exist so the **player** can paint the waveform and the **library** can generate
+placeholder artwork. They are not a palette for chrome. There are no `-deep` variants any
+more.
 
-Gradients: `--gradient-brand` (90°, all six stops) `--gradient-brand-135`
-`--gradient-brand-vertical` `--gradient-brand-conic` `--gradient-brand-wash` (low alpha)
-`--gradient-brand-cool` (cyan→violet→magenta, primary actions)
-`--gradient-brand-warm` (magenta→red→amber). Glows: `--brand-glow` `--brand-glow-strong`.
+The only gradient in the product:
 
-**The gradient is the brand's one loud gesture.** Mark, ONE primary action per view,
-active/generating state, waveform. Everything else stays near-black and restrained. See
-§6c — this is linted at runtime.
+```
+--ramp-logo-waveform-only
+  linear-gradient(90deg, #00C0E0, #0090F0, #7060F0, #B040F0, #F04060, #E0A040)
+```
+
+Legal on the **logo mark** and the **played portion of the waveform**. Nowhere else — the
+token is named so a code review can see the violation without opening the spec.
+
+### Accent — solid cyan, states by lightness
+
+```
+--accent            #00C0E0    rest        --accent-ink        #04161A   text on the fill
+--accent-hover      #0FDDFF    hover       --accent-soft       cyan 14%  quiet fill
+--accent-press      #00A6C1    pressed     --accent-softer     cyan  7%  focus halo, track
+--accent-disabled   #007285    disabled
+```
+
+All four states are `hsl(188.6 100% L)`; only `L` moves — 44 / 53 / 38 / 26. **Never shift
+hue for a state.** `--accent` is also `--text-link`, `--border-brand` (at 45% alpha),
+`--focus-ring`, `::selection` and `--busy`. See §0a for the deleted gradient/glow tokens.
 
 ### Surfaces (near-black ramp, faint blue cast)
 
@@ -468,11 +642,13 @@ on a chip or menu item · `--surface-inset` `#08090e` wells & text areas ·
 
 `--text-hi` headings/values · `--text` body · `--text-mid` secondary/labels ·
 `--text-lo` meta/helper · `--text-faint` placeholder/disabled ·
-`--text-inverse` (on a brand fill) · `--text-link`
+`--text-inverse` (on a white/high-contrast fill; use `--accent-ink` on an accent fill) ·
+`--text-link`
 
 ### Borders and focus
 
-`--border-faint` `--border` `--border-strong` `--border-brand` `--focus-ring` `--focus-ring-tight`
+`--border-faint` `--border` `--border-strong` `--border-brand` (the accent at 45% — for
+focus and a live caret, **on all four sides or none**) `--focus-ring` `--focus-ring-tight`
 
 ### Status — three colours, each with one job
 
@@ -481,7 +657,7 @@ There is no success green. Say "done" with a check glyph, weight and a container
 `--info` / `--info-bg` — same, colourless. There is no info blue.
 `--warn` / `--warn-bg` — the ramp's amber. Transient warnings only.
 `--danger` / `--danger-bg` — the ramp's red. Destructive intent only.
-`--busy` / `--busy-bg` — the ramp's violet. The actively-generating state only.
+`--busy` / `--busy-bg` — **the accent** (was violet). The actively-generating state only.
 
 If you find yourself wanting a fifth colour, you want a container instead.
 
@@ -508,8 +684,12 @@ Tracking `--tracking-tight` `--tracking-normal` `--tracking-wide` `--tracking-ca
 
 ### Shadows
 
-`--shadow-1` `--shadow-2` `--shadow-3` `--shadow-4` `--shadow-inset`
-`--shadow-glow-cyan` `--shadow-glow-magenta`
+`--shadow-1` `--shadow-2` `--shadow-3` `--shadow-4` `--shadow-inset` ·
+`--shadow-lift` (upward, for a sticky footer over content).
+
+Elevation is the legal way to say "raised", "hovered" or "above". There are **no coloured
+glow tokens** — `--shadow-glow-cyan` and `--shadow-glow-magenta` were deleted, because a
+halo behind a button is bloom and bloom is banned.
 
 ### Motion
 
@@ -574,4 +754,12 @@ crops the neon wave out of `logo.png`. To use the mark anywhere:
 5. **Vanilla ES modules + CSS.** No frameworks, no bundler, no transpiling.
 6. **Vocal generation needs lyrics** and the backend will not write them: `POST /api/lyrics`
    then `POST /api/generate`. One button, two calls, and show the lyrics it wrote.
-7. Screenshot **http://localhost:3020**. Port 3010 is the old app and is not evidence.
+7. **No gradients** anywhere except the logo mark and the played waveform, which share the
+   single `--ramp-logo-waveform-only` token. Primary actions are a solid `--accent`; hover
+   and active move lightness, never hue; nothing glows. See §0a.
+8. **No left-edge accent stripe** on a card, notice, callout, toast or code block — on any
+   surface, including docs and status pages. Distinguish with elevation, border weight,
+   spacing, type weight, or a labelled `.sev` chip **inside** the surface. See §0b.
+9. **"Covers" is "Art".** Route `#/art`, files `screens/art.*`, nav label `Art`. The word
+   "cover" is allowed only as a noun for the image on a track. See §0c.
+10. Screenshot **http://localhost:3020**. Port 3010 is the old app and is not evidence.

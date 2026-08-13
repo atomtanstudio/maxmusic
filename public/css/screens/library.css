@@ -289,8 +289,9 @@
 
 /* The action strip starts on the same left rail as the title and the caption.
    Geometry, contrast and gaps are the shared .actionbar / .actionchip
-   contract — this lane only places the strip. */
-.lib-actions { margin-top: var(--space-5); }
+   contract — this lane only places the strip, and marks which chip is the
+   row's primary affordance (play, at --action-size-lg). */
+.lib-actions { margin-top: var(--space-4); }
 
 .lib-row__when {
   justify-self: end;
@@ -446,8 +447,10 @@
   margin-top: var(--space-5);
   padding: var(--space-5) var(--space-5) var(--space-4);
   border-radius: var(--r-md);
+  /* One accent, all four sides. Round 2 outlined this in --brand-violet, which
+     put a second hue on the screen; the generating state is the accent now. */
   background: var(--busy-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-violet) 32%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border-brand);
 }
 .lib-job .brandline {
   position: absolute;
@@ -490,6 +493,8 @@
   height: 168px;
   margin-bottom: var(--space-3);
 }
+/* Three real sleeves, stacked like records leaning in a crate. The ring sits on
+   a pseudo-element so it stays above the artwork instead of under it. */
 .lib-empty__plate {
   position: absolute;
   top: 32px;
@@ -498,9 +503,19 @@
   border-radius: var(--r-lg);
   overflow: hidden;
   z-index: 1;
-  box-shadow: var(--shadow-3), inset 0 0 0 1px var(--border-strong);
+  box-shadow: var(--shadow-3);
+  background: var(--surface-2);
   animation: lib-float 7s var(--ease-in-out) infinite alternate;
 }
+.lib-empty__plate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.lib-empty__plate > img,
+.lib-empty__plate > svg { display: block; width: 100%; height: 100%; object-fit: cover; }
 .lib-empty__plate--1 { left: 0; rotate: -9deg; }
 .lib-empty__plate--2 {
   left: 50%;
@@ -508,7 +523,7 @@
   width: 134px;
   margin-left: -67px;
   z-index: 2;
-  box-shadow: var(--shadow-4), inset 0 0 0 1px var(--border-strong);
+  box-shadow: var(--shadow-4);
   animation-delay: -2.3s;
 }
 .lib-empty__plate--3 { right: 0; rotate: 9deg; animation-delay: -4.6s; }
@@ -760,7 +775,10 @@
   font-size: var(--fs-2xs);
   color: var(--text-lo);
 }
-.lib-sheet__file { min-width: 0; flex: 1 1 auto; font-family: var(--font-mono); }
+/* Was the studio's own twenty-character filename, set in mono — a debug field
+   wearing a debug typeface. It is the download name in plain type now. */
+.lib-sheet__file { min-width: 0; flex: 1 1 auto; }
+.lib-sheet__file b { font-weight: var(--fw-semibold); color: var(--text-mid); }
 .lib-sheet__foot .btn { flex: none; }
 
 /* ============================== responsive ============================== */

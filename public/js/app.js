@@ -180,6 +180,14 @@ export function registerCss(href) {
 
 const TOAST_ICON = { info: 'info', success: 'check', warn: 'alert', error: 'alert' };
 
+/**
+ * Severity is stated as a LABELLED CHIP inside the toast. It used to be a 2px
+ * coloured bar down the left edge — one of the two banned patterns (SPEC §9b).
+ * Only the two kinds that report a real problem get a chip; success and info
+ * are carried by the glyph and the words.
+ */
+const TOAST_SEVERITY = { warn: 'Warning', error: 'Error' };
+
 /** Live toasts that were given a `key`, so a repeat replaces rather than stacks. */
 const keyedToasts = new Map();
 
@@ -198,18 +206,24 @@ export function toast(message, opts = {}) {
   // One live toast per key — a flapping connection must not build a wall.
   if (key && keyedToasts.has(key)) keyedToasts.get(key)();
 
+  const severity = TOAST_SEVERITY[kind] || '';
+
   const node = document.createElement('div');
   node.className = 'toast';
   node.dataset.kind = kind;
   node.innerHTML = `
     <span class="toast__icon">${iconMarkup(TOAST_ICON[kind] || 'info')}</span>
     <div class="toast__body">
-      ${title ? '<p class="toast__title"></p>' : ''}
+      ${title || severity ? `<div class="toast__head">
+        ${title ? '<p class="toast__title"></p>' : ''}
+        ${severity ? `<span class="sev sev--${kind}"></span>` : ''}
+      </div>` : ''}
       <p class="toast__msg"></p>
     </div>
     <button class="toast__close" type="button" aria-label="Dismiss">${iconMarkup('close')}</button>`;
 
   if (title) node.querySelector('.toast__title').textContent = title;
+  if (severity) node.querySelector('.sev').textContent = severity;
   node.querySelector('.toast__msg').textContent = String(message);
 
   let timer = null;
@@ -632,7 +646,7 @@ function lintAccents() {
   if (loud.length > 1) {
     console.warn(
       `[shell] accent discipline: ${loud.length} .btn--primary are visible at once. ` +
-      'The brand gradient is one primary action per view (plus the waveform). ' +
+      'The solid accent is one primary action per view. ' +
       'Use .btn--strong for a second emphatic action.',
     );
   }
@@ -683,11 +697,23 @@ function setDrawer(open) {
 /* ------------------------------------------------------ workspace anchor -- */
 /* The bottom of the rail is the frame's most valuable slot. It carries who you
    are and the one action this product exists for — never a status readout.
-   Everything shown here is true of a local studio: a workspace you named and
-   the songs actually sitting in it. No plans, no balances, no invented state. */
+
+   Round 2 put a derived song count on the second line and it contradicted
+   itself inside one session: "Local workspace" on Create, "No songs yet" on
+   Library, because the count only arrives when the Library screen reports it
+   and every other screen fell back to different copy. An anchor that changes
+   its mind is worse than one that says less.
+
+   So the second line is now a single fact that is true on every screen, in
+   every state, before anything has loaded: your songs stay on this machine.
+   It is also the commercial anchor §7a asked for. The song count keeps exactly
+   one home — the Library nav counter — which is where a count belongs. */
 
 const WORKSPACE_FALLBACK = 'My Studio';
-/** @type {?number} null until the library reports; never guessed. */
+/** One line, one meaning, true everywhere. Not derived, so it cannot disagree. */
+const WORKSPACE_META = 'Private to this computer';
+
+/** @type {?number} null until the library reports; never guessed. Nav badge only. */
 let songCount = null;
 
 function workspaceName() {
@@ -695,18 +721,12 @@ function workspaceName() {
   return stored || WORKSPACE_FALLBACK;
 }
 
-function songLine() {
-  if (songCount === null) return 'Local workspace';
-  if (songCount === 0) return 'No songs yet';
-  return songCount === 1 ? '1 song' : `${songCount} songs`;
-}
-
 function paintWorkspace() {
   const name = workspaceName();
   el.workspaceName.textContent = name;
   el.workspaceAvatar.textContent = name.slice(0, 1);
-  el.workspaceMeta.textContent = songLine();
-  el.workspaceBtn.title = `${name} — ${songLine()}`;
+  el.workspaceMeta.textContent = WORKSPACE_META;
+  el.workspaceBtn.title = `${name} — ${WORKSPACE_META}`;
 }
 
 function beginRename() {
@@ -765,6 +785,8 @@ function wireChrome() {
     if (e.key === 'Escape' && el.app.dataset.nav === 'open') setDrawer(false);
   });
 
+  // The song count has one home: the Library nav counter. It deliberately does
+  // not also appear under the workspace name — see the anchor note above.
   bus.on('library:changed', (payload) => {
     const count = Number(payload?.count);
     songCount = Number.isFinite(count) && count >= 0 ? count : null;
@@ -776,7 +798,6 @@ function wireChrome() {
       el.libraryCount.hidden = false;
       el.libraryCount.textContent = songCount > 999 ? '999+' : String(songCount);
     }
-    paintWorkspace();
   });
 }
 
@@ -882,13 +903,13 @@ const ROUTES = [
   { name: 'studio',   path: '/studio',   load: () => import('./screens/studio.js') },
   { name: 'library',  path: '/library',  load: () => import('./screens/library.js') },
   { name: 'lyrics',   path: '/lyrics',   load: () => import('./screens/lyrics.js') },
-  { name: 'covers',   path: '/covers',   load: () => import('./screens/covers.js') },
+  { name: 'art',      path: '/art',      load: () => import('./screens/art.js') },
   { name: 'settings', path: '/settings', load: () => import('./screens/settings.js') },
 ];
 
 const FALLBACK_TITLES = {
   create: 'Create', studio: 'Studio', library: 'Library',
-  lyrics: 'Lyrics', covers: 'Covers', settings: 'Settings',
+  lyrics: 'Lyrics', art: 'Art', settings: 'Settings',
 };
 
 const router = createRouter({
