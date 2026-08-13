@@ -160,7 +160,8 @@
       </p>
     </div>
     <div class="stamp">
-      <div><b>ROUND 1</b> — building</div>
+      <div><b>ROUND 2</b> — building</div>
+      <div>round 1 · 0 of 5</div>
       <div>13 Aug 2026</div>
     </div>
   </div>
@@ -169,10 +170,10 @@
 
   <div class="eyebrow">Standing</div>
   <div class="tiles">
-    <div class="tile"><div class="k">Round</div><div class="v">1</div><div class="n">of an open count</div></div>
-    <div class="tile"><div class="k">Pieces</div><div class="v">6</div><div class="n">judged independently</div></div>
-    <div class="tile"><div class="k">Blind wins</div><div class="v">—</div><div class="n">awaiting verdicts</div></div>
-    <div class="tile"><div class="k">References</div><div class="v">6</div><div class="n">captured logged-in</div></div>
+    <div class="tile"><div class="k">Round</div><div class="v">2</div><div class="n">of an open count</div></div>
+    <div class="tile"><div class="k">Blind wins</div><div class="v" style="color:var(--loss)">0<span style="color:var(--ink-mute);font-size:16px"> / 5</span></div><div class="n">round 1 — 4 called “obvious”</div></div>
+    <div class="tile"><div class="k">Verdict</div><div class="v" style="font-size:19px;line-height:1.25">Plumbing<br>on show</div><div class="n">named by all 5 judges</div></div>
+    <div class="tile"><div class="k">Real renders</div><div class="v">4</div><div class="n">through ComfyUI, verified</div></div>
   </div>
 
   <div class="eyebrow">Channels</div>
@@ -183,11 +184,11 @@
         <div class="ch-name">Create — simple</div>
         <div class="ch-file">js/screens/create.js</div>
       </div>
-      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="track"><span class="seg loss"></span><span class="seg live"></span><span class="rn">r2</span></div>
       <div class="readout">
-        <span class="chip live">building</span>
-        <p class="gap">One-line idea to finished song. Two real calls under one button —
-          <b>lyrics via local Codex, then generate</b> — because the backend will not write lyrics itself.</p>
+        <span class="chip loss">lost — obvious</span>
+        <p class="gap"><b>57% of the window was permanently empty</b>, and the only thing in it was
+          plumbing: two cards printing endpoint paths and a LAN address. Becoming the track-history list.</p>
       </div>
     </div>
 
@@ -196,11 +197,12 @@
         <div class="ch-name">Studio</div>
         <div class="ch-file">js/screens/studio.js</div>
       </div>
-      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="track"><span class="seg loss"></span><span class="seg live"></span><span class="rn">r2</span></div>
       <div class="readout">
-        <span class="chip live">building</span>
-        <p class="gap">The three-part structured caption plus a lyrics editor that
-          <b>validates the tag rules live</b> — tags alone on their line, 12–16 sung words per 10 seconds.</p>
+        <span class="chip loss">lost — obvious</span>
+        <p class="gap"><code>POST /api/generate-stream</code> sat centred under the primary button —
+          <b>“the loudest single tell”</b>. Duration offered three competing controls. The lyric fit
+          meter survives; the judge called it strong.</p>
       </div>
     </div>
 
@@ -209,11 +211,12 @@
         <div class="ch-name">Player</div>
         <div class="ch-file">js/player.js</div>
       </div>
-      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="track"><span class="seg win"></span><span class="rn">held</span></div>
       <div class="readout">
-        <span class="chip live">building</span>
-        <p class="gap">Persistent across every screen. Real decoded waveform, click-to-seek,
-          and a <b>live state for generation in progress</b> with a stop control.</p>
+        <span class="chip win">not faulted</span>
+        <p class="gap">The only channel no judge attacked. Its empty state —
+          <b>“Generate a track — it lands here automatically”</b> — was singled out as strong.
+          Left alone this round.</p>
       </div>
     </div>
 
@@ -222,11 +225,11 @@
         <div class="ch-name">Library</div>
         <div class="ch-file">js/screens/library.js</div>
       </div>
-      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="track"><span class="seg loss"></span><span class="seg live"></span><span class="rn">r2</span></div>
       <div class="readout">
-        <span class="chip live">building</span>
-        <p class="gap">Local persistence — there is no backend list endpoint. Keeps the
-          <b>seed</b> against every take so any result can be reproduced exactly.</p>
+        <span class="chip loss">lost — obvious</span>
+        <p class="gap">The judge measured our regenerate icon at <b>1.1:1 contrast</b> — literally
+          invisible — and delete sat inline at the same weight as play. Real defect, caught by eye.</p>
       </div>
     </div>
 
@@ -235,11 +238,12 @@
         <div class="ch-name">Lyrics &amp; Covers</div>
         <div class="ch-file">js/screens/lyrics.js · covers.js</div>
       </div>
-      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="track"><span class="seg loss"></span><span class="seg live"></span><span class="rn">r2</span></div>
       <div class="readout">
-        <span class="chip live">building</span>
-        <p class="gap">Covers must <b>degrade honestly</b> — the live backend reports
-          <code>coverArt: disabled</code>, so the screen states the real reason and the path to enable it.</p>
+        <span class="chip loss">lost — obvious · moderate</span>
+        <p class="gap">Sticky action bars <b>sliced both screens in half</b> — a label cut mid-glyph,
+          a primary button bisected. Cover art also came back online mid-round, so Covers is being
+          rebuilt to actually generate.</p>
       </div>
     </div>
 
@@ -248,11 +252,12 @@
         <div class="ch-name">Settings</div>
         <div class="ch-file">js/screens/settings.js</div>
       </div>
-      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="track"><span class="seg win"></span><span class="rn">held</span></div>
       <div class="readout">
-        <span class="chip live">building</span>
-        <p class="gap">Driven entirely by <code>/api/health</code>. Server-only values appear
-          <b>read-only</b> rather than as controls that do nothing.</p>
+        <span class="chip win">by design</span>
+        <p class="gap">Not judged against a consumer screen — it has no counterpart. This is now the
+          <b>only</b> place plumbing is allowed to appear, and everything the other screens leaked
+          moves here.</p>
       </div>
     </div>
 
@@ -270,6 +275,18 @@
 
   <div class="eyebrow">Decisions that shaped the build</div>
   <div class="notes">
+    <div class="note cut">
+      <b>Round 1's verdict, in one line: we published our own plumbing as product UI.</b>
+      All five judges found the build the same way — a LAN address in the sidebar, endpoint paths
+      under buttons, model quantization strings, byte counts, even a spec section number. None of
+      them saw the code. Diagnostics now live in Settings and in errors that only appear when
+      something is actually wrong.
+    </div>
+    <div class="note">
+      <b>The brief caused it.</b> The contract told builders to surface backend detail honestly, and
+      they made it permanent furniture. “Honest” means never faking success — not publishing the
+      machine to the user. The contract has been rewritten.
+    </div>
     <div class="note cut">
       <b>Cut: guidance and step sliders.</b> Both read from server environment variables, not the
       request body. A slider for either would move nothing — so they appear in Settings as
@@ -295,8 +312,9 @@
   </div>
 
   <footer>
-    Six references captured · scaffold committed · round 1 in flight.
-    Verdicts and named gaps land here as each blind comparison resolves.
+    Round 1 complete — 0 of 5, every gap named and recorded. Round 2 in flight: chrome de-plumbed,
+    five channels rebuilding against their own verdict, then a fresh blind panel that has never
+    seen either build. The loop runs until the screens win or you stop it.
   </footer>
 
 </div>
