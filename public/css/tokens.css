@@ -1,0 +1,289 @@
+/* ============================================================================
+   MaxMusic — design tokens
+   Single source of truth for colour, type, space, motion and layout.
+   Owned by the shell lane. Do not edit from a screen lane — use these, or a
+   local value scoped to your own screen's CSS file.
+
+   Palette derived by sampling public/logo.png:
+     background      #000000 with a faint blue cast (#01010a average)
+     wave ramp       hue 180 #0bf3fd -> 210 #1281f4 -> 265 #7422e6
+                     -> 300 #eb33ec -> 345 #e42a5a -> 40 #f6c057
+   ========================================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* --------------------------------------------------------------------
+     1. BRAND — the gradient is the one loud gesture. Six stops, in order.
+     -------------------------------------------------------------------- */
+  --brand-cyan: #0bf3fd;
+  --brand-blue: #1b7bf7;
+  --brand-violet: #7b22e6;
+  --brand-magenta: #e927d9;
+  --brand-red: #f32f55;
+  --brand-amber: #fbbf3f;
+
+  /* Deepened stops — for fills that sit under text. */
+  --brand-cyan-deep: #06a8c4;
+  --brand-blue-deep: #1355ae;
+  --brand-violet-deep: #56179f;
+  --brand-magenta-deep: #a11a97;
+  --brand-red-deep: #ab1f3b;
+  --brand-amber-deep: #b0842b;
+
+  /* Single-hue accent, used where a gradient would be noise
+     (focus rings, links, carets, selection). */
+  --accent: #35c8f5;
+  --accent-hover: #6ad9fa;
+  --accent-press: #16a8d8;
+  --accent-soft: rgba(53, 200, 245, 0.14);
+  --accent-softer: rgba(53, 200, 245, 0.07);
+
+  /* Gradients */
+  --gradient-brand: linear-gradient(
+    90deg,
+    var(--brand-cyan) 0%,
+    var(--brand-blue) 20%,
+    var(--brand-violet) 40%,
+    var(--brand-magenta) 60%,
+    var(--brand-red) 80%,
+    var(--brand-amber) 100%
+  );
+  --gradient-brand-135: linear-gradient(
+    135deg,
+    var(--brand-cyan) 0%,
+    var(--brand-blue) 20%,
+    var(--brand-violet) 40%,
+    var(--brand-magenta) 60%,
+    var(--brand-red) 80%,
+    var(--brand-amber) 100%
+  );
+  --gradient-brand-vertical: linear-gradient(
+    180deg,
+    var(--brand-cyan) 0%,
+    var(--brand-blue) 20%,
+    var(--brand-violet) 40%,
+    var(--brand-magenta) 60%,
+    var(--brand-red) 80%,
+    var(--brand-amber) 100%
+  );
+  --gradient-brand-conic: conic-gradient(
+    from 0deg,
+    var(--brand-cyan),
+    var(--brand-blue),
+    var(--brand-violet),
+    var(--brand-magenta),
+    var(--brand-red),
+    var(--brand-amber),
+    var(--brand-cyan)
+  );
+  /* Low-alpha wash for hairlines, hovers and generating states. */
+  --gradient-brand-wash: linear-gradient(
+    90deg,
+    rgba(11, 243, 253, 0.16) 0%,
+    rgba(27, 123, 247, 0.16) 20%,
+    rgba(123, 34, 230, 0.16) 40%,
+    rgba(233, 39, 217, 0.16) 60%,
+    rgba(243, 47, 85, 0.16) 80%,
+    rgba(251, 191, 63, 0.16) 100%
+  );
+  /* Two-stop cool slice — primary buttons, small accents. */
+  --gradient-brand-cool: linear-gradient(120deg, var(--brand-cyan), var(--brand-violet) 55%, var(--brand-magenta));
+  /* Two-stop warm slice — destructive-adjacent and "live" markers. */
+  --gradient-brand-warm: linear-gradient(120deg, var(--brand-magenta), var(--brand-red) 55%, var(--brand-amber));
+
+  --brand-glow: 0 0 0 1px rgba(11, 243, 253, 0.25), 0 6px 26px -8px rgba(123, 34, 230, 0.65);
+  --brand-glow-strong: 0 0 0 1px rgba(11, 243, 253, 0.4), 0 10px 40px -10px rgba(233, 39, 217, 0.7);
+
+  /* --------------------------------------------------------------------
+     2. SURFACE RAMP — near-black, faint blue cast, six steps.
+     -------------------------------------------------------------------- */
+  --surface-0: #06070b; /* app ground, behind everything */
+  --surface-1: #0b0d13; /* nav rail, player bar, sticky chrome */
+  --surface-2: #10131a; /* cards, panels */
+  --surface-3: #161a23; /* raised panel, popover, active chip */
+  --surface-4: #1e232e; /* hover on raised, tooltip, menu */
+  --surface-inset: #08090e; /* wells: text areas, code, track rows */
+
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-active: rgba(255, 255, 255, 0.075);
+  --surface-selected: rgba(53, 200, 245, 0.1);
+  --surface-scrim: rgba(3, 4, 7, 0.72);
+  --surface-glass: rgba(16, 19, 26, 0.82);
+
+  /* --------------------------------------------------------------------
+     3. TEXT RAMP
+     -------------------------------------------------------------------- */
+  --text-hi: #f2f5fa; /* headings, primary values */
+  --text: #ccd2de; /* body */
+  --text-mid: #8c94a6; /* secondary, labels */
+  --text-lo: #6e7889; /* meta, timestamps, helper text */
+  --text-faint: #4a5364; /* placeholder, disabled */
+  --text-inverse: #06070b; /* on top of a brand fill */
+  --text-link: var(--accent);
+
+  /* --------------------------------------------------------------------
+     4. BORDER RAMP
+     -------------------------------------------------------------------- */
+  --border-faint: rgba(255, 255, 255, 0.045);
+  --border: rgba(255, 255, 255, 0.085);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-brand: rgba(53, 200, 245, 0.45);
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent);
+  --focus-ring-tight: 0 0 0 2px rgba(53, 200, 245, 0.75);
+
+  /* --------------------------------------------------------------------
+     5. STATUS
+     -------------------------------------------------------------------- */
+  --ok: #3ddc97;
+  --ok-bg: rgba(61, 220, 151, 0.12);
+  --warn: #f5b544;
+  --warn-bg: rgba(245, 181, 68, 0.12);
+  --danger: #ff5f6d;
+  --danger-bg: rgba(255, 95, 109, 0.12);
+  --info: var(--accent);
+  --info-bg: var(--accent-soft);
+  --busy: var(--brand-violet);
+  --busy-bg: rgba(123, 34, 230, 0.14);
+
+  /* --------------------------------------------------------------------
+     6. RADII
+     -------------------------------------------------------------------- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-2xl: 28px;
+  --r-pill: 999px;
+  --r-circle: 50%;
+
+  /* --------------------------------------------------------------------
+     7. SPACE — 2 4 6 8 12 16 20 24 32 40 48 64
+     -------------------------------------------------------------------- */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+  --space-11: 48px;
+  --space-12: 64px;
+
+  /* --------------------------------------------------------------------
+     8. TYPE
+     -------------------------------------------------------------------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  --font-display: var(--font-sans);
+
+  --fs-3xs: 10px;
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+  --fs-3xl: 34px;
+  --fs-4xl: 44px;
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-normal: 1.5;
+  --lh-loose: 1.7;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-caps: 0.11em;
+
+  /* --------------------------------------------------------------------
+     9. SHADOW
+     -------------------------------------------------------------------- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 4px 14px -4px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 12px 32px -10px rgba(0, 0, 0, 0.72);
+  --shadow-4: 0 28px 64px -18px rgba(0, 0, 0, 0.8);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --shadow-glow-cyan: 0 0 24px -6px rgba(11, 243, 253, 0.55);
+  --shadow-glow-magenta: 0 0 24px -6px rgba(233, 39, 217, 0.55);
+
+  /* --------------------------------------------------------------------
+     10. MOTION
+     -------------------------------------------------------------------- */
+  --dur-instant: 80ms;
+  --dur-fast: 130ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --dur-slower: 520ms;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  --t-fast: var(--dur-fast) var(--ease-out);
+  --t-base: var(--dur-base) var(--ease-out);
+  --t-slow: var(--dur-slow) var(--ease-emphasized);
+
+  /* --------------------------------------------------------------------
+     11. LAYOUT
+     -------------------------------------------------------------------- */
+  --rail-w: 244px;
+  --rail-w-narrow: 72px;
+  --topbar-h: 54px;
+  --player-h: 84px;
+  --content-max: 1400px;
+  --gutter: var(--space-8);
+  --gutter-tight: var(--space-6);
+
+  /* Shared control metrics so every lane's buttons/fields line up. */
+  --control-h-sm: 28px;
+  --control-h: 34px;
+  --control-h-lg: 42px;
+  --field-bg: var(--surface-inset);
+  --field-border: var(--border);
+  --field-radius: var(--r-md);
+
+  /* --------------------------------------------------------------------
+     12. Z-INDEX
+     -------------------------------------------------------------------- */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-rail: 40;
+  --z-player: 50;
+  --z-overlay: 70;
+  --z-modal: 80;
+  --z-toast: 90;
+}
+
+/* Logo cropping geometry — the wave band of public/logo.png measured at
+   x 7.1%..93.3%, y 15.5%..59.0%. Set --mark-size to any width. */
+:root {
+  --mark-ratio: 0.561; /* height / width of the cropped wave band */
+  --mark-img-w: 1.1604; /* image width  as a multiple of --mark-size */
+  --mark-img-x: -0.0824; /* image offset as a multiple of --mark-size */
+  --mark-img-y: -0.1998;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 1ms;
+    --dur-fast: 1ms;
+    --dur-base: 1ms;
+    --dur-slow: 1ms;
+    --dur-slower: 1ms;
+  }
+}

@@ -1,0 +1,478 @@
+/* ============================================================================
+   MaxMusic — persistent player bar.
+   Owned by the player lane (public/js/player.js). Everything is scoped under
+   `.player`, the class player.js adds to `#player-root`.
+
+   Layout inside the shell's 84px bar:
+
+     ┌ job strip (only while a generation is running) ─────────────────────┐
+     │ ● Generating  queued …          ▓▓▒▒░░ sweep      0:42   [ Stop ]   │
+     ├ main row ───────────────────────────────────────────────────────────┤
+     │ [art] Title            ◀ ▶ ▶▶ ↻   0:42 ~~~~waveform~~~~ 3:00   🔊 ⬇ │
+     └─────────────────────────────────────────────────────────────────────┘
+   ========================================================================= */
+
+.playerbar.player {
+  --wave-idle: color-mix(in srgb, var(--text-lo) 70%, transparent);
+  --player-art: 46px;
+
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding-inline: var(--gutter) var(--space-7);
+  overflow: visible;
+}
+
+/* Brighten the shell's gradient hairline while something is generating. */
+.playerbar.player[data-job="live"]::before { opacity: .6; }
+.playerbar.player[data-job="live"] { --player-art: 40px; }
+.playerbar.player[data-job="live"] .player__wave { height: 32px; }
+
+/* =========================================================== job strip == */
+
+.player__job {
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  height: 26px;
+  padding-top: var(--space-3);
+  min-width: 0;
+}
+.player__job[hidden] { display: none; }
+
+.player__job-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--r-circle);
+  background: var(--gradient-brand-warm);
+  box-shadow: var(--shadow-glow-magenta);
+  animation: player-pulse 1.6s var(--ease-in-out) infinite;
+}
+
+.player__job-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+  white-space: nowrap;
+}
+.player__job-title {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-hi);
+}
+.player__job-status {
+  font-size: var(--fs-2xs);
+  color: var(--text-lo);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46ch;
+}
+
+.player__job-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.player__job-track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 32%;
+  border-radius: inherit;
+  background: var(--gradient-brand);
+  animation: player-sweep 2s var(--ease-in-out) infinite;
+}
+
+.player__job-elapsed {
+  flex: none;
+  font-size: var(--fs-2xs);
+  color: var(--text-mid);
+}
+
+.player__job-stop { flex: none; gap: var(--space-3); }
+.player__job-stop .icon { width: 13px; height: 13px; }
+.player__job-stop[hidden] { display: none; }
+
+/* ============================================================= main row == */
+
+.player__main {
+  /* Explicit row: the job strip is display:none most of the time, and an
+     auto-placed main row would then sit in row 1 and hug its content. */
+  grid-row: 2;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 320px)      /* now playing   */
+    auto                  /* transport     */
+    minmax(200px, 1fr)    /* scrubber      */
+    auto;                 /* volume + save */
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------ now playing */
+
+.player__now {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.player__art {
+  position: relative;
+  width: var(--player-art);
+  height: var(--player-art);
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-faint);
+  background-color: var(--surface-2);
+  background-image: var(--gradient-brand-wash);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  transition: width var(--t-base), height var(--t-base);
+}
+.player__art-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.player__art-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--text-mid);
+  opacity: .85;
+}
+.player[data-player="empty"] .player__art {
+  background-image: none;
+  box-shadow: none;
+}
+.player[data-player="empty"] .player__art-icon { color: var(--text-faint); }
+.player__art-img:not([hidden]) ~ .player__art-icon { display: none; }
+
+/* three-bar level meter, only while sound is actually coming out */
+.player__eq {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  padding-bottom: 6px;
+  background: linear-gradient(180deg, transparent 45%, var(--surface-scrim));
+}
+.player__eq i {
+  width: 3px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--gradient-brand-vertical);
+  animation: player-eq 900ms var(--ease-in-out) infinite;
+}
+.player__eq i:nth-child(2) { animation-delay: 160ms; animation-duration: 760ms; }
+.player__eq i:nth-child(3) { animation-delay: 320ms; animation-duration: 1040ms; }
+.player[data-playing="true"] .player__eq { display: flex; }
+
+.player__meta { min-width: 0; display: grid; gap: 2px; }
+.player__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-hi);
+  line-height: var(--lh-snug);
+}
+.player[data-player="empty"] .player__title { color: var(--text-mid); font-weight: var(--fw-medium); }
+.player__sub {
+  font-size: var(--fs-2xs);
+  color: var(--text-lo);
+  line-height: var(--lh-snug);
+}
+.player__sub.is-error { color: var(--danger); }
+
+/* -------------------------------------------------------------- transport */
+
+.player__transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.player__btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--text-mid);
+  transition: color var(--t-fast), background var(--t-fast), opacity var(--t-fast);
+}
+.player__btn .icon { width: 17px; height: 17px; }
+.player__btn:hover:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--text-hi);
+  background: var(--surface-hover);
+}
+.player__btn:disabled,
+.player__btn[aria-disabled="true"] { color: var(--text-faint); cursor: not-allowed; }
+.player__btn--sm { width: 28px; height: 28px; }
+.player__btn--sm .icon { width: 15px; height: 15px; }
+
+/* repeat: single-hue accent when armed — a gradient here would be noise */
+.player__btn[data-mode="all"]:not(:disabled),
+.player__btn[data-mode="one"]:not(:disabled) { color: var(--accent); }
+.player__btn[data-mode="all"]:hover:not(:disabled),
+.player__btn[data-mode="one"]:hover:not(:disabled) { color: var(--accent-hover); }
+.player__btn:disabled .player__repeat-one { color: var(--text-faint); }
+#player-repeat { position: relative; }
+.player__repeat-one {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: var(--fs-3xs);
+  font-weight: var(--fw-bold);
+  line-height: 1;
+  color: var(--accent);
+  background: var(--surface-1);
+  border-radius: var(--r-xs);
+  padding: 1px;
+  display: none;
+}
+.player__btn[data-mode="one"] .player__repeat-one { display: block; }
+
+/* the play button: near-black disc inside a brand-gradient ring */
+.player__play {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-circle);
+  background: var(--surface-3);
+  color: var(--text-hi);
+  margin-inline: var(--space-2);
+  transition: background var(--t-fast), transform var(--dur-instant) var(--ease-out),
+              box-shadow var(--t-base), color var(--t-fast);
+}
+.player__play::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: var(--gradient-brand);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: .85;
+  transition: opacity var(--t-base);
+  pointer-events: none;
+}
+.player__play .icon { width: 18px; height: 18px; }
+.player[data-playing="false"] .player__play-icon { transform: translateX(1px); }
+.player__play:hover:not(:disabled) {
+  background: var(--surface-4);
+  box-shadow: var(--shadow-glow-cyan);
+}
+.player__play:hover:not(:disabled)::before { opacity: 1; }
+.player__play:active:not(:disabled) { transform: scale(.96); }
+.player__play:disabled { color: var(--text-faint); background: var(--surface-2); cursor: not-allowed; }
+.player__play:disabled::before { opacity: .18; }
+
+/* -------------------------------------------------------------- scrubber */
+
+.player__scrub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.player__time {
+  flex: none;
+  width: 38px;
+  font-size: var(--fs-2xs);
+  color: var(--text-lo);
+  text-align: right;
+}
+.player__time--total { text-align: left; }
+.player[data-playing="true"] #player-time { color: var(--text-mid); }
+
+.player__wave {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  cursor: pointer;
+  touch-action: none;
+  border-radius: var(--r-xs);
+  transition: height var(--t-base);
+}
+.player__wave canvas { width: 100%; height: 100%; }
+.player__wave:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.player[data-player="empty"] .player__wave { cursor: default; opacity: .55; }
+.player__wave[data-wave="unavailable"] canvas { opacity: .5; }
+
+/* “reading audio…” / “waveform unavailable — …” */
+.player__wave-note {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 100%;
+  padding: 2px var(--space-5);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  font-size: var(--fs-3xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-faint);
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player__wave-note[hidden] { display: none; }
+
+.player__wave[data-wave="pending"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--accent-softer), transparent);
+  transform: translateX(-100%);
+  animation: player-shimmer 1.5s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
+
+.player__wave-cursor {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--border-strong);
+  pointer-events: none;
+}
+.player__wave-cursor[hidden] { display: none; }
+
+.player__wave-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 2px var(--space-4);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-4);
+  color: var(--text-hi);
+  font-size: var(--fs-3xs);
+  box-shadow: var(--shadow-3);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.player__wave-bubble[hidden] { display: none; }
+
+/* ---------------------------------------------------------- right cluster */
+
+.player__side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  justify-self: end;
+}
+
+.player__volume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.player__vol {
+  width: 84px;
+  flex: none;
+}
+
+.player__download[aria-disabled="true"] { opacity: .55; }
+
+/* ================================================================ states == */
+
+.player[data-buffering="true"] .player__play::before {
+  animation: player-ring 1.4s linear infinite;
+  background: var(--gradient-brand);
+  background-size: 220% 100%;
+}
+
+/* ============================================================ animations == */
+
+@keyframes player-eq {
+  0%, 100% { height: 5px; }
+  50%      { height: 17px; }
+}
+@keyframes player-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .55; transform: scale(.82); }
+}
+@keyframes player-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(330%); }
+}
+@keyframes player-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes player-ring {
+  to { background-position: 220% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player__eq i,
+  .player__job-dot,
+  .player__job-track i,
+  .player__wave[data-wave="pending"]::after,
+  .player[data-buffering="true"] .player__play::before { animation: none; }
+  .player__eq i { height: 11px; }
+  .player__job-track i { width: 100%; opacity: .5; }
+}
+
+/* ============================================================ responsive == */
+
+@media (max-width: 1240px) {
+  .playerbar.player { --player-art: 44px; }
+  .player__main { gap: var(--space-6); grid-template-columns: minmax(0, 260px) auto minmax(180px, 1fr) auto; }
+  .player__job-status { max-width: 34ch; }
+}
+
+@media (max-width: 1040px) {
+  .player__vol { width: 64px; }
+  .player__main { grid-template-columns: minmax(0, 220px) auto minmax(150px, 1fr) auto; }
+}
+
+@media (max-width: 900px) {
+  .playerbar.player { padding-inline: var(--space-6); }
+  .player__main { grid-template-columns: minmax(0, 190px) auto minmax(120px, 1fr) auto; }
+  .player__vol,
+  #player-repeat { display: none; }
+  .player__job-status { display: none; }
+}
+
+@media (max-width: 720px) {
+  .playerbar.player { --player-art: 40px; }
+  .player__main { gap: var(--space-5); grid-template-columns: minmax(0, 1fr) auto minmax(90px, 1.1fr) auto; }
+  .player__time--total { display: none; }
+  .player__job-track { display: none; }
+}
+
+@media (max-width: 560px) {
+  .player__sub { display: none; }
+  .player__scrub { gap: var(--space-4); }
+  .player__time { width: 32px; }
+}

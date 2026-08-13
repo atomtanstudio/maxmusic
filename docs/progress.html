@@ -1,0 +1,302 @@
+<title>MaxMusic — Gauntlet</title>
+<style>
+  /* Deliberately single-world: a studio console readout. Dark is the design,
+     not a theme variant. Every colour is painted explicitly so the page holds
+     on any host ground. */
+  :root {
+    --ground: #08080C;
+    --panel: #101018;
+    --panel-hi: #16161F;
+    --hair: #1F1F2B;
+    --hair-lit: #2C2C3C;
+    --ink: #E8E8F0;
+    --ink-dim: #9A9AAE;
+    --ink-mute: #6A6A7E;
+
+    --cyan: #00C0E0;
+    --blue: #0090F0;
+    --violet: #7060F0;
+    --magenta: #B040F0;
+    --red: #F04060;
+    --amber: #E0A040;
+    --ramp: linear-gradient(90deg, #00C0E0, #0090F0, #7060F0, #B040F0, #F04060, #E0A040);
+
+    --win: #3DD68C;
+    --loss: #F04060;
+    --wait: #4A4A5C;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 28px 72px; }
+
+  /* ---- masthead ---- */
+  .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  h1 {
+    font-size: clamp(28px, 4.4vw, 44px);
+    line-height: 1.05; margin: 0; letter-spacing: -0.025em; font-weight: 680;
+    text-wrap: balance;
+  }
+  h1 .mark {
+    background: var(--ramp);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { color: var(--ink-dim); margin: 10px 0 0; max-width: 60ch; }
+
+  .stamp {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-mute);
+    text-align: right; white-space: nowrap;
+  }
+  .stamp b { color: var(--ink-dim); font-weight: 500; }
+
+  .rule { height: 2px; background: var(--ramp); border-radius: 2px; margin: 26px 0 0; opacity: .85; }
+
+  /* ---- section headings ---- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ink-mute); margin: 40px 0 14px; display: flex; align-items: center; gap: 12px;
+  }
+  .eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
+
+  /* ---- status tiles ---- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .tile { background: var(--panel); border: 1px solid var(--hair); border-radius: 10px; padding: 14px 16px; }
+  .tile .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-mute); }
+  .tile .v { font-size: 26px; font-weight: 620; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .tile .n { font-size: 12.5px; color: var(--ink-dim); margin-top: 2px; }
+
+  /* ---- channel strips ---- */
+  .strips { display: flex; flex-direction: column; gap: 10px; }
+  .strip {
+    background: var(--panel); border: 1px solid var(--hair); border-radius: 10px;
+    padding: 15px 18px; display: grid; gap: 12px;
+    grid-template-columns: 168px 132px 1fr; align-items: start;
+  }
+  .strip.is-live { border-color: var(--hair-lit); background: var(--panel-hi); }
+
+  .ch-name { font-weight: 620; letter-spacing: -0.01em; }
+  .ch-file { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); margin-top: 3px; word-break: break-all; }
+
+  /* round segments = signal path */
+  .track { display: flex; gap: 4px; align-items: center; }
+  .seg {
+    width: 26px; height: 8px; border-radius: 2px; background: var(--wait);
+    position: relative;
+  }
+  .seg.win { background: var(--win); }
+  .seg.loss { background: var(--loss); }
+  .seg.live { background: var(--ramp); animation: pulse 1.7s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .seg.live { animation: none; opacity: .9 } }
+  .track .rn { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); margin-left: 6px; }
+
+  .readout { min-width: 0; }
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--hair-lit);
+    color: var(--ink-dim);
+  }
+  .chip.win { color: var(--win); border-color: color-mix(in srgb, var(--win) 45%, transparent); }
+  .chip.loss { color: var(--loss); border-color: color-mix(in srgb, var(--loss) 45%, transparent); }
+  .chip.live { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 45%, transparent); }
+  .gap { margin: 7px 0 0; color: var(--ink-dim); font-size: 13.5px; }
+  .gap b { color: var(--ink); font-weight: 560; }
+
+  /* ---- refs ---- */
+  .refs { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  .ref {
+    background: var(--panel); border: 1px solid var(--hair); border-radius: 9px;
+    padding: 11px 13px;
+  }
+  .ref .t { font-size: 13.5px; font-weight: 560; }
+  .ref .d { font-size: 12px; color: var(--ink-mute); margin-top: 2px; }
+
+  /* ---- notes ---- */
+  .notes { display: flex; flex-direction: column; gap: 9px; }
+  .note {
+    background: var(--panel); border: 1px solid var(--hair); border-left: 2px solid var(--amber);
+    border-radius: 0 8px 8px 0; padding: 12px 15px; font-size: 13.5px; color: var(--ink-dim);
+  }
+  .note b { color: var(--ink); font-weight: 580; }
+  .note.cut { border-left-color: var(--red); }
+  .note.ok { border-left-color: var(--win); }
+
+  code {
+    font-family: var(--mono); font-size: .89em;
+    background: #1A1A24; border: 1px solid var(--hair); border-radius: 4px; padding: 1px 5px;
+    color: var(--cyan);
+  }
+
+  footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--hair); color: var(--ink-mute); font-size: 12.5px; }
+
+  @media (max-width: 720px) {
+    .strip { grid-template-columns: 1fr; gap: 9px; }
+    .wrap { padding: 28px 18px 56px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <h1><span class="mark">MaxMusic</span> — the gauntlet</h1>
+      <p class="sub">
+        Every screen gets built, screenshotted for real, and put side by side with a shipped
+        commercial product — logos cropped, slots shuffled, judged by an agent that never saw
+        the build. Losers come back with one named gap.
+      </p>
+    </div>
+    <div class="stamp">
+      <div><b>ROUND 1</b> — building</div>
+      <div>13 Aug 2026</div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="eyebrow">Standing</div>
+  <div class="tiles">
+    <div class="tile"><div class="k">Round</div><div class="v">1</div><div class="n">of an open count</div></div>
+    <div class="tile"><div class="k">Pieces</div><div class="v">6</div><div class="n">judged independently</div></div>
+    <div class="tile"><div class="k">Blind wins</div><div class="v">—</div><div class="n">awaiting verdicts</div></div>
+    <div class="tile"><div class="k">References</div><div class="v">6</div><div class="n">captured logged-in</div></div>
+  </div>
+
+  <div class="eyebrow">Channels</div>
+  <div class="strips">
+
+    <div class="strip is-live">
+      <div>
+        <div class="ch-name">Create — simple</div>
+        <div class="ch-file">js/screens/create.js</div>
+      </div>
+      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="readout">
+        <span class="chip live">building</span>
+        <p class="gap">One-line idea to finished song. Two real calls under one button —
+          <b>lyrics via local Codex, then generate</b> — because the backend will not write lyrics itself.</p>
+      </div>
+    </div>
+
+    <div class="strip is-live">
+      <div>
+        <div class="ch-name">Studio</div>
+        <div class="ch-file">js/screens/studio.js</div>
+      </div>
+      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="readout">
+        <span class="chip live">building</span>
+        <p class="gap">The three-part structured caption plus a lyrics editor that
+          <b>validates the tag rules live</b> — tags alone on their line, 12–16 sung words per 10 seconds.</p>
+      </div>
+    </div>
+
+    <div class="strip is-live">
+      <div>
+        <div class="ch-name">Player</div>
+        <div class="ch-file">js/player.js</div>
+      </div>
+      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="readout">
+        <span class="chip live">building</span>
+        <p class="gap">Persistent across every screen. Real decoded waveform, click-to-seek,
+          and a <b>live state for generation in progress</b> with a stop control.</p>
+      </div>
+    </div>
+
+    <div class="strip is-live">
+      <div>
+        <div class="ch-name">Library</div>
+        <div class="ch-file">js/screens/library.js</div>
+      </div>
+      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="readout">
+        <span class="chip live">building</span>
+        <p class="gap">Local persistence — there is no backend list endpoint. Keeps the
+          <b>seed</b> against every take so any result can be reproduced exactly.</p>
+      </div>
+    </div>
+
+    <div class="strip is-live">
+      <div>
+        <div class="ch-name">Lyrics &amp; Covers</div>
+        <div class="ch-file">js/screens/lyrics.js · covers.js</div>
+      </div>
+      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="readout">
+        <span class="chip live">building</span>
+        <p class="gap">Covers must <b>degrade honestly</b> — the live backend reports
+          <code>coverArt: disabled</code>, so the screen states the real reason and the path to enable it.</p>
+      </div>
+    </div>
+
+    <div class="strip is-live">
+      <div>
+        <div class="ch-name">Settings</div>
+        <div class="ch-file">js/screens/settings.js</div>
+      </div>
+      <div class="track"><span class="seg live"></span><span class="rn">r1</span></div>
+      <div class="readout">
+        <span class="chip live">building</span>
+        <p class="gap">Driven entirely by <code>/api/health</code>. Server-only values appear
+          <b>read-only</b> rather than as controls that do nothing.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="eyebrow">The bar</div>
+  <div class="refs">
+    <div class="ref"><div class="t">Suno — Advanced create</div><div class="d">real, logged in</div></div>
+    <div class="ref"><div class="t">Suno — Simple create</div><div class="d">real, logged in</div></div>
+    <div class="ref"><div class="t">Suno — Library</div><div class="d">real, logged in</div></div>
+    <div class="ref"><div class="t">Suno — Explore</div><div class="d">public feed</div></div>
+    <div class="ref"><div class="t">MiniMax Music 3 — Simple</div><div class="d">official Space</div></div>
+    <div class="ref"><div class="t">MiniMax Music 3 — Studio</div><div class="d">official Space</div></div>
+  </div>
+
+  <div class="eyebrow">Decisions that shaped the build</div>
+  <div class="notes">
+    <div class="note cut">
+      <b>Cut: guidance and step sliders.</b> Both read from server environment variables, not the
+      request body. A slider for either would move nothing — so they appear in Settings as
+      read-only server values instead.
+    </div>
+    <div class="note cut">
+      <b>Cut: auto-lyrics toggle.</b> <code>lyrics_optimizer</code> throws outright in ComfyUI mode.
+      Simple mode calls the lyrics endpoint first and shows you what it wrote.
+    </div>
+    <div class="note ok">
+      <b>Brand sampled, not guessed.</b> The ramp comes from the logo's own pixels, left to right:
+      <code>#00C0E0</code> <code>#0090F0</code> <code>#7060F0</code> <code>#B040F0</code>
+      <code>#F04060</code> <code>#E0A040</code>.
+    </div>
+    <div class="note">
+      <b>Suno is the floor, not the template.</b> A screen that reads as a Suno reskin fails even
+      if it is well made. The judging asks which looks like a shipped product — the aim is to win it.
+    </div>
+    <div class="note">
+      <b>The old app is untouched.</b> It keeps running on <code>:3010</code> and is also the backend
+      this build proxies to. The redesign serves from <code>:3020</code>.
+    </div>
+  </div>
+
+  <footer>
+    Six references captured · scaffold committed · round 1 in flight.
+    Verdicts and named gaps land here as each blind comparison resolves.
+  </footer>
+
+</div>

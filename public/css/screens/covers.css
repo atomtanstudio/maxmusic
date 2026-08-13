@@ -1,0 +1,498 @@
+/* ============================================================================
+   Covers — album art over POST /api/cover-art. Owned by the covers lane.
+   Scoped under .screen-covers (plus the .cov-* nodes placed in the topbar slot).
+   Tokens only.
+   ========================================================================= */
+
+/* Scoped rules below set `display` on class selectors, which outranks the UA
+   `[hidden] { display: none }`. Keep the attribute authoritative. */
+.screen-covers [hidden] { display: none !important; }
+
+.screen-covers {
+  height: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding: var(--gutter);
+  display: grid;
+  grid-template-columns: 420px minmax(0, 1fr);
+  gap: var(--gutter);
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------- topbar fragment -- */
+
+.cov-provider {
+  gap: var(--space-4);
+  height: 22px;
+  text-transform: none;
+  letter-spacing: var(--tracking-wide);
+  font-family: var(--font-mono);
+  font-size: var(--fs-3xs);
+}
+.cov-provider__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--r-circle);
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 20%, transparent);
+}
+
+/* ======================================================== COMPOSER ======= */
+
+.screen-covers .cov-compose {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.screen-covers .cov-compose__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding-right: var(--space-2);
+  /* soften the cut where the column scrolls under the action bar */
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 26px), transparent 100%);
+}
+
+.screen-covers .cov-panel { flex: none; }
+.screen-covers .cov-panel .panel__body { padding: var(--space-6); }
+.screen-covers .cov-panel .stack { gap: var(--space-6); }
+
+.screen-covers .cov-music { min-height: 76px; }
+.screen-covers .cov-prompt { min-height: 104px; }
+
+.screen-covers .cov-modes,
+.screen-covers .cov-count { align-self: flex-start; }
+.screen-covers .cov-modes { display: flex; }
+.screen-covers .cov-modes .segment__item { padding-inline: var(--space-5); font-size: var(--fs-xs); }
+.screen-covers .cov-count .segment__item { padding-inline: var(--space-6); font-family: var(--font-mono); }
+.screen-covers .segment__item:disabled { color: var(--text-faint); }
+
+.screen-covers .cov-ratios { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.screen-covers .cov-ratios .chip:disabled {
+  opacity: .4;
+  background: var(--surface-inset);
+  border-color: var(--border-faint);
+  color: var(--text-faint);
+}
+.screen-covers .cov-ratios .chip:disabled:hover { border-color: var(--border-faint); background: var(--surface-inset); }
+
+.screen-covers .cov-lock { line-height: var(--lh-snug); }
+
+/* request body ------------------------------------------------------------- */
+
+.screen-covers .cov-details {
+  flex: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.screen-covers .cov-details__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.screen-covers .cov-details__summary::-webkit-details-marker { display: none; }
+.screen-covers .cov-details__summary:hover { background: var(--surface-hover); }
+.screen-covers .cov-details__chev {
+  width: 15px; height: 15px;
+  color: var(--text-faint);
+  transition: transform var(--t-fast);
+}
+.screen-covers .cov-details[open] .cov-details__chev { transform: rotate(90deg); }
+.screen-covers .cov-details__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: 0 var(--space-6) var(--space-6);
+}
+.screen-covers .cov-payload {
+  margin: 0;
+  padding: var(--space-5);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-2xs);
+  line-height: 1.65;
+  color: var(--text-mid);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* generate ----------------------------------------------------------------- */
+
+.screen-covers .cov-generate {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-faint);
+}
+.screen-covers .cov-generate__hint { line-height: var(--lh-snug); }
+
+/* suggestion from track:new ------------------------------------------------ */
+
+.screen-covers .cov-suggest {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-brand);
+  background: var(--surface-selected);
+}
+.screen-covers .cov-suggest__icon { color: var(--brand-cyan); flex: none; }
+.screen-covers .cov-suggest__body { min-width: 0; flex: 1 1 auto; }
+.screen-covers .cov-suggest__title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========================================================== CANVAS ======= */
+
+.screen-covers .cov-canvas {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  align-items: center;
+  padding-right: var(--space-2);
+}
+
+/* the stage ---------------------------------------------------------------- */
+
+.screen-covers .cov-stage {
+  --stage-ratio: 1 / 1;
+  flex: none;
+  width: 100%;
+  max-width: min(580px, 56vh);
+  aspect-ratio: var(--stage-ratio);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border-faint);
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-3);
+}
+.screen-covers .cov-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-brand-wash);
+  opacity: .1;
+  pointer-events: none;
+}
+.screen-covers .cov-stage[data-mode="image"] { border-color: var(--border); background: var(--surface-inset); }
+.screen-covers .cov-stage[data-mode="image"]::before { opacity: 0; }
+.screen-covers .cov-stage[data-mode="off"] {
+  border-style: dashed;
+  border-color: var(--border);
+  background: var(--surface-inset);
+}
+/* When the capability is off the frame is the footnote and the card is the
+   headline, so the stage steps back to make room for it. */
+.screen-covers[data-state="off"] .cov-stage { max-width: min(300px, 30vh); }
+.screen-covers[data-state="off"] .cov-stage__inner { padding: var(--space-6); gap: var(--space-4); }
+.screen-covers[data-state="off"] .cov-stage__icon { width: 38px; height: 38px; }
+.screen-covers[data-state="off"] .cov-stage__title { font-size: var(--fs-md); }
+.screen-covers[data-state="off"] .cov-stage__text { font-size: var(--fs-xs); }
+.screen-covers .cov-stage[data-mode="off"]::before { opacity: .05; }
+.screen-covers .cov-stage[data-mode="error"] { border-color: color-mix(in srgb, var(--danger) 32%, transparent); }
+
+/* Faint grid so an empty frame still reads as a canvas, not a broken image. */
+.screen-covers .cov-stage[data-mode="idle"]::after,
+.screen-covers .cov-stage[data-mode="off"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--border-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border-faint) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 10%, transparent 74%);
+  mask-image: radial-gradient(circle at 50% 50%, #000 10%, transparent 74%);
+}
+
+.screen-covers .cov-stage__inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: var(--space-5);
+  padding: var(--space-9);
+  text-align: center;
+  max-width: 42ch;
+}
+.screen-covers .cov-stage[data-mode="image"] .cov-stage__inner {
+  padding: 0;
+  max-width: none;
+  width: 100%;
+  height: 100%;
+}
+.screen-covers .cov-stage__img { width: 100%; height: 100%; object-fit: cover; }
+
+.screen-covers .cov-stage__icon {
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border-radius: var(--r-lg);
+  background: var(--surface-3);
+  border: 1px solid var(--border-faint);
+  color: var(--text-faint);
+}
+.screen-covers .cov-stage__icon .icon { width: 21px; height: 21px; }
+.screen-covers .cov-stage[data-mode="error"] .cov-stage__icon { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+
+.screen-covers .cov-stage__title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  letter-spacing: var(--tracking-tight);
+}
+.screen-covers .cov-stage__text { font-size: var(--fs-sm); color: var(--text-lo); line-height: var(--lh-normal); }
+.screen-covers .cov-stage__text--verbatim {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--text);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-sm);
+  padding: var(--space-5);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  justify-self: stretch;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.screen-covers .cov-stage[data-mode="error"] .cov-stage__inner {
+  width: 100%;
+  max-width: none;
+  padding: var(--space-7);
+}
+.screen-covers .cov-stage__time { font-size: var(--fs-sm); color: var(--text-mid); }
+.screen-covers .cov-stage__spinner { width: 26px; height: 26px; color: var(--brand-violet); }
+
+.screen-covers .cov-stage__pulse {
+  position: absolute;
+  inset: -30%;
+  background: var(--gradient-brand-conic);
+  opacity: .12;
+  filter: blur(42px);
+  animation: cov-spin 7s linear infinite;
+}
+@keyframes cov-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .screen-covers .cov-stage__pulse { animation: none; }
+}
+
+/* result detail ------------------------------------------------------------ */
+
+.screen-covers .cov-detail {
+  flex: none;
+  width: 100%;
+  max-width: min(580px, 56vh);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.screen-covers .cov-detail__head { display: flex; align-items: center; gap: var(--space-4); }
+.screen-covers .cov-detail__titles { min-width: 0; }
+.screen-covers .cov-detail__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.screen-covers .cov-detail__meta { font-size: var(--fs-2xs); color: var(--text-faint); }
+.screen-covers .cov-detail__prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.screen-covers .cov-detail__promptText {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--text-mid);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-sm);
+  padding: var(--space-5);
+  max-height: 148px;
+  overflow-y: auto;
+}
+
+/* ============================================ the honest disabled state === */
+
+.screen-covers .cov-off {
+  flex: none;
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-7);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-faint);
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
+}
+.screen-covers .cov-off::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--gradient-brand);
+  opacity: .5;
+}
+
+.screen-covers .cov-off__head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); }
+.screen-covers .cov-off__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-snug);
+}
+.screen-covers .cov-off__reason {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-faint);
+  border-left: 2px solid var(--warn);
+  border-radius: var(--r-sm);
+  padding: var(--space-5) var(--space-6);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.screen-covers .cov-off__paths { display: flex; flex-direction: column; gap: var(--space-5); }
+.screen-covers .cov-paths { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.screen-covers .cov-path { display: flex; gap: var(--space-5); }
+.screen-covers .cov-path__n {
+  flex: none;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: var(--r-circle);
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-mid);
+  font-size: var(--fs-2xs);
+  margin-top: 1px;
+}
+.screen-covers .cov-path__body { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.screen-covers .cov-path__title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-hi); }
+.screen-covers .cov-path__text { font-size: var(--fs-xs); color: var(--text-lo); line-height: var(--lh-snug); }
+
+.screen-covers .cov-env { position: relative; }
+.screen-covers .cov-env__code {
+  margin: 0;
+  padding: var(--space-5) var(--space-10) var(--space-5) var(--space-5);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-2xs);
+  line-height: 1.75;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.screen-covers .cov-env__copy { position: absolute; top: var(--space-3); right: var(--space-3); }
+
+.screen-covers .cov-off__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-faint);
+  padding-top: var(--space-6);
+}
+.screen-covers .cov-off__stamp { font-size: var(--fs-3xs); color: var(--text-faint); }
+
+/* ------------------------------------------------------------- history --- */
+
+.screen-covers .cov-history {
+  flex: none;
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  border-top: 1px solid var(--border-faint);
+  padding-top: var(--space-6);
+}
+.screen-covers .cov-history__head { display: flex; align-items: center; gap: var(--space-4); }
+.screen-covers .cov-history__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--space-5);
+}
+.screen-covers .cov-thumb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  text-align: left;
+  border-radius: var(--r-md);
+  padding: 0;
+}
+.screen-covers .cov-thumb img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-faint);
+  background: var(--surface-inset);
+  transition: border-color var(--t-fast), transform var(--t-fast);
+}
+.screen-covers .cov-thumb:hover img { border-color: var(--border-strong); transform: translateY(-2px); }
+.screen-covers .cov-thumb.is-active img { border-color: var(--border-brand); box-shadow: var(--shadow-glow-cyan); }
+.screen-covers .cov-thumb__label { font-size: var(--fs-2xs); color: var(--text-lo); }
+
+/* ===================================================== RESPONSIVE ======== */
+
+@media (max-width: 1240px) {
+  .screen-covers { grid-template-columns: 372px minmax(0, 1fr); }
+}
+
+@media (max-width: 1040px) {
+  .screen-covers {
+    height: auto;
+    overflow: visible;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .screen-covers .cov-compose__scroll,
+  .screen-covers .cov-canvas { overflow: visible; padding-right: 0; }
+  .screen-covers .cov-compose__scroll { -webkit-mask-image: none; mask-image: none; }
+  .screen-covers .cov-stage { max-width: 460px; }
+  .screen-covers .cov-detail { max-width: 460px; }
+}

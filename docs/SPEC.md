@@ -20,11 +20,21 @@ Rebuild the MaxMusic front end until it reads as a shipped commercial product.
 | `refs/mm3-simple.png` | MiniMax Music 3 Studio, Simple mode |
 | `refs/mm3-studio.png` | MiniMax Music 3 Studio, Studio mode |
 
-Suno is the bar for **visual and interaction quality only** — layout density, typography,
-spacing, control affordances, motion, the persistent player, empty/loading states.
+Suno is a **floor to beat, not a template to copy.** It is one reference among several
+(Udio and Treblo were also cited); it is in `refs/` because it was the one that could be
+captured logged-in and at full fidelity.
 
-Suno is **NOT** a feature checklist. Do not copy Suno features MiniMax Music 3 cannot do
-(personas, stems, remix/extend, covers-of-artists, credits). Features come only from §3.
+What to take from it: the *quality level* only — layout density, typographic rhythm,
+spacing discipline, control affordances, motion, the persistent player, and how seriously
+it treats empty and loading states.
+
+What NOT to take: its visual identity. A screen that reads as a Suno reskin has failed
+even if it is well made. MaxMusic has its own brand (§2) and should look like its own
+product — a distinct, opinionated interface that a designer would defend on its own terms.
+The goal is to **win** the blind comparison, not to tie it.
+
+Suno is also **NOT** a feature checklist. Do not copy Suno features MiniMax Music 3 cannot
+do (personas, stems, remix/extend, covers-of-artists, credits). Features come only from §3.
 
 ---
 
@@ -33,6 +43,20 @@ Suno is **NOT** a feature checklist. Do not copy Suno features MiniMax Music 3 c
 - Logo: `public/logo.png` (1190×1322, transparent-dark PNG). Use the PNG. Do not trace it
   to SVG — that flattens the gradient.
 - Palette: neon on near-black, running **cyan → blue → violet → magenta → red → amber**.
+- These stops are **sampled from the actual logo pixels**, left to right. Use them verbatim:
+
+  | Stop | Hex |
+  |---|---|
+  | cyan | `#00C0E0` |
+  | blue | `#0090F0` |
+  | indigo | `#2090F0` |
+  | violet | `#7060F0` |
+  | magenta | `#B040F0` |
+  | red | `#F04060` |
+  | amber | `#E0A040` |
+
+  Canonical ramp:
+  `linear-gradient(90deg,#00C0E0,#0090F0,#7060F0,#B040F0,#F04060,#E0A040)`
 - The gradient is the brand's one loud gesture. Use it on the mark, on primary actions,
   on active/generating states, on the waveform. Everything else stays near-black,
   restrained, and high-contrast. Do not rainbow the whole interface.
@@ -124,12 +148,11 @@ The backend lives in another repo and is **read-only**. This app proxies to it.
 | `/uploads/*`, `/covers/*` | static assets from the backend |
 
 **Live environment right now:** `backend: local-comfy`, ComfyUI at `192.168.1.100:8190`
-(reachable), model `minimax_music3_high` (FP32 + BF16), `lyrics: local-codex-cli`,
-`coverArt: "disabled"`, `hasServerKey: false`.
+(reachable), models `minimax_music3_high` + `minimax_music3_max_precision`,
+`lyrics: local-codex-cli`, **`coverArt: local-media-broker` (ENABLED)**, `hasServerKey: false`.
 
-`coverArt: disabled` means the Covers screen must degrade honestly — show the real reason
-from `/api/health` and a clear path to enable it. Do not fake a result and do not hide the
-feature.
+Cover art is now live. The Covers screen must actually generate. Read
+`ctx.health.coverArtEnabled` — never hardcode either state.
 
 ---
 
@@ -163,3 +186,77 @@ Shared design tokens live in `tokens.css` and are owned by shell. If you need a 
 use an existing one or a local value — do not edit `tokens.css`.
 
 No build step. No frameworks. No CDN links — the app must run offline. ES modules only.
+
+---
+
+## 7. Round 1 verdicts — the corrections that override everything above
+
+Five blind judges compared our screens against the real product. **We lost all five**, four
+of them "obvious". The judges never saw the code. Their reasons converged hard, so these
+corrections are not suggestions — they are the round 2 pass/fail criteria.
+
+### 7a. THE BIG ONE — no engineering internals in product chrome
+
+Every single judge identified our build by its plumbing. This was the loudest tell in all
+five frames. Banned from any resting-state UI:
+
+- LAN addresses or ports: `192.168.1.100:8190`, `localhost:3020`
+- Endpoint paths: `POST /api/lyrics`, `POST /api/generate-stream`
+- Backend/build identifiers: `local-comfy`, `local-codex-cli`, `local-media-broker`
+- Model internals: `FP16 + INT8 ConvRot encoder`, `FP32 + BF16`, `2 available`
+- Spec references: `§3d rule`, `Lyrics match every §3d rule`
+- Implementation notes as labels: `saves VRAM on long renders`, `ignored for flac`,
+  `Streams /api/generate-stream so status arrives while ComfyUI works`
+- Raw byte sizes and internal counters: `30.4 MB`, `71.4 MB`
+
+Rewrite every one in customer language. `Progress updates live while your track renders`.
+`Connected`. `Lyrics fit the 2:00 target`.
+
+**Where diagnostics DO belong:** the Settings screen, and transient error states that only
+appear when something is actually wrong. Connection state is a toast when the backend
+drops — not a permanent sidebar card. "Honest" means never faking success; it does not mean
+publishing the machine to the user.
+
+The sidebar's bottom anchor slot must hold an identity/commercial anchor, not a status chip.
+
+### 7b. Every screen needs a floor
+
+Judges measured 45–57% of our viewport as untreated void, and lists that simply stop
+mid-page "read as a failed render rather than a designed sparse state". Every screen fills
+its frame: the large panel on Create becomes the track-history list; sparse lists end in a
+terminal card on the same row rhythm; no region is left as flat dark nothing.
+
+### 7c. One value, one control
+
+Duration currently renders three ways at once (slider + numeric + five preset chips) so
+"the user cannot tell which is authoritative". Collapse to a chip row plus one editable
+field. Audit every control for the same fault.
+
+### 7d. Contrast and hit targets are failing measurably
+
+The library's regenerate icon measured **1.1:1** against its row — effectively invisible.
+Bare glyphs with no container, mixed fills and strokes in one strip, and a destructive
+delete sitting inline at identical weight to play.
+
+Rule: interactive icons get a container with a visible rest state, one icon style and
+stroke weight throughout, ≥3:1 glyph-on-chip contrast, ≥34px hit targets, ≥12px gaps.
+Destructive actions go in an overflow menu, never inline with primary ones.
+
+### 7e. Sticky footers must not bisect content
+
+Both Covers and Lyrics had cards and primary buttons sliced in half by overlaid action
+bars. Any scroll container under a sticky footer gets bottom padding equal to the full
+footer height. A half-erased label reads as a clipping bug, and it was called "the single
+loudest unfinished-build signal in the frame".
+
+### 7f. One accent, not four
+
+We shipped cyan, magenta, green and violet simultaneously; the reference holds
+near-monochrome with a single accent. The brand gradient is for **one** primary action per
+view, plus the waveform. Status greens and info blues are not additional accents — express
+state through form (weight, container, position) before reaching for hue.
+
+### 7g. Alignment rhythm
+
+Rows must share one left rail and one fixed pitch. Ours broke its own rail (title at x=415,
+icons at x=425) and varied row heights. Pick the rhythm, then hold it everywhere.
