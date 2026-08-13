@@ -1,0 +1,14 @@
+{
+  "name": "maxmusic-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MaxMusic — front end for MiniMax Music 3 via ComfyUI",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
