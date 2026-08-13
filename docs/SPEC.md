@@ -323,3 +323,58 @@ must signal severity, put the signal **inside** the card as a labelled chip — 
 decorative edge.
 
 This applies to every surface in the product, including any documentation or status page.
+
+---
+
+## 10. Art screen — suggested prompts derived from the song
+
+The Art screen must not start as a blank prompt box. A user who just made a track should get a
+strong suggested cover-art prompt they can accept, edit, or throw away.
+
+### 10a. What the backend already gives us
+
+`POST /api/cover-art` accepts `{ prompt, title, mode, musicPrompt, aspect_ratio, n }`.
+
+- `prompt` — the image prompt. If non-empty it **wins outright**.
+- If `prompt` is empty, the backend composes a fallback from `musicPrompt` + `title` + `mode`
+  (`mode: 'instrumental'` → "cinematic instrumental album art", else "premium song cover art").
+
+That fallback is a crude template. **We do better on the client**, then send our composed text
+as `prompt`. Always also send `title`, `musicPrompt` and `mode` so the backend has context and
+the degraded path still works if our field is cleared.
+
+### 10b. Where the imagery comes from — the caption already contains it
+
+The MM3 structured caption (§3c) has a field written for exactly this purpose:
+
+> `Application Scenarios & Imagery: <two or three vivid listening scenarios>`
+
+That line *is* an art brief. Alongside it, `Basic Attributes` yields genre/BPM/key,
+`Global Emotional Progression` yields mood arc, and `Sonics & Production Profile` yields
+visual texture (warm/analogue vs clean/digital, intimate vs vast).
+
+### 10c. Required behaviour
+
+1. **Source picker.** "From a track" (choose from Library) or "From scratch". Picking a track
+   loads its caption, lyrics, title, and instrumental flag.
+2. **Toggles for what to draw on**, independently switchable, all on by default when available:
+   - **Musical style** — parse the caption. Prefer `Application Scenarios & Imagery`, then
+     genre + mood arc, then production character.
+   - **Lyrics** — pull concrete imagery: recurring nouns and images, the hook line, the title
+     phrase. Ignore section tags. Never paste raw lyrics into the image prompt — abstract them
+     into visual subject matter.
+   - **Title** — the title as typographic or thematic anchor.
+3. **Live composition.** The suggested prompt appears in an editable field and recomposes as
+   toggles change. The user may edit it freely; once edited by hand, do not silently overwrite
+   their text — offer an explicit "Re-suggest" action instead.
+4. **Instrumental tracks** get a different visual register than vocal ones — the caption's
+   vocal section is absent or reads `Instrumental, no vocals.` Use `mode` accordingly.
+5. **From scratch** still works with an empty picker: a plain prompt field with a few starting
+   directions, no track required.
+6. Composition is **deterministic and client-side**. There is no LLM endpoint for image prompts
+   (`/api/lyrics` is lyrics-only — do not abuse it for this). Write real extraction logic that
+   produces a specific, visual, art-directed sentence — not a slot-filled template that reads
+   like a form letter.
+
+The test: generate art for two very different tracks and the two suggested prompts must read as
+genuinely different art directions, not the same sentence with the genre swapped.

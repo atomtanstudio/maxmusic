@@ -570,27 +570,252 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   box-shadow: none;
 }
 
+/* Second-emphasis action. Loud through contrast and fill, not through hue —
+   reach for this instead of a second gradient. */
+.btn--strong {
+  background: var(--text-hi);
+  border-color: transparent;
+  color: var(--surface-0);
+  font-weight: var(--fw-semibold);
+}
+.btn--strong:hover { background: #ffffff; border-color: transparent; color: var(--surface-0); }
+.btn--strong:disabled, .btn--strong[aria-disabled="true"] { background: var(--surface-3); color: var(--text-lo); }
+
 .btn--ghost { background: transparent; border-color: transparent; color: var(--text-mid); }
 .btn--ghost:hover { background: var(--surface-hover); border-color: transparent; color: var(--text-hi); }
 
 .btn--outline { background: transparent; }
 .btn--outline:hover { background: var(--surface-hover); }
 
+/* A destructive action that is LABELLED may sit in the open. A destructive
+   action that is only an icon belongs in an overflow menu — see .menu. */
 .btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-bg); }
 .btn--danger:hover { background: color-mix(in srgb, var(--danger) 22%, transparent); border-color: var(--danger); color: var(--danger); }
 
 .btn.is-active { background: var(--surface-4); border-color: var(--border-strong); color: var(--text-hi); }
 
-.iconbtn {
-  display: inline-grid;
-  place-items: center;
-  width: 32px; height: 32px;
-  border-radius: var(--r-sm);
-  color: var(--text-mid);
-  transition: color var(--t-fast), background var(--t-fast);
+/* ============================================================== ACTIONS ===
+   Icon actions. Round 1 shipped bare glyphs measured at 1.1:1 against their
+   row, mixed fills and strokes in one strip, and an inline delete at the same
+   weight as play. These primitives make all of that impossible:
+
+     - the chip is the hit target, and it is visible at rest (surface-4 on
+       any panel or row background), so there is no such thing as an
+       invisible control;
+     - the glyph is --text-mid on that chip = 5.2:1, hover --text-hi = 10.4:1,
+       both comfortably over the 3:1 floor, and no modifier dims it;
+     - every glyph comes from the sprite, so one style and one stroke weight;
+     - there is no small variant: --action-size is 34px, full stop;
+     - .actionbar owns the gap so neighbours cannot crowd below 12px;
+     - there is NO inline destructive chip. Destructive lives in .menu.
+   ======================================================================== */
+
+.actionbar {
+  display: flex;
+  align-items: center;
+  gap: var(--action-gap);
+  min-width: 0;
 }
-.iconbtn:hover { color: var(--text-hi); background: var(--surface-hover); }
-.iconbtn:disabled { color: var(--text-faint); background: none; }
+.actionbar--end { margin-left: auto; }
+.actionbar__sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin-inline: var(--space-1);
+}
+
+.actionchip,
+.iconbtn { /* .iconbtn is a deprecated alias — same object, one look. */
+  --chip: var(--action-size);
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: none;
+  width: var(--chip);
+  height: var(--chip);
+  padding: 0;
+  border-radius: var(--r-circle);
+  border: 1px solid var(--border-faint);
+  background: var(--surface-4);
+  color: var(--text-mid);
+  font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
+  transition: background var(--t-fast), color var(--t-fast),
+              border-color var(--t-fast), transform var(--dur-instant) var(--ease-out);
+}
+.actionchip .icon,
+.iconbtn .icon { width: 16px; height: 16px; }
+
+.actionchip:hover,
+.iconbtn:hover {
+  background: var(--surface-5);
+  border-color: var(--border-strong);
+  color: var(--text-hi);
+}
+.actionchip:active,
+.iconbtn:active { transform: scale(.94); }
+
+.actionchip.is-active,
+.actionchip[aria-pressed="true"] {
+  background: var(--text-hi);
+  border-color: transparent;
+  color: var(--surface-0);
+}
+
+.actionchip:disabled,
+.actionchip[aria-disabled="true"],
+.iconbtn:disabled {
+  opacity: .4;
+  transform: none;
+  background: var(--surface-3);
+  color: var(--text-mid);
+}
+
+/* Bigger target for a row's primary affordance (play). Same look. */
+.actionchip--lg { --chip: var(--action-size-lg); }
+.actionchip--lg .icon { width: 18px; height: 18px; }
+
+/* Chip that also carries a numeral, e.g. a play count. Stays 34px tall. */
+.actionchip--count {
+  width: auto;
+  min-width: var(--chip);
+  padding-inline: var(--space-5);
+  border-radius: var(--r-pill);
+}
+.actionchip__num { color: inherit; line-height: 1; }
+
+/* Chip sitting directly on the app ground rather than on a card. */
+.actionchip--onground { background: var(--surface-3); }
+.actionchip--onground:hover { background: var(--surface-4); }
+
+/* ------------------------------------------------------- overflow menu --- */
+/* The standard "…" menu. Destructive actions live in here and nowhere else.
+   The list is positioned by the shell (fixed coordinates) so it is never
+   clipped by a scrolling row container. */
+.menu { position: relative; display: inline-flex; flex: none; }
+
+.menu__list {
+  position: fixed;
+  z-index: var(--z-overlay);
+  min-width: 196px;
+  max-width: 280px;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface-4);
+  box-shadow: var(--shadow-3);
+  animation: menu-in var(--dur-fast) var(--ease-out) both;
+}
+.menu__list[hidden] { display: none; }
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  width: 100%;
+  height: var(--control-h);
+  padding-inline: var(--space-5);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.menu__item .icon { width: 16px; height: 16px; color: var(--text-lo); flex: none; }
+.menu__item:hover,
+.menu__item:focus-visible { background: var(--surface-5); color: var(--text-hi); outline: none; }
+.menu__item:hover .icon,
+.menu__item:focus-visible .icon { color: inherit; }
+.menu__item:disabled { opacity: .4; }
+.menu__item:disabled:hover { background: none; color: var(--text); }
+.menu__item__note { margin-left: auto; color: var(--text-faint); font-size: var(--fs-2xs); font-weight: var(--fw-regular); }
+
+/* The one destructive treatment in the system. */
+.menu__item--danger { color: var(--danger); }
+.menu__item--danger .icon { color: var(--danger); }
+.menu__item--danger:hover,
+.menu__item--danger:focus-visible { background: var(--danger-bg); color: var(--danger); }
+.menu__item--danger:hover .icon { color: var(--danger); }
+
+.menu__sep { height: 1px; margin: var(--space-3) var(--space-4); background: var(--border-faint); border: 0; }
+.menu__label {
+  padding: var(--space-3) var(--space-5) var(--space-2);
+  font-size: var(--fs-3xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---------------------------------------------------------- sticky foot -- */
+/* .dock guarantees a sticky footer can never bisect the content above it.
+   By default the footer is a flex sibling of the scroller, so overlap is
+   structurally impossible. .dock--overlay opts into a glass bar that floats
+   over the content, and the shell measures the footer and pads the scroller
+   by its full height (--dock-foot-h) — no guessing, no half-erased labels. */
+.dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  --dock-fade: var(--surface-0);
+}
+.dock__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--space-8);
+}
+.dock__foot {
+  flex: none;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--gutter);
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-faint);
+}
+.dock__foot > .btn--block { flex: 1; }
+
+.dock--overlay .dock__foot {
+  position: absolute;
+  inset: auto 0 0 0;
+  background: var(--surface-glass);
+  backdrop-filter: blur(16px);
+}
+.dock--overlay .dock__scroll {
+  /* The fallback only applies for the frame before the observer reports; it is
+     deliberately generous so nothing is ever clipped, even for one paint. */
+  padding-bottom: calc(var(--dock-foot-h, 104px) + var(--space-8));
+}
+
+/* Optional: content dissolves into the footer instead of meeting a hard edge. */
+.dock__foot--fade::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 100%;
+  height: var(--space-9);
+  background: linear-gradient(to top, var(--dock-fade), transparent);
+  pointer-events: none;
+}
 
 /* --------------------------------------------------------------- chips -- */
 .chip {
@@ -609,11 +834,13 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
 }
 .chip:hover { color: var(--text-hi); border-color: var(--border-strong); background: var(--surface-3); }
+/* Selected is a fill and a weight, not a tint. */
 .chip.is-active,
 .chip[aria-pressed="true"] {
-  color: var(--text-hi);
-  background: var(--surface-selected);
-  border-color: var(--border-brand);
+  color: var(--surface-0);
+  background: var(--text-hi);
+  border-color: transparent;
+  font-weight: var(--fw-semibold);
 }
 .chip .icon { width: 13px; height: 13px; }
 .chip--mono { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0; }
@@ -725,8 +952,8 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   background: var(--text-mid);
   transition: transform var(--t-base) var(--ease-spring), background var(--t-base);
 }
-.switch input:checked + .switch__track { background: var(--gradient-brand-cool); border-color: transparent; }
-.switch input:checked + .switch__track::after { transform: translateX(16px); background: var(--text-inverse); }
+.switch input:checked + .switch__track { background: var(--text-hi); border-color: transparent; }
+.switch input:checked + .switch__track::after { transform: translateX(16px); background: var(--surface-0); }
 .switch input:focus-visible + .switch__track { box-shadow: var(--focus-ring-tight); }
 .switch input:disabled + .switch__track { opacity: .45; cursor: not-allowed; }
 .switch__label { font-size: var(--fs-sm); color: var(--text); }
@@ -740,13 +967,15 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   background: none;
   cursor: pointer;
 }
+/* Monochrome fill. A gradient on every slider in the app is not one loud
+   gesture, it is wallpaper. */
 .range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: var(--r-pill);
-  background: linear-gradient(90deg, var(--brand-cyan), var(--brand-violet) var(--range-fill), var(--surface-4) var(--range-fill));
+  background: linear-gradient(90deg, var(--text-hi) var(--range-fill), var(--surface-4) var(--range-fill));
 }
 .range::-moz-range-track { height: 4px; border-radius: var(--r-pill); background: var(--surface-4); }
-.range::-moz-range-progress { height: 4px; border-radius: var(--r-pill); background: linear-gradient(90deg, var(--brand-cyan), var(--brand-violet)); }
+.range::-moz-range-progress { height: 4px; border-radius: var(--r-pill); background: var(--text-hi); }
 .range::-webkit-slider-thumb {
   appearance: none;
   width: 14px; height: 14px;
@@ -808,10 +1037,13 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   background: var(--surface-4);
   color: var(--text-mid);
 }
-.badge--ok { background: var(--ok-bg); color: var(--ok); }
+/* --ok and --info resolve to full-contrast text on a raised container: the
+   badge says "yes" through weight and a container, not through a green. */
+.badge--ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--border); }
+.badge--info { background: var(--info-bg); color: var(--info); }
 .badge--warn { background: var(--warn-bg); color: var(--warn); }
 .badge--danger { background: var(--danger-bg); color: var(--danger); }
-.badge--info { background: var(--info-bg); color: var(--info); }
+/* Reserved for the live/generating state. Not a decoration. */
 .badge--brand { background: var(--gradient-brand-cool); color: var(--text-inverse); }
 
 /* ------------------------------------------------------ notice / empty -- */
@@ -832,8 +1064,8 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .notice--warn .notice__icon { color: var(--warn); }
 .notice--error { border-color: color-mix(in srgb, var(--danger) 30%, transparent); background: var(--danger-bg); }
 .notice--error .notice__icon { color: var(--danger); }
-.notice--info { border-color: color-mix(in srgb, var(--accent) 26%, transparent); background: var(--info-bg); }
-.notice--info .notice__icon { color: var(--accent); }
+.notice--info { border-color: var(--border); background: var(--surface-3); }
+.notice--info .notice__icon { color: var(--text-mid); }
 .notice code, code.code {
   font-family: var(--font-mono);
   font-size: .92em;
@@ -944,12 +1176,17 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   }
   .app[data-nav="open"] .rail { transform: none; }
   .app[data-rail="collapsed"] { --rail-w: 244px; }
-  .app[data-rail="collapsed"] .brand__text,
+  .app[data-rail="collapsed"] .brand__name,
   .app[data-rail="collapsed"] .navitem__label,
   .app[data-rail="collapsed"] .navitem__count,
-  .app[data-rail="collapsed"] .status__text { display: revert; }
+  .app[data-rail="collapsed"] .workspace__text,
+  .app[data-rail="collapsed"] .workspace__chev,
+  .app[data-rail="collapsed"] .railfoot__cta-label { display: revert; }
   .app[data-rail="collapsed"] .navitem { justify-content: flex-start; padding-inline: var(--space-5); }
-  .app[data-rail="collapsed"] .status { justify-content: flex-start; padding-inline: var(--space-5); }
+  .app[data-rail="collapsed"] .workspace__btn { justify-content: flex-start; padding-inline: var(--space-4) var(--space-4); }
+  .app[data-rail="collapsed"] .railfoot__cta { padding-inline: var(--space-6); }
+  .app[data-rail="collapsed"] .workspace__rename { display: revert; }
+  .app[data-rail="collapsed"] .workspace__rename[hidden] { display: none; }
   .railtoggle { display: none; }
   .main { margin-left: 0; }
   .playerbar { left: 0; }

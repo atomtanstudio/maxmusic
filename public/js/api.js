@@ -112,7 +112,10 @@ function pickMessage(body, res, endpoint) {
   if (typeof body === 'string' && body.trim() && !body.trim().startsWith('<')) {
     return body.trim().slice(0, 600);
   }
-  return `${endpoint} failed with HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
+  // No endpoint path in the sentence a customer reads. The path stays on
+  // ApiError.endpoint for the console and the Settings screen.
+  void endpoint;
+  return `That request didn’t complete (HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}).`;
 }
 
 function pickDetails(body) {
@@ -170,8 +173,8 @@ export async function request(endpoint, opts = {}) {
   } catch (err) {
     if (err?.name === 'AbortError' || err?.name === 'TimeoutError') throw err;
     throw new ApiError(
-      `Could not reach the MaxMusic server at ${location.host}. ${err?.message || err}`,
-      { status: 0, endpoint, body: null },
+      'Could not reach MaxMusic. Check that your studio is running, then try again.',
+      { status: 0, details: err?.message ? String(err.message) : null, endpoint, body: null },
     );
   } finally {
     if (timer) clearTimeout(timer);
@@ -200,7 +203,9 @@ export async function request(endpoint, opts = {}) {
  * @typedef {Object} Health
  * @property {*}        raw               Untouched response body.
  * @property {'online'|'degraded'|'offline'} status
- * @property {string}   message           One human line describing `status`.
+ * @property {string}   message           Customer copy. Safe to render anywhere.
+ * @property {?string}  detail            Verbatim technical reason. Settings only —
+ *                                        never in resting product chrome (SPEC §7a).
  * @property {boolean}  ok
  * @property {string}   backend           e.g. `local-comfy` | `remote-minimax`.
  * @property {?string}  comfyUrl
@@ -237,9 +242,12 @@ export async function health(opts = {}) {
     return {
       raw,
       status: degraded ? 'degraded' : 'online',
+      // `message` is customer copy and is safe to render anywhere.
+      // `detail` is the verbatim technical line and belongs in Settings only.
       message: degraded
-        ? (raw?.comfyError || `${raw?.backend || 'Backend'} responded but the generator is not ready.`)
-        : `${raw?.backend || 'backend'} ready`,
+        ? 'Your studio answered but isn’t ready to render yet.'
+        : 'Connected',
+      detail: degraded ? (raw?.comfyError || null) : null,
       ok: Boolean(raw?.ok),
       backend: raw?.backend || 'unknown',
       comfyUrl: raw?.comfyUrl || null,
@@ -261,7 +269,8 @@ export async function health(opts = {}) {
     return {
       raw: apiErr.body,
       status: 'offline',
-      message: apiErr.fullMessage,
+      message: 'MaxMusic can’t reach your studio right now.',
+      detail: apiErr.fullMessage,
       ok: false,
       backend: 'unreachable',
       comfyUrl: null,
@@ -323,15 +332,15 @@ export function validateGeneration(input = {}) {
   const lyrics = String(input.lyrics ?? '');
 
   if (prompt.length > LIMITS.PROMPT_MAX) {
-    warnings.push(`Prompt is ${prompt.length} characters; the backend keeps the first ${LIMITS.PROMPT_MAX}.`);
+    warnings.push(`Your description is ${prompt.length} characters; only the first ${LIMITS.PROMPT_MAX} are used.`);
   }
   if (instrumental) {
-    if (!prompt) errors.push('Instrumental mode needs a style prompt.');
+    if (!prompt) errors.push('Instrumental tracks still need a style description.');
     if (lyrics.trim()) warnings.push('Lyrics are ignored while Instrumental is on.');
   } else if (!lyrics.trim()) {
-    errors.push('Vocal mode requires lyrics. The backend will not write them — use Lyrics first.');
+    errors.push('A vocal track needs lyrics. Write them on the Lyrics page, or switch to Instrumental.');
   } else if (lyrics.length > LIMITS.LYRICS_MAX) {
-    warnings.push(`Lyrics are ${lyrics.length} characters; the backend keeps the first ${LIMITS.LYRICS_MAX}.`);
+    warnings.push(`Your lyrics are ${lyrics.length} characters; only the first ${LIMITS.LYRICS_MAX} are used.`);
   }
 
   /** @type {Record<string, *>} */
@@ -374,7 +383,7 @@ export function validateGeneration(input = {}) {
   }
   if (audio.sample_rate) setting.sample_rate = Number(audio.sample_rate) || LIMITS.SAMPLE_RATE_DEFAULT;
   if (audio.bitrate) {
-    if (setting.format && setting.format !== 'mp3') warnings.push('Bitrate only applies to mp3; it is ignored for ' + setting.format + '.');
+    if (setting.format && setting.format !== 'mp3') warnings.push('Bitrate applies to MP3 only.');
     else setting.bitrate = Number(audio.bitrate) || LIMITS.BITRATE_DEFAULT;
   }
   if (Object.keys(setting).length) payload.audio_setting = setting;
@@ -460,7 +469,8 @@ export async function generateStream(input, opts = {}) {
     });
   } catch (err) {
     if (err?.name === 'AbortError') throw err;
-    throw new ApiError(`Could not reach the MaxMusic server. ${err?.message || err}`, { status: 0, endpoint });
+    throw new ApiError('Could not reach MaxMusic. Check that your studio is running, then try again.',
+      { status: 0, details: err?.message ? String(err.message) : null, endpoint });
   }
 
   if (!res.ok) {
@@ -586,7 +596,8 @@ async function postForm(endpoint, formData, signal) {
     res = await fetch(endpoint, { method: 'POST', body: formData, signal, cache: 'no-store' });
   } catch (err) {
     if (err?.name === 'AbortError') throw err;
-    throw new ApiError(`Could not reach the MaxMusic server. ${err?.message || err}`, { status: 0, endpoint });
+    throw new ApiError('Could not reach MaxMusic. Check that your studio is running, then try again.',
+      { status: 0, details: err?.message ? String(err.message) : null, endpoint });
   }
   const parsed = await readBody(res);
   if (!res.ok) {
@@ -638,7 +649,7 @@ export function upload(file, opts = {}) {
     });
     xhr.addEventListener('error', () => {
       cleanup();
-      reject(new ApiError('Upload failed — the MaxMusic server did not respond.', { status: 0, endpoint }));
+      reject(new ApiError('That upload didn’t go through. Check that your studio is running, then try again.', { status: 0, endpoint }));
     });
     xhr.addEventListener('abort', () => { cleanup(); reject(new DOMException('Aborted', 'AbortError')); });
 

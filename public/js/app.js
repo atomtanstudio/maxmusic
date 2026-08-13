@@ -2,8 +2,12 @@
  * MaxMusic — application shell.
  *
  * Owns the frame (rail, topbar, screen outlet, player slot), the router, the
- * live backend-status indicator, toasts, the cross-screen event bus and the
- * context object every screen receives.
+ * workspace anchor, toasts, overflow menus, the sticky-footer guarantee, the
+ * cross-screen event bus and the context object every screen receives.
+ *
+ * Connection state is deliberately NOT part of the resting UI. It surfaces as
+ * a transient toast when the connection actually changes, and as detail on the
+ * Settings screen. The machine does not get published to the customer.
  *
  * Screens never import this file. They receive everything through `ctx`.
  * See docs/CONTRACT.md.
@@ -26,9 +30,11 @@ const el = {
   navOpen: document.getElementById('nav-open'),
   navItems: Array.from(document.querySelectorAll('.navitem[data-route]')),
   libraryCount: document.getElementById('nav-library-count'),
-  status: document.getElementById('status-pill'),
-  statusLabel: document.getElementById('status-label'),
-  statusDetail: document.getElementById('status-detail'),
+  workspaceBtn: document.getElementById('workspace-btn'),
+  workspaceAvatar: document.getElementById('workspace-avatar'),
+  workspaceName: document.getElementById('workspace-name'),
+  workspaceMeta: document.getElementById('workspace-meta'),
+  workspaceRename: document.getElementById('workspace-rename'),
   topbarTitle: document.getElementById('topbar-title'),
   topbarSub: document.getElementById('topbar-sub'),
   topbarActions: document.getElementById('topbar-actions'),
@@ -174,14 +180,23 @@ export function registerCss(href) {
 
 const TOAST_ICON = { info: 'info', success: 'check', warn: 'alert', error: 'alert' };
 
+/** Live toasts that were given a `key`, so a repeat replaces rather than stacks. */
+const keyedToasts = new Map();
+
 /**
  * @param {string} message               Shown verbatim; newlines preserved.
- * @param {{kind?: 'info'|'success'|'warn'|'error', title?: string,
- *          timeout?: number, action?: {label: string, onClick: () => void}}} [opts]
+ * @param {{kind?: 'info'|'success'|'warn'|'error', title?: string, timeout?: number,
+ *          key?: string,
+ *          action?: {label: string, onClick: () => void},
+ *          actions?: Array<{label: string, onClick: () => void}>}} [opts]
  * @returns {() => void} dismiss
  */
 export function toast(message, opts = {}) {
-  const { kind = 'info', title = '', timeout = kind === 'error' ? 9000 : 5000, action } = opts;
+  const { kind = 'info', title = '', timeout = kind === 'error' ? 9000 : 5000, key } = opts;
+  const actions = [opts.action, ...(opts.actions || [])].filter((a) => a && a.label);
+
+  // One live toast per key — a flapping connection must not build a wall.
+  if (key && keyedToasts.has(key)) keyedToasts.get(key)();
 
   const node = document.createElement('div');
   node.className = 'toast';
@@ -199,6 +214,7 @@ export function toast(message, opts = {}) {
 
   let timer = null;
   const dismiss = () => {
+    if (key && keyedToasts.get(key) === dismiss) keyedToasts.delete(key);
     if (!node.isConnected) return;
     clearTimeout(timer);
     node.setAttribute('data-leaving', '');
@@ -208,26 +224,37 @@ export function toast(message, opts = {}) {
 
   node.querySelector('.toast__close').addEventListener('click', dismiss);
 
-  if (action?.label) {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn--sm';
-    btn.type = 'button';
-    btn.textContent = action.label;
-    btn.style.marginTop = 'var(--space-4)';
-    btn.addEventListener('click', () => { action.onClick?.(); dismiss(); });
-    node.querySelector('.toast__body').append(btn);
+  if (actions.length) {
+    const row = document.createElement('div');
+    row.className = 'toast__actions';
+    for (const a of actions) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn--sm';
+      btn.type = 'button';
+      btn.textContent = a.label;
+      btn.addEventListener('click', () => { a.onClick?.(); dismiss(); });
+      row.append(btn);
+    }
+    node.querySelector('.toast__body').append(row);
   }
 
   el.toasts.append(node);
+  if (key) keyedToasts.set(key, dismiss);
   if (timeout > 0) timer = setTimeout(dismiss, timeout);
   return dismiss;
 }
 
 /* ========================================================================== *
- * Backend health
+ * Connection state
+ *
+ * There is no connection card, chip or dot in the resting UI. A working app is
+ * silent about its wiring; a broken one says so once, in the customer's words,
+ * and gets out of the way. Diagnostics — provider names, hosts, model keys —
+ * live on the Settings screen, which reads them from `ctx.health`.
  * ========================================================================== */
 
 const HEALTH_INTERVAL = 30_000;
+const CONNECTION_TOAST = 'shell:connection';
 
 const state = {
   /** @type {?import('./api.js').Health} */
@@ -239,64 +266,63 @@ const state = {
 
 let healthTimer = null;
 let healthInFlight = null;
+/** Status the customer was last told about, so we speak only on a real change. */
+let announcedStatus = null;
 
-function paintStatus(snapshot) {
-  const s = el.status;
-  if (!s) return;
+const CONNECTION_COPY = {
+  offline: {
+    kind: 'error',
+    title: 'Not connected',
+    message: 'MaxMusic can’t reach your studio right now. Nothing has been lost — this will clear as soon as it answers.',
+  },
+  degraded: {
+    kind: 'warn',
+    title: 'Not ready to render',
+    message: 'Your studio answered but isn’t ready to render yet. New tracks will fail until it finishes starting up.',
+  },
+};
 
-  if (!snapshot) {
-    s.dataset.state = 'checking';
-    el.statusLabel.textContent = 'Checking backend…';
-    el.statusDetail.textContent = 'contacting /api/health';
-    s.removeAttribute('title');
+function announceConnection(snapshot) {
+  const status = snapshot.status;
+  if (status === announcedStatus) return;
+
+  // Coming back is worth one quiet line, but only for someone who saw it break.
+  if (status === 'online') {
+    if (announcedStatus && announcedStatus !== 'online') {
+      toast('Your studio is back. You can keep rendering.', {
+        kind: 'success', title: 'Reconnected', key: CONNECTION_TOAST, timeout: 4000,
+      });
+    }
+    announcedStatus = status;
     return;
   }
 
-  s.dataset.state = snapshot.status;
-
-  if (snapshot.status === 'online') {
-    el.statusLabel.textContent = 'Backend online';
-    const host = snapshot.comfyUrl ? snapshot.comfyUrl.replace(/^https?:\/\//, '') : snapshot.backend;
-    el.statusDetail.textContent = host;
-    s.title = [
-      `backend: ${snapshot.backend}`,
-      snapshot.comfyUrl ? `comfy: ${snapshot.comfyUrl}` : null,
-      snapshot.modelKeys.length ? `models: ${snapshot.modelKeys.join(', ')}` : null,
-      `lyrics: ${snapshot.lyricsProvider}`,
-      `cover art: ${snapshot.coverArtProvider}`,
-    ].filter(Boolean).join('\n');
-  } else if (snapshot.status === 'degraded') {
-    el.statusLabel.textContent = 'Generator not ready';
-    el.statusDetail.textContent = snapshot.comfyError || snapshot.message;
-    s.title = snapshot.message;
-  } else {
-    el.statusLabel.textContent = 'Backend offline';
-    el.statusDetail.textContent = snapshot.message;
-    s.title = snapshot.message;
-  }
+  const copy = CONNECTION_COPY[status] || CONNECTION_COPY.offline;
+  toast(copy.message, {
+    kind: copy.kind,
+    title: copy.title,
+    key: CONNECTION_TOAST,
+    timeout: 12_000,
+    actions: [
+      { label: 'Try again', onClick: () => refreshHealth() },
+      { label: 'Details', onClick: () => router.navigate('settings') },
+    ],
+  });
+  announcedStatus = status;
 }
 
 /**
- * Re-check `/api/health`, repaint the rail indicator and notify subscribers.
+ * Re-check `/api/health` and notify subscribers.
  * @returns {Promise<import('./api.js').Health>}
  */
 export function refreshHealth() {
   if (healthInFlight) return healthInFlight;
-  if (!state.health) paintStatus(null);
 
   healthInFlight = api.health()
     .then((snapshot) => {
-      const previous = state.health;
       state.health = snapshot;
-      paintStatus(snapshot);
       bus.emit('health', snapshot);
-
-      if (previous && previous.status !== snapshot.status && snapshot.status !== 'online') {
-        toast(snapshot.message, {
-          kind: snapshot.status === 'offline' ? 'error' : 'warn',
-          title: snapshot.status === 'offline' ? 'Backend offline' : 'Generator not ready',
-        });
-      }
+      announceConnection(snapshot);
       return snapshot;
     })
     .finally(() => { healthInFlight = null; });
@@ -326,7 +352,288 @@ function onHealth(fn) {
 }
 
 /* ========================================================================== *
- * Chrome: nav rail, topbar
+ * Overflow menus — the shared primitive for secondary and destructive actions
+ *
+ * Every screen gets the same menu: same geometry, same keyboard behaviour, and
+ * one destructive treatment that only exists in here. Delete never sits inline
+ * next to Play again.
+ *
+ * The list is positioned in viewport coordinates and mounted on <body> while
+ * open, so a scrolling row, an `overflow: hidden` panel or a backdrop-filtered
+ * footer cannot clip it.
+ * ========================================================================== */
+
+/** @type {?{close: () => void}} */
+let liveMenu = null;
+
+/**
+ * @typedef {Object} MenuItem
+ * @property {string}   [label]
+ * @property {string}   [icon]        Sprite name, e.g. `trash`.
+ * @property {string}   [note]        Right-aligned secondary text (a shortcut, a count).
+ * @property {boolean}  [danger]      Destructive. This is the ONLY destructive treatment.
+ * @property {boolean}  [disabled]
+ * @property {string}   [href]        Renders an anchor instead of a button.
+ * @property {() => void} [onSelect]
+ * @property {boolean}  [separator]   A rule. No other keys needed.
+ * @property {boolean}  [heading]     A small caps section label; use with `label`.
+ */
+
+/**
+ * Wire an existing element as a menu trigger.
+ *
+ * @param {HTMLElement} trigger
+ * @param {{items: MenuItem[] | (() => MenuItem[]), align?: 'start'|'end', label?: string}} config
+ * @returns {{open: () => void, close: () => void, toggle: () => void, destroy: () => void}}
+ */
+export function attachMenu(trigger, config = {}) {
+  const list = document.createElement('div');
+  list.className = 'menu__list';
+  list.setAttribute('role', 'menu');
+  list.hidden = true;
+
+  trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'false');
+  if (config.label && !trigger.getAttribute('aria-label')) trigger.setAttribute('aria-label', config.label);
+
+  const resolveItems = () => {
+    const raw = typeof config.items === 'function' ? config.items() : config.items;
+    return Array.isArray(raw) ? raw.filter(Boolean) : [];
+  };
+
+  function build() {
+    list.replaceChildren();
+    for (const item of resolveItems()) {
+      if (item.separator) {
+        const hr = document.createElement('hr');
+        hr.className = 'menu__sep';
+        list.append(hr);
+        continue;
+      }
+      if (item.heading) {
+        const h = document.createElement('p');
+        h.className = 'menu__label';
+        h.textContent = item.label || '';
+        list.append(h);
+        continue;
+      }
+      const node = document.createElement(item.href ? 'a' : 'button');
+      node.className = `menu__item${item.danger ? ' menu__item--danger' : ''}`;
+      node.setAttribute('role', 'menuitem');
+      if (item.href) node.href = item.href;
+      else node.type = 'button';
+      if (item.disabled) {
+        node.disabled = true;
+        node.setAttribute('aria-disabled', 'true');
+      }
+      if (item.icon) node.append(icon(item.icon));
+      const label = document.createElement('span');
+      label.textContent = item.label || '';
+      node.append(label);
+      if (item.note) {
+        const note = document.createElement('span');
+        note.className = 'menu__item__note';
+        note.textContent = item.note;
+        node.append(note);
+      }
+      node.addEventListener('click', () => {
+        if (item.disabled) return;
+        close();
+        // After close(), so an item that moves focus (rename, a field) wins.
+        Promise.resolve().then(() => { try { item.onSelect?.(); } catch (err) { console.error(err); } });
+      });
+      list.append(node);
+    }
+  }
+
+  function place() {
+    const r = trigger.getBoundingClientRect();
+    const gap = 6;
+    const edge = 8;
+    const w = list.offsetWidth;
+    const h = list.offsetHeight;
+
+    let left = config.align === 'start' ? r.left : r.right - w;
+    left = Math.min(Math.max(edge, left), Math.max(edge, window.innerWidth - w - edge));
+
+    let top = r.bottom + gap;
+    if (top + h > window.innerHeight - edge) {
+      const above = r.top - gap - h;
+      top = above >= edge ? above : Math.max(edge, window.innerHeight - h - edge);
+    }
+    list.style.left = `${Math.round(left)}px`;
+    list.style.top = `${Math.round(top)}px`;
+  }
+
+  function onDocPointer(e) {
+    if (list.contains(e.target) || trigger.contains(e.target)) return;
+    close();
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
+    const focusable = Array.from(list.querySelectorAll('.menu__item:not([disabled])'));
+    if (!focusable.length) return;
+    const at = focusable.indexOf(document.activeElement);
+    let next = 0;
+    if (e.key === 'ArrowDown') next = at < 0 ? 0 : (at + 1) % focusable.length;
+    else if (e.key === 'ArrowUp') next = at < 0 ? focusable.length - 1 : (at - 1 + focusable.length) % focusable.length;
+    else if (e.key === 'End') next = focusable.length - 1;
+    focusable[next].focus();
+  }
+
+  function open() {
+    if (!list.hidden) return;
+    liveMenu?.close();
+    build();
+    if (!list.childElementCount) return;
+    document.body.append(list);
+    list.style.visibility = 'hidden';
+    list.hidden = false;
+    place();
+    list.style.visibility = '';
+    trigger.setAttribute('aria-expanded', 'true');
+    liveMenu = { close };
+
+    // Deferred so the click that opened the menu does not immediately close it.
+    setTimeout(() => document.addEventListener('pointerdown', onDocPointer, true), 0);
+    list.addEventListener('keydown', onKey);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+  }
+
+  function close() {
+    if (list.hidden) return;
+    list.hidden = true;
+    list.remove();
+    trigger.setAttribute('aria-expanded', 'false');
+    if (liveMenu?.close === close) liveMenu = null;
+    document.removeEventListener('pointerdown', onDocPointer, true);
+    list.removeEventListener('keydown', onKey);
+    window.removeEventListener('resize', close);
+    window.removeEventListener('scroll', close, true);
+    if (trigger.isConnected) trigger.focus({ preventScroll: true });
+  }
+
+  const toggle = () => (list.hidden ? open() : close());
+  const onTriggerClick = (e) => { e.preventDefault(); toggle(); };
+  const onTriggerKey = (e) => {
+    if (e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    open();
+    list.querySelector('.menu__item:not([disabled])')?.focus();
+  };
+
+  trigger.addEventListener('click', onTriggerClick);
+  trigger.addEventListener('keydown', onTriggerKey);
+
+  return {
+    open,
+    close,
+    toggle,
+    destroy() {
+      close();
+      trigger.removeEventListener('click', onTriggerClick);
+      trigger.removeEventListener('keydown', onTriggerKey);
+    },
+  };
+}
+
+/**
+ * Build a ready-made `…` overflow menu: a compliant 34px chip plus its list.
+ *
+ * @param {{items: MenuItem[] | (() => MenuItem[]), align?: 'start'|'end',
+ *          label?: string, icon?: string, className?: string}} config
+ * @returns {HTMLElement} The `.menu` wrapper. Its controller is on `.menuController`.
+ */
+export function menu(config = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = `menu${config.className ? ` ${config.className}` : ''}`;
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'actionchip menu__trigger';
+  trigger.setAttribute('aria-label', config.label || 'More actions');
+  trigger.append(icon(config.icon || 'more'));
+
+  wrap.append(trigger);
+  wrap.menuController = attachMenu(trigger, config);
+  return wrap;
+}
+
+/* ========================================================================== *
+ * Sticky-footer guarantee (.dock)
+ *
+ * Round 1 sliced cards and primary buttons in half under overlaid action bars.
+ * A `.dock` whose footer is a flex sibling cannot overlap at all; a
+ * `.dock--overlay` gets its scroller padded by the footer's measured height,
+ * kept live by a ResizeObserver. Screens do not have to remember to call this
+ * — the shell scans every mount and watches the outlet for new ones.
+ * ========================================================================== */
+
+const dockSeen = new WeakSet();
+let dockResize = null;
+
+function measureDock(foot) {
+  const dock = foot.closest('.dock');
+  if (!dock) return;
+  dock.style.setProperty('--dock-foot-h', `${Math.ceil(foot.getBoundingClientRect().height)}px`);
+}
+
+/**
+ * Start maintaining `--dock-foot-h` for every `.dock` inside `root`.
+ * Idempotent — calling it again is free.
+ *
+ * @param {HTMLElement|Document} [root]
+ * @returns {number} how many docks are being maintained after this call
+ */
+export function registerDock(root = document) {
+  if (!root || typeof root.querySelectorAll !== 'function') return 0;
+  if (!dockResize && typeof ResizeObserver !== 'undefined') {
+    dockResize = new ResizeObserver((entries) => { for (const e of entries) measureDock(e.target); });
+  }
+  const docks = [];
+  if (root.matches?.('.dock')) docks.push(root);
+  docks.push(...root.querySelectorAll('.dock'));
+
+  for (const dock of docks) {
+    const foot = dock.querySelector(':scope > .dock__foot');
+    if (!foot) continue;
+    measureDock(foot);
+    if (dockSeen.has(foot)) continue;
+    dockSeen.add(foot);
+    dockResize?.observe(foot);
+  }
+  return docks.length;
+}
+
+let dockScanQueued = false;
+function queueDockScan() {
+  if (dockScanQueued) return;
+  dockScanQueued = true;
+  requestAnimationFrame(() => { dockScanQueued = false; registerDock(el.screen); });
+}
+
+/* ========================================================================== *
+ * Accent discipline — a lint, so the restrained path stays the easy one
+ * ========================================================================== */
+
+function lintAccents() {
+  const loud = document.querySelectorAll(
+    '.btn--primary:not([hidden]):not(:disabled):not([aria-disabled="true"])',
+  );
+  if (loud.length > 1) {
+    console.warn(
+      `[shell] accent discipline: ${loud.length} .btn--primary are visible at once. ` +
+      'The brand gradient is one primary action per view (plus the waveform). ' +
+      'Use .btn--strong for a second emphatic action.',
+    );
+  }
+}
+
+/* ========================================================================== *
+ * Chrome: nav rail, topbar, workspace anchor
  * ========================================================================== */
 
 function setActiveNav(name) {
@@ -367,9 +674,78 @@ function setDrawer(open) {
   el.railScrim.hidden = !open;
 }
 
+/* ------------------------------------------------------ workspace anchor -- */
+/* The bottom of the rail is the frame's most valuable slot. It carries who you
+   are and the one action this product exists for — never a status readout.
+   Everything shown here is true of a local studio: a workspace you named and
+   the songs actually sitting in it. No plans, no balances, no invented state. */
+
+const WORKSPACE_FALLBACK = 'My Studio';
+/** @type {?number} null until the library reports; never guessed. */
+let songCount = null;
+
+function workspaceName() {
+  const stored = String(storage.get('workspace.name', '') || '').trim();
+  return stored || WORKSPACE_FALLBACK;
+}
+
+function songLine() {
+  if (songCount === null) return 'Local workspace';
+  if (songCount === 0) return 'No songs yet';
+  return songCount === 1 ? '1 song' : `${songCount} songs`;
+}
+
+function paintWorkspace() {
+  const name = workspaceName();
+  el.workspaceName.textContent = name;
+  el.workspaceAvatar.textContent = name.slice(0, 1);
+  el.workspaceMeta.textContent = songLine();
+  el.workspaceBtn.title = `${name} — ${songLine()}`;
+}
+
+function beginRename() {
+  if (el.app.dataset.rail === 'collapsed') setRailCollapsed(false);
+  const input = el.workspaceRename;
+  input.value = workspaceName();
+  input.hidden = false;
+  el.workspaceBtn.style.visibility = 'hidden';
+  input.focus();
+  input.select();
+}
+
+function endRename(commit) {
+  const input = el.workspaceRename;
+  if (input.hidden) return;
+  if (commit) storage.set('workspace.name', input.value.trim().slice(0, 28));
+  input.hidden = true;
+  el.workspaceBtn.style.visibility = '';
+  paintWorkspace();
+  if (commit) el.workspaceBtn.focus({ preventScroll: true });
+}
+
+function wireWorkspace() {
+  paintWorkspace();
+
+  attachMenu(el.workspaceBtn, {
+    align: 'start',
+    items: () => [
+      { label: workspaceName(), heading: true },
+      { label: 'Rename workspace', icon: 'pencil', onSelect: beginRename },
+      { label: 'Settings', icon: 'settings', onSelect: () => router.navigate('settings') },
+    ],
+  });
+
+  el.workspaceRename.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); endRename(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); endRename(false); }
+  });
+  el.workspaceRename.addEventListener('blur', () => endRename(true));
+}
+
 function wireChrome() {
   setRailCollapsed(Boolean(storage.get('rail.collapsed', false)));
   setDrawer(false);
+  wireWorkspace();
 
   el.railToggle?.addEventListener('click', () => {
     setRailCollapsed(el.app.dataset.rail !== 'collapsed');
@@ -377,23 +753,24 @@ function wireChrome() {
   el.navOpen?.addEventListener('click', () => setDrawer(el.app.dataset.nav !== 'open'));
   el.railScrim?.addEventListener('click', () => setDrawer(false));
   el.rail?.addEventListener('click', (e) => {
-    if (e.target.closest('.navitem, .brand')) setDrawer(false);
+    if (e.target.closest('.navitem, .brand, .railfoot__cta')) setDrawer(false);
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && el.app.dataset.nav === 'open') setDrawer(false);
   });
 
-  el.status?.addEventListener('click', () => { refreshHealth(); });
-
   bus.on('library:changed', (payload) => {
     const count = Number(payload?.count);
-    if (!Number.isFinite(count) || count <= 0) {
+    songCount = Number.isFinite(count) && count >= 0 ? count : null;
+
+    if (!songCount) {
       el.libraryCount.hidden = true;
       el.libraryCount.textContent = '';
     } else {
       el.libraryCount.hidden = false;
-      el.libraryCount.textContent = count > 999 ? '999+' : String(count);
+      el.libraryCount.textContent = songCount > 999 ? '999+' : String(songCount);
     }
+    paintWorkspace();
   });
 }
 
@@ -409,9 +786,11 @@ async function bootPlayer(context) {
     available = res.ok && (res.headers.get('content-type') || '').includes('javascript');
   } catch { available = false; }
 
+  // The resting bar never names a file, a module or a stack trace. The real
+  // reason stays on ctx.playerUnavailableReason and in the console.
   if (!available) {
-    state.playerReason = 'public/js/player.js has not been built yet.';
-    el.playerFallbackText.textContent = `Player unavailable — ${state.playerReason}`;
+    state.playerReason = 'The player did not load in this session.';
+    el.playerFallbackText.textContent = 'Playback is unavailable — reload the page to try again.';
     el.playerRoot.dataset.state = 'unavailable';
     return;
   }
@@ -428,7 +807,7 @@ async function bootPlayer(context) {
   } catch (err) {
     console.error('[shell] player module failed to start', err);
     state.playerReason = err?.message || String(err);
-    el.playerFallbackText.textContent = `Player failed to start — ${state.playerReason}`;
+    el.playerFallbackText.textContent = 'Playback is unavailable — reload the page to try again.';
     el.playerRoot.dataset.state = 'error';
   }
 }
@@ -476,6 +855,15 @@ function buildContext(route, opts = {}) {
     storage,
     icon,
     iconMarkup,
+
+    // Shared primitives — see docs/CONTRACT.md §6.
+    menu,
+    attachMenu: (trigger, config) => {
+      const controller = attachMenu(trigger, config);
+      track(() => controller.destroy());
+      return controller;
+    },
+    registerDock,
   };
 }
 
@@ -507,6 +895,7 @@ const router = createRouter({
     // Release the previous screen's ctx subscriptions and reset shared chrome.
     for (const off of screenCleanups) { try { off(); } catch { /* noop */ } }
     screenCleanups = [];
+    liveMenu?.close();
     el.topbarActions.replaceChildren();
 
     setActiveNav(route.name);
@@ -518,11 +907,16 @@ const router = createRouter({
 
   onRouteChange(route) {
     setActiveNav(route.name);
+    // Sticky footers are measured and accents counted once the screen settles.
+    requestAnimationFrame(() => {
+      registerDock(el.screen);
+      lintAccents();
+    });
   },
 
   onError(err) {
     if (err?.name === 'AbortError') return;
-    toast(api.errorText(err), { kind: 'error', title: 'Screen error' });
+    toast(api.errorText(err), { kind: 'error', title: 'This page didn’t load' });
   },
 });
 
@@ -541,15 +935,11 @@ function wireGlobalErrors() {
 
 function wirePlayerFallbackRequests() {
   // A screen can always ask for playback. If the player lane has not shipped
-  // yet, say so rather than dropping the request on the floor.
+  // yet, say so rather than dropping the request on the floor — but say it in
+  // the customer's language, not the module loader's.
   bus.on('player:play', () => {
     if (state.player) return;
-    toast(
-      state.playerReason
-        ? `Player unavailable — ${state.playerReason}`
-        : 'Player unavailable.',
-      { kind: 'warn', title: 'Cannot play' },
-    );
+    toast('Reload the page and try again.', { kind: 'warn', title: 'Playback is unavailable' });
   });
 }
 
@@ -561,6 +951,9 @@ function boot() {
   wirePlayerFallbackRequests();
   startHealthPolling();
 
+  // Any sticky footer a screen renders, now or later, gets its scroll padding.
+  new MutationObserver(queueDockScan).observe(el.screen, { childList: true, subtree: true });
+
   router.start();
   bootPlayer(buildContext(
     router.current() || { name: 'shell', path: '/', query: {}, href: '#/' },
@@ -570,6 +963,7 @@ function boot() {
   // Debug handle. Not an API — screens use ctx.
   window.MaxMusic = {
     api, bus, router, toast, storage, registerCss, refreshHealth, icon, iconMarkup,
+    menu, attachMenu, registerDock,
     get health() { return state.health; },
     get player() { return state.player; },
   };
