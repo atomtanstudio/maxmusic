@@ -163,7 +163,12 @@ Rules for screen CSS:
 
 - Scope every rule under a root class you own, e.g. `.screen-create …`. Two lanes must
   never be able to collide.
-- Never restyle `.rail`, `.topbar`, `.playerbar`, `.toast` or `.status`.
+- Never restyle `.rail`, `.topbar`, `.playerbar`, `.toast`, `.railfoot` or `.workspace`.
+  The rail's bottom anchor (workspace identity + `New song`) is shell-owned; nothing may
+  be added to it, and nothing may report connection state anywhere in the chrome.
+- Never restyle `.actionchip`, `.actionbar`, `.menu*` or `.dock*` geometry. Colour and
+  size are the contract, not a starting point. Add a class *beside* them if you need a
+  hook (`class="actionchip lib-act"`), and only set things they do not own.
 - Never redefine a token in `:root`. Set a local custom property on your own root class if
   you need a variant: `.screen-create { --card-pad: var(--space-7); }`.
 - Use the primitives in §6 before writing new component CSS.
@@ -202,10 +207,20 @@ Show these strings — never replace them with "Something went wrong".
 `BITRATE_DEFAULT`), `api.FORMATS`, `api.BITRATES`, `api.SAMPLE_RATES`, `api.SECTION_TAGS`
 (the only nine tags), `api.ASPECT_RATIOS`, `api.LYRICS_MODES`.
 
-**`Health` snapshot** — `{ raw, status: 'online'|'degraded'|'offline', message, ok, backend,
-comfyUrl, comfyReachable, comfyError, musicModels, modelKeys, lyricsProvider, lyricsEnabled,
-coverArtProvider, coverArtEnabled, hasServerKey, error, checkedAt }`. `lyricsEnabled` and
-`coverArtEnabled` are derived from the provider strings — use them to degrade honestly.
+**`Health` snapshot** — `{ raw, status: 'online'|'degraded'|'offline', message, detail, ok,
+backend, comfyUrl, comfyReachable, comfyError, musicModels, modelKeys, lyricsProvider,
+lyricsEnabled, coverArtProvider, coverArtEnabled, hasServerKey, error, checkedAt }`.
+
+- `message` is **customer copy** (`Connected`, `MaxMusic can't reach your studio right
+  now.`) and is safe to render on any screen.
+- `detail` is the **verbatim technical reason** and belongs on Settings only, alongside
+  `backend`, `comfyUrl`, `comfyError`, `modelKeys` and the provider strings. Putting any of
+  those in a working frame is house rule 0.
+- `lyricsEnabled` and `coverArtEnabled` are derived from the provider strings — use them to
+  degrade honestly. Cover art is currently **enabled**; read the flag, never hardcode.
+- The shell polls every 30s and raises a **transient toast** on a real change of state
+  (and a one-line "Reconnected" when it recovers). Screens do not need to render
+  connection state at all — just disable what cannot work and say why.
 
 **Generation input** (SPEC §3a — nothing else is client-controllable):
 `prompt`, `lyrics`, `is_instrumental`, `duration`, `seed`, `tiled_decode`, `more_variation`,
@@ -511,6 +526,9 @@ Shorthands `--t-fast` `--t-base` `--t-slow` — e.g. `transition: opacity var(--
 `--control-h-sm` 28 · `--control-h` 34 · `--control-h-lg` 42 ·
 `--field-bg` `--field-border` `--field-radius`
 
+Icon-action floors (§6a) — these are minimums, not suggestions:
+`--action-size` 34 · `--action-size-lg` 40 · `--action-gap` 12 · `--icon-stroke` 1.75
+
 ### Z-index
 
 `--z-base` 0 · `--z-sticky` 20 · `--z-rail` 40 · `--z-player` 50 · `--z-overlay` 70 ·
@@ -529,13 +547,29 @@ crops the neon wave out of `logo.png`. To use the mark anywhere:
 
 ## 9. House rules for every lane
 
+0. **No engineering internals in resting UI.** This is the rule that lost round 1 — every
+   judge named it, in every frame. Banned from anything a customer sees while the app is
+   working normally: LAN addresses and ports, endpoint paths, backend/provider/build names
+   (`local-comfy`, `local-codex-cli`, `local-media-broker`), model and quantization strings,
+   spec section numbers, implementation notes dressed as labels ("saves VRAM on long
+   renders", "ignored for flac"), raw byte sizes and internal counters.
+   Say `Connected`, not `192.168.1.100:8190`. Say `Progress updates live while your track
+   renders`, not `Streams /api/generate-stream`. Say `Lyrics fit the 2:00 target`, not
+   `Lyrics match every §3d rule`.
+   Diagnostics have exactly two homes: the **Settings** screen, and **transient error
+   states** that only appear when something is actually wrong. `health.message` is customer
+   copy and is safe anywhere; `health.detail`, `health.comfyUrl`, `health.backend`,
+   `health.modelKeys` and `err.endpoint` are Settings-only.
+
 1. **Every control is wired to something real, or visibly disabled with the reason.**
    No placeholder sliders, no buttons that log to console. If a capability is off
    (`coverArtEnabled === false`, `lyricsEnabled === false`, `ctx.player === null`), say so
-   in the UI with the backend's own words and point at the fix.
+   in the UI and point at the fix.
 2. **Only the features in SPEC §3.** Guidance/cfg, flow-matching steps and auto-lyrics are
    not client-controllable — a control for them is a defect.
-3. **Backend messages are shown verbatim.** `api.errorText(err)` or `err.fullMessage`.
+3. **Failure messages are shown verbatim, in error states.** `api.errorText(err)` or
+   `err.fullMessage` — never replaced with "Something went wrong". Honest means never
+   faking success; it does not mean publishing the machine on a working screen (rule 0).
 4. **Offline-safe.** No CDN, no external fonts, no remote images. Everything relative.
 5. **Vanilla ES modules + CSS.** No frameworks, no bundler, no transpiling.
 6. **Vocal generation needs lyrics** and the backend will not write them: `POST /api/lyrics`

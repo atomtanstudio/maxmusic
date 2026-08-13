@@ -3,6 +3,16 @@
    Owned by the studio lane. Every rule is scoped under .screen-studio so no
    other lane can be touched. Colour, space, type and motion come from
    tokens.css; nothing is hard-coded.
+
+   Round 2 rules held here:
+   - ONE accent. The brand gradient appears once (the Generate button, via
+     .btn--primary) plus the animated hairline while a render is actually
+     running. Cyan is used only as --accent: section tags, carets, focus.
+     Everything else is neutral; amber and red mean warning and failure.
+   - ONE value, ONE control. Length is a single editable field with preset
+     shortcuts. A setting that cannot act is disabled and looks it.
+   - The rail is a .dock, so its action bar cannot bisect anything, and the
+     scroll region ends in a terminal card rather than in void.
    ========================================================================= */
 
 .screen-studio { height: 100%; }
@@ -13,18 +23,22 @@
 .screen-studio .studio {
   height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 384px;
+  grid-template-columns: minmax(0, 1fr) 380px;
   overflow: hidden;
 }
 
+/* The column scrolls internally, so its last visible row meets the frame edge.
+   Round 1 was told a guillotined label reads as a clipping bug: dissolve the
+   final few pixels instead of cutting them. */
 .screen-studio .studio__main {
   min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
 }
 
 .screen-studio .studio__wrap {
-  max-width: 900px;
+  max-width: 920px;
   margin-inline: auto;
   padding: var(--gutter) var(--gutter) var(--space-12);
   display: flex;
@@ -34,19 +48,13 @@
 
 .screen-studio .studio__side {
   min-width: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
   background: var(--surface-1);
   border-left: 1px solid var(--border-faint);
 }
 
-.screen-studio .studio__sidewrap {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-6) var(--space-7) var(--space-8);
-  min-height: 100%;
-}
+/* .dock is shell-owned; only the fade colour is ours to set. */
+.screen-studio .studio__dock { --dock-fade: var(--surface-1); }
 
 /* ----------------------------------------------------------- doc header -- */
 
@@ -60,7 +68,7 @@
 .screen-studio .studio__title {
   flex: 1 1 260px;
   min-width: 0;
-  height: 42px;
+  height: 44px;
   padding: 0 var(--space-5) 0 0;
   background: none;
   border: 0;
@@ -86,8 +94,9 @@
 .screen-studio .studio__head {
   flex-wrap: wrap;
   gap: var(--space-4) var(--space-5);
+  min-height: 52px;
   padding: var(--space-5) var(--space-6);
-  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  background: var(--surface-3);
 }
 .screen-studio .studio__head .panel__title {
   display: inline-flex;
@@ -115,7 +124,7 @@
 .screen-studio .studio__count[data-state="near"] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
 .screen-studio .studio__count[data-state="over"] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 
-.screen-studio .studio__lede { max-width: 74ch; }
+.screen-studio .studio__lede { max-width: 76ch; }
 .screen-studio .studio__twostep { align-items: flex-start; }
 
 /* ------------------------------------------------------------ lyrics UI -- */
@@ -123,11 +132,10 @@
 .screen-studio [data-ignored="true"] .tagbar,
 .screen-studio [data-ignored="true"] .lyricbox,
 .screen-studio [data-ignored="true"] .sections {
-  opacity: .38;
-  filter: saturate(.35);
-  transition: opacity var(--t-base), filter var(--t-base);
+  opacity: .4;
+  transition: opacity var(--t-base);
 }
-.screen-studio [data-ignored="true"] .lyricbox:focus-within { opacity: 1; filter: none; }
+.screen-studio [data-ignored="true"] .lyricbox:focus-within { opacity: 1; }
 
 .screen-studio .tagbar {
   display: flex;
@@ -140,10 +148,9 @@
 }
 .screen-studio .tagbar__chip:hover {
   color: var(--text-hi);
-  border-color: var(--border-brand);
+  border-color: var(--border-strong);
   background: var(--surface-3);
 }
-.screen-studio .tagbar__chip:active { transform: translateY(1px); }
 
 /* the editor: a highlight layer behind a transparent textarea ------------- */
 
@@ -151,7 +158,7 @@
   --ly-pad: var(--space-6);
   --ly-lh: 1.8;
   position: relative;
-  height: 340px;
+  height: 336px;
   min-height: 180px;
   max-height: 72vh;
   overflow: auto;
@@ -213,7 +220,7 @@
 .screen-studio .ly-tag {
   font-style: normal;
   font-weight: var(--fw-semibold);
-  color: var(--brand-cyan);
+  color: var(--accent);
 }
 .screen-studio .ly-tag--warn { color: var(--warn); text-decoration: underline dotted currentColor; text-underline-offset: 3px; }
 .screen-studio .ly-tag--bad { color: var(--danger); text-decoration: underline wavy currentColor; text-underline-offset: 3px; }
@@ -250,10 +257,7 @@
   letter-spacing: var(--tracking-tight);
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  /* A 1–3 digit number is far narrower than the ramp: fix the gradient width so
-     short counts sample the cool end instead of the whole rainbow. */
-  background-size: 260px 100%;
-  background-repeat: no-repeat;
+  color: var(--text-hi);
 }
 .screen-studio .fit__unit { font-size: var(--fs-sm); color: var(--text-mid); }
 .screen-studio .fit__target { font-size: var(--fs-xs); color: var(--text-lo); }
@@ -272,7 +276,7 @@
   inset: 0 auto 0 0;
   width: 0;
   border-radius: var(--r-pill);
-  background: var(--surface-4);
+  background: var(--text-mid);
   transition: width var(--t-base), background var(--t-base);
 }
 .screen-studio .fit__band {
@@ -284,11 +288,13 @@
   background: rgba(255, 255, 255, .06);
 }
 
-.screen-studio .fit[data-fit="good"]  .fit__fill { background: var(--gradient-brand-cool); box-shadow: var(--shadow-glow-cyan); }
-.screen-studio .fit[data-fit="under"] .fit__fill { background: linear-gradient(90deg, var(--brand-blue-deep), var(--brand-blue)); }
-.screen-studio .fit[data-fit="over"]  .fit__fill { background: var(--gradient-brand-warm); }
+/* State through weight, not hue — amber only when it is a real warning. */
+.screen-studio .fit[data-fit="good"]  .fit__fill { background: var(--text-hi); }
+.screen-studio .fit[data-fit="under"] .fit__fill,
+.screen-studio .fit[data-fit="over"]  .fit__fill { background: var(--warn); }
 .screen-studio .fit[data-fit="off"]   .fit__fill,
 .screen-studio .fit[data-fit="off"]   .fit__band { opacity: .3; }
+.screen-studio .fit[data-fit="off"]   .fit__value { color: var(--text-lo); }
 
 .screen-studio .fit__foot {
   font-size: var(--fs-xs);
@@ -318,7 +324,7 @@
   transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
 }
 .screen-studio .sectionchip:hover { color: var(--text-hi); border-color: var(--border-strong); background: var(--surface-3); }
-.screen-studio .sectionchip b { color: var(--brand-cyan); font-weight: var(--fw-semibold); }
+.screen-studio .sectionchip b { color: var(--accent); font-weight: var(--fw-semibold); }
 .screen-studio .sectionchip i { font-style: normal; color: var(--text-lo); }
 .screen-studio .sectionchip u { text-decoration: none; color: var(--text-faint); }
 
@@ -370,7 +376,7 @@
 .screen-studio .lint__sev .icon { width: 15px; height: 15px; }
 .screen-studio .lint__row[data-sev="error"] .lint__sev { color: var(--danger); }
 .screen-studio .lint__row[data-sev="warn"]  .lint__sev { color: var(--warn); }
-.screen-studio .lint__row[data-sev="info"]  .lint__sev { color: var(--accent); }
+.screen-studio .lint__row[data-sev="info"]  .lint__sev { color: var(--text-lo); }
 .screen-studio .lint__line { color: var(--text-faint); font-size: var(--fs-2xs); padding-top: 1px; }
 .screen-studio .lint__msg { min-width: 0; overflow-wrap: anywhere; }
 
@@ -379,7 +385,7 @@
 .screen-studio .capfield {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
   padding: var(--space-6);
   border: 1px solid var(--border-faint);
   border-radius: var(--r-md);
@@ -388,33 +394,36 @@
 
 .screen-studio .capfield__head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-5);
-  flex-wrap: wrap;
+  min-width: 0;
 }
 .screen-studio .capfield__label {
+  flex: none;
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: var(--text-hi);
   letter-spacing: var(--tracking-tight);
 }
-.screen-studio .capfield__meter {
-  font-size: var(--fs-2xs);
-  color: var(--text-faint);
-}
-.screen-studio .capfield__meter[data-state="partial"] { color: var(--text-mid); }
-.screen-studio .capfield__meter[data-state="full"] { color: var(--ok); }
-.screen-studio .capfield__head .btn { margin-left: auto; }
-
-.screen-studio .capfield__lede {
+.screen-studio .capfield__summary {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: var(--fs-xs);
   color: var(--text-lo);
-  margin-top: calc(var(--space-2) * -1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.screen-studio .capfield__meter {
+  flex: none;
+  font-size: var(--fs-2xs);
+  color: var(--text-faint);
 }
 
 .screen-studio .partbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-3);
 }
 .screen-studio .partchip {
@@ -426,29 +435,23 @@
 .screen-studio .partchip__tick {
   width: 12px;
   height: 12px;
-  opacity: .22;
+  opacity: .2;
   transition: opacity var(--t-fast), color var(--t-fast);
 }
 .screen-studio .partchip.is-active { color: var(--text-hi); }
 .screen-studio .partchip.is-active .partchip__tick { opacity: 1; color: var(--ok); }
+.screen-studio .partbar__add { height: 26px; font-size: var(--fs-2xs); }
 
 .screen-studio .capfield__text {
-  min-height: 132px;
+  min-height: 128px;
   background: var(--surface-inset);
   line-height: var(--lh-normal);
-}
-
-.screen-studio .capfield__grammar {
-  font-family: var(--font-mono);
-  font-size: var(--fs-2xs);
-  color: var(--text-faint);
-  overflow-wrap: anywhere;
 }
 
 .screen-studio .capfield__suggest {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-5);
   flex-wrap: wrap;
   padding: var(--space-4) var(--space-5);
   border-radius: var(--r-sm);
@@ -477,6 +480,7 @@
   color: var(--text-mid);
 }
 .screen-studio .composed__summary::-webkit-details-marker { display: none; }
+.screen-studio .composed__summary:hover { color: var(--text-hi); }
 .screen-studio .composed__summary .icon {
   width: 14px;
   height: 14px;
@@ -485,7 +489,6 @@
 }
 .screen-studio .composed[open] .composed__summary .icon { transform: rotate(90deg); }
 .screen-studio .composed__meta { margin-left: auto; font-size: var(--fs-2xs); color: var(--text-faint); }
-.screen-studio .composed__meta[data-state="ok"] { color: var(--ok); }
 .screen-studio .composed__body {
   margin: 0;
   padding: 0 var(--space-6) var(--space-6);
@@ -498,32 +501,64 @@
   overflow: auto;
 }
 
-/* ============================== RENDER RAIL =============================== */
+/* ============================== RENDER RAIL ===============================
+   One left rail (--gutter, shared with the dock footer) and one row pitch
+   (--space-7 between groups, --space-4 inside one).
+   ======================================================================== */
 
-.screen-studio .render {
+.screen-studio .rack {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-7);
+  min-height: 100%;
+  padding: var(--space-7) var(--gutter) var(--space-8);
 }
-.screen-studio .render .field { gap: var(--space-3); }
-.screen-studio .render .divider { margin: var(--space-2) 0; }
-.screen-studio .render .hint { font-size: var(--fs-2xs); }
+.screen-studio .rack__group { gap: var(--space-4); }
+.screen-studio .rack .hint { font-size: var(--fs-2xs); }
 
-.screen-studio .render__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border-faint);
-}
-.screen-studio .render__title {
+.screen-studio .rack__title {
   font-size: var(--fs-2xs);
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-lo);
 }
-.screen-studio .render__head .badge { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+/* Length: one editable value, sitting in its own label row. */
+.screen-studio .rack__num {
+  width: 76px;
+  height: var(--control-h-sm);
+  margin-left: auto;
+  padding-inline: var(--space-4);
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--text-hi);
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen-studio .chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.screen-studio .chiprow .chip {
+  flex: 1 1 auto;
+  justify-content: center;
+  height: var(--control-h-sm);
+  padding-inline: var(--space-4);
+}
+
+.screen-studio .rack__row {
+  display: flex;
+  align-items: center;
+  gap: var(--action-gap);
+}
+.screen-studio .rack__row .input { flex: 1 1 auto; min-width: 0; }
+
+.screen-studio .segment--block { display: flex; }
+.screen-studio .segment--block .segment__item { flex: 1; padding-inline: var(--space-4); }
 
 .screen-studio .grid2 {
   display: grid;
@@ -531,57 +566,170 @@
   gap: var(--space-5);
 }
 
-.screen-studio .input--num {
-  flex: none;
-  width: 84px;
-  text-align: right;
+/* A setting that cannot act reads as inactive — label, value and all. */
+.screen-studio .field[data-off="true"] { opacity: .45; }
+.screen-studio .field[data-off="true"] .select { pointer-events: none; }
+
+.screen-studio .rack__switch { align-items: flex-start; }
+.screen-studio .rack__switch .switch__track { margin-top: 2px; }
+.screen-studio .rack__sub {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--fs-2xs);
+  color: var(--text-lo);
 }
 
-.screen-studio .presets { gap: var(--space-3); }
-.screen-studio .presets .chip { height: 24px; padding-inline: var(--space-4); font-size: var(--fs-2xs); }
+/* ------------------------------------------------------------ disclosure -- */
 
-.screen-studio .render__switch { align-items: flex-start; }
-.screen-studio .render__switch .switch__track { margin-top: 2px; }
-.screen-studio .render__sub {
-  display: block;
+.screen-studio .fold {
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.screen-studio .fold__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 40px;
+  padding-inline: var(--space-5);
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.screen-studio .fold__summary::-webkit-details-marker { display: none; }
+.screen-studio .fold__summary:hover { color: var(--text-hi); }
+.screen-studio .fold__summary .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+  transition: transform var(--t-fast);
+}
+.screen-studio .fold[open] .fold__summary .icon { transform: rotate(90deg); }
+.screen-studio .fold__meta {
+  margin-left: auto;
   font-size: var(--fs-2xs);
   color: var(--text-faint);
 }
+.screen-studio .fold[open] .fold__meta { opacity: 0; }
+.screen-studio .fold__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-5);
+  border-top: 1px solid var(--border-faint);
+}
 
-.screen-studio .segment--block { display: flex; }
-.screen-studio .segment--block .segment__item { flex: 1; padding-inline: var(--space-4); }
+/* ---------------------------------------------------------------- output -- */
 
-/* the sticky action foot -------------------------------------------------- */
-
-.screen-studio .render__foot {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
+/* Grows to the foot of the rail: the region never ends in flat dark nothing. */
+.screen-studio .output {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  margin-top: auto;
-  padding: var(--space-6) 0;
-  background: var(--surface-1);
-  box-shadow: 0 -18px 26px -14px rgba(0, 0, 0, .95);
-}
-/* soft lead-in above the dock so scrolled content fades rather than clips */
-.screen-studio .render__foot::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(var(--space-8) * -1);
-  height: var(--space-8);
-  background: linear-gradient(180deg, transparent, var(--surface-1));
-  pointer-events: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: var(--space-2);
 }
 
-.screen-studio .render__issues {
+.screen-studio .takes {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
+.screen-studio .takes:empty { display: none; }
+
+/* The floor: the rail never ends in flat dark nothing. */
+.screen-studio .output__empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: 148px;
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.screen-studio .output__mark { opacity: .5; }
+.screen-studio .output__title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-mid);
+}
+.screen-studio .output__text {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--text-lo);
+  max-width: 30ch;
+}
+
+.screen-studio .take {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-faint);
+  background: var(--surface-2);
+  animation: studio-take-in var(--dur-slow) var(--ease-out) both;
+}
+@keyframes studio-take-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.screen-studio .take__art {
+  padding: var(--space-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
+.screen-studio .take__body { min-width: 0; }
+.screen-studio .take__title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  overflow-wrap: anywhere;
+}
+.screen-studio .take__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: 3px;
+  font-size: var(--fs-2xs);
+  color: var(--text-lo);
+  font-variant-numeric: tabular-nums;
+}
+
+.screen-studio .take__error { align-items: flex-start; font-size: var(--fs-xs); }
+.screen-studio .take__errmsg { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.screen-studio .take__errfoot {
+  margin-top: var(--space-4);
+  font-size: var(--fs-3xs);
+  color: var(--text-lo);
+}
+.screen-studio .take__errfoot:empty { display: none; }
+
+/* ------------------------------------------------------------ dock foot -- */
+
+.screen-studio .foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 100%;
+  min-width: 0;
+}
+
+.screen-studio .foot__issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.screen-studio .foot__issues:empty { display: none; }
+
 .screen-studio .render__issue {
   display: grid;
   grid-template-columns: 16px 1fr;
@@ -605,7 +753,7 @@
   border-color: color-mix(in srgb, var(--warn) 22%, transparent);
 }
 
-.screen-studio .render__busy {
+.screen-studio .foot__busy {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -614,82 +762,19 @@
   border: 1px solid var(--border);
   background: var(--surface-2);
 }
-.screen-studio .render__busyrow {
+.screen-studio .foot__busyrow {
   display: flex;
   align-items: center;
   gap: var(--space-4);
   font-size: var(--fs-xs);
   color: var(--text-mid);
 }
-.screen-studio .render__busyrow .spinner { color: var(--brand-cyan); }
-.screen-studio .render__busyrow .mono { color: var(--text-lo); }
-
-.screen-studio .render__endpoint {
-  font-size: var(--fs-3xs);
-  color: var(--text-faint);
-  text-align: center;
-  letter-spacing: 0;
-}
-
-/* --------------------------------------------------------------- takes --- */
-
-.screen-studio .takes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.screen-studio .take {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-5);
-  padding: var(--space-5);
-  border-radius: var(--r-md);
-  border: 1px solid var(--border-faint);
-  background: var(--surface-2);
-  animation: studio-take-in var(--dur-slow) var(--ease-out) both;
-}
-@keyframes studio-take-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-.screen-studio .take__art {
-  align-self: center;
-  padding: var(--space-4);
-  border-radius: var(--r-sm);
-  background: var(--surface-inset);
-}
-.screen-studio .take__body { min-width: 0; }
-.screen-studio .take__title {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--text-hi);
-  overflow-wrap: anywhere;
-}
-.screen-studio .take__meta {
-  font-size: var(--fs-2xs);
-  color: var(--text-lo);
-  margin-top: 2px;
-  overflow-wrap: anywhere;
-}
-.screen-studio .take__actions {
-  grid-column: 1 / -1;
-  display: flex;
-  gap: var(--space-4);
-}
-.screen-studio .take__actions > * { flex: 1; }
-
-.screen-studio .take__error { align-items: flex-start; font-size: var(--fs-xs); }
-.screen-studio .take__errmsg { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
-.screen-studio .take__errfoot {
-  margin-top: var(--space-4);
-  font-size: var(--fs-3xs);
-  color: var(--text-lo);
-}
+.screen-studio .foot__busyrow .spinner { color: var(--text-hi); }
+.screen-studio .foot__busyrow .mono { color: var(--text-lo); }
 
 /* ---------------------------------------------------------- responsive --- */
 
-@media (max-width: 1240px) {
+@media (max-width: 1280px) {
   .screen-studio .studio { grid-template-columns: minmax(0, 1fr) 340px; }
   .screen-studio .studio__wrap { padding-inline: var(--space-7); }
 }
@@ -701,20 +786,20 @@
     height: auto;
     overflow: visible;
   }
-  .screen-studio .studio__main,
-  .screen-studio .studio__side { overflow: visible; }
+  /* Stacked, the column no longer ends at a frame edge — nothing to dissolve. */
+  .screen-studio .studio__main { overflow: visible; mask-image: none; }
   .screen-studio .studio__side {
+    overflow: visible;
     border-left: 0;
     border-top: 1px solid var(--border-faint);
   }
-  .screen-studio .studio__sidewrap {
-    max-width: 900px;
+  /* Stacked: the page itself scrolls, so the dock stops being a viewport box.
+     The footer keeps its own look and still cannot overlap the content. */
+  .screen-studio .studio__dock { height: auto; }
+  .screen-studio .studio__dock .dock__scroll { overflow: visible; }
+  .screen-studio .rack {
+    max-width: 920px;
     margin-inline: auto;
-    min-height: 0;
-  }
-  .screen-studio .render__foot {
-    position: static;
-    background: none;
   }
   .screen-studio .lyricbox { max-height: none; }
 }
@@ -722,6 +807,6 @@
 @media (max-width: 640px) {
   .screen-studio .grid2 { grid-template-columns: 1fr; }
   .screen-studio .studio__wrap { padding-inline: var(--space-6); }
-  .screen-studio .take { grid-template-columns: 1fr; }
+  .screen-studio .take { grid-template-columns: minmax(0, 1fr) auto; }
   .screen-studio .take__art { display: none; }
 }

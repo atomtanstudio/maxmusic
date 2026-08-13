@@ -1,17 +1,29 @@
 /**
  * MaxMusic — Library.
  *
- * Every take this browser has generated. There is no list endpoint on the
- * backend (see SPEC §4), so the index lives in localStorage under
- * `maxmusic:library.tracks` and the audio itself stays on the backend at
- * `/tracks/…`. The screen is honest about that everywhere it matters.
+ * Every song made on this machine. There is no list endpoint (SPEC §4), so the
+ * index lives in this browser and the audio itself stays in the studio. That
+ * fact is explained once, in customer language, in the empty state — it is
+ * never printed as chrome on a working frame.
  *
  * Wired to real things:
  *   bus `track:new`          → a record is stored and `library:changed` is emitted
  *   bus `player:play`        → play / queue (the shell answers when no player exists)
- *   `<a download>`           → the real file the backend rendered
- *   `api.generateStream()`   → re-run a take with its own seed
+ *   `<a download>`           → the real file that was rendered
+ *   `api.generateStream()`   → run a song again from its own seed
  *   localStorage             → delete (with undo), import, export, clear
+ *
+ * Round 2 rebuild, against the named round 1 failures:
+ *   - the row action strip is `.actionbar` + `.actionchip` (CONTRACT §6a) —
+ *     34px containers visible at rest, one icon style, 12px gaps, and the
+ *     destructive action moved into a right-aligned `…` menu at the row edge;
+ *   - the strip starts on the same left rail as the title and the caption;
+ *   - every row is one fixed pitch;
+ *   - seeds, file sizes and provider names are gone from resting UI. The seed
+ *     is still a first-class feature — it lives in the row's overflow menu and
+ *     in the detail sheet, where reproducibility is actually used;
+ *   - the list can no longer stop mid-page: it ends in a terminal card on the
+ *     same rail and row height, which absorbs whatever height is left.
  *
  * Owned by the library lane: this file + public/css/screens/library.css.
  *
@@ -20,7 +32,7 @@
 
 export const meta = {
   title: 'Library',
-  subtitle: 'Every take this browser has generated',
+  subtitle: 'Everything you’ve made',
   css: '/css/screens/library.css',
 };
 
@@ -86,31 +98,11 @@ function fmtDuration(sec) {
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
-/** Human total for the stats line, e.g. `1 hr 4 min`. */
-function fmtTotalTime(sec) {
-  if (!Number.isFinite(sec) || sec <= 0) return null;
-  const mins = Math.round(sec / 60);
-  if (mins < 1) return `${Math.round(sec)} sec`;
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m ? `${h} hr ${m} min` : `${h} hr`;
-}
-
-function fmtBytes(n) {
-  if (!Number.isFinite(n) || n <= 0) return '—';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
-  return `${i === 0 || v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
-}
-
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Short relative stamp for a row: `4 min ago`, `Yesterday`, `12 Aug`. */
 function fmtWhen(ts) {
-  if (!Number.isFinite(ts)) return '—';
+  if (!Number.isFinite(ts)) return '';
   const now = Date.now();
   const diff = now - ts;
   if (diff < 45_000) return 'Just now';
@@ -133,24 +125,52 @@ function fmtStamp(ts) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/* The SPEC §3c section labels. Useful in the full caption, noise in a one-line row. */
+function fmtSampleRate(hz) {
+  if (!Number.isFinite(hz) || hz <= 0) return '—';
+  const k = hz / 1000;
+  return `${Number.isInteger(k) ? k : k.toFixed(1)} kHz`;
+}
+
+/* The structured-caption section labels. Useful in the full caption, noise in
+   a one-line row. */
 const CAPTION_LABELS = /(Basic Attributes|Global Emotional Progression|Application Scenarios & Imagery|Sonics & Production Profile|Vocal Gender & Timbre|Vocal Style|Harmony\/Backing Vocals|Vocal FX|Instrument Lifecycle Description[^:]*|Groove & Foundation Progression|Embellishments, Textures & Spatial FX|Primary|Secondary)\s*:\s*/g;
 
-/** One-line caption excerpt: the caption itself, minus its structural labels. */
+/**
+ * The caption is written for the model, so its head reads like a form:
+ * "bpm is 96. key is D, and scale is minor." Say it the way a musician would.
+ */
+function humaniseAttributes(text) {
+  return text
+    .replace(/\bbpm is\s*(\d+(?:\.\d+)?)\s*[.,]?\s*/i, (_, bpm) => `${Math.round(Number(bpm))} BPM · `)
+    .replace(/\bkey is\s*([A-G][#b♯♭]?)\s*,?\s*and scale is\s*(major|minor)\s*[.,]?\s*/i,
+      (_, key, scale) => `${key} ${scale.toLowerCase()} · `)
+    .replace(/\bkey is\s*([A-G][#b♯♭]?)\s*[.,]?\s*/i, (_, key) => `${key} · `)
+    .replace(/\s*·\s*·\s*/g, ' · ');
+}
+
+/** One-line caption excerpt in customer language. */
 function excerpt(record) {
-  const text = String(record.prompt || '').replace(CAPTION_LABELS, '').replace(/\s+/g, ' ').trim();
+  const raw = String(record.prompt || '').replace(CAPTION_LABELS, '').replace(/\s+/g, ' ').trim();
+  const text = humaniseAttributes(raw)
+    .replace(/\s+/g, ' ')
+    .replace(/^[·\s]+/, '')
+    /* Stripping the caption's labels leaves sentences starting lower-case.
+       Put the capital back so the row reads as prose, not as a dumped field. */
+    .replace(/(^|[.!?]\s+)([a-z])/g, (_, lead, c) => lead + c.toUpperCase())
+    .trim();
   if (text) return text;
-  if (record.isInstrumental) return 'Instrumental take — no caption was recorded.';
-  return 'No caption was recorded for this take.';
+  if (record.isInstrumental) return 'Instrumental — no caption was saved with this song.';
+  return 'No caption was saved with this song.';
 }
 
 /* ========================================================================== *
  * Deterministic cover art
  *
- * No backend cover is attached to most takes, and inventing a remote image is
- * both a lie and a network request. Instead every take gets a plate drawn from
+ * Most songs have no rendered cover attached, and inventing a remote image is
+ * both a lie and a network request. Instead every song gets a plate drawn from
  * its own seed, using the brand ramp read straight off tokens.css — so the art
- * is reproducible, offline, and never hard-codes a colour.
+ * is reproducible, offline, and never hard-codes a colour. Each plate keeps to
+ * one narrow slice of the ramp: album art may be vivid, the interface may not.
  * ========================================================================== */
 
 /** @type {?{ramp: string[], base: string}} */
@@ -222,13 +242,15 @@ function coverSvg(record, forceMotif) {
   const rnd = rngFrom(h);
   const uid = `a${(artUid += 1).toString(36)}${(h % 4096).toString(36)}`;
 
-  /* Three stops two apart on the ramp: always a vivid slice, never muddy. The
-     variety between plates comes from the motif and its geometry, not the hue. */
+  /* One narrow, adjacent slice of the ramp per plate: a duotone reads as art
+     direction, a full rainbow reads as a colour-picker demo. Every stop is
+     pulled back toward the app ground so the plates sit in the page instead of
+     shouting over it — album art may be vivid, the interface may not. */
   const i0 = h % 6;
-  const c1 = ramp[i0];
-  const c2 = ramp[(i0 + 2) % 6];
-  const c3 = ramp[(i0 + 4) % 6];
-  const plate = mix(base, c2, 0.11);
+  const c1 = mix(ramp[i0], base, 0.2);
+  const c2 = mix(ramp[(i0 + 1) % 6], base, 0.24);
+  const c3 = mix(ramp[(i0 + 2) % 6], base, 0.42);
+  const plate = mix(base, c2, 0.1);
   const n = (v) => v.toFixed(2);
 
   const angle = (h >>> 6) % 4;
@@ -242,7 +264,7 @@ function coverSvg(record, forceMotif) {
     + `<stop offset="1" stop-color="${c3}"/></linearGradient>`,
     `<radialGradient id="${uid}v" cx=".5" cy=".42" r=".8">`
     + `<stop offset=".5" stop-color="${base}" stop-opacity="0"/>`
-    + `<stop offset="1" stop-color="${base}" stop-opacity=".6"/></radialGradient>`,
+    + `<stop offset="1" stop-color="${base}" stop-opacity=".62"/></radialGradient>`,
   ];
 
   let body = '';
@@ -262,7 +284,7 @@ function coverSvg(record, forceMotif) {
         + ` width="${n(w)}" height="${n(hh)}" rx="${n(w / 2)}"/>`;
     }
     defs.push(`<radialGradient id="${uid}g" cx=".5" cy=".5" r=".55">`
-      + `<stop offset="0" stop-color="${c2}" stop-opacity=".55"/>`
+      + `<stop offset="0" stop-color="${c2}" stop-opacity=".5"/>`
       + `<stop offset="1" stop-color="${c2}" stop-opacity="0"/></radialGradient>`);
     body = `<rect width="100" height="100" fill="url(#${uid}g)"/>`
       + `<g fill="url(#${uid}l)">${rects}</g>`;
@@ -280,7 +302,7 @@ function coverSvg(record, forceMotif) {
         + ` stroke-width="${n(sw)}" opacity="${n(0.45 + 0.5 * rnd())}"/>`;
     }
     defs.push(`<radialGradient id="${uid}d" cx=".5" cy=".5" r=".5">`
-      + `<stop offset="0" stop-color="${c1}" stop-opacity=".7"/>`
+      + `<stop offset="0" stop-color="${c1}" stop-opacity=".65"/>`
       + `<stop offset="1" stop-color="${c3}" stop-opacity=".1"/></radialGradient>`);
     const disc = 6 + count * gap;
     const cut = rnd();
@@ -297,7 +319,7 @@ function coverSvg(record, forceMotif) {
     const sr = 15 + rnd() * 9;
     defs.push(`<linearGradient id="${uid}s" x1="0" y1="0" x2="0" y2="1">`
       + `<stop offset="0" stop-color="${c1}" stop-opacity=".1"/>`
-      + `<stop offset="1" stop-color="${c2}" stop-opacity=".55"/></linearGradient>`);
+      + `<stop offset="1" stop-color="${c2}" stop-opacity=".5"/></linearGradient>`);
     defs.push(`<linearGradient id="${uid}u" x1="0" y1="0" x2="0" y2="1">`
       + `<stop offset="0" stop-color="${c3}"/><stop offset="1" stop-color="${c2}"/></linearGradient>`);
     let lines = '';
@@ -310,7 +332,7 @@ function coverSvg(record, forceMotif) {
     body = `<rect width="100" height="${n(hy)}" fill="url(#${uid}s)"/>`
       + `<circle cx="${n(sx)}" cy="${n(hy - sr * 0.35)}" r="${n(sr)}" fill="url(#${uid}u)" opacity=".95"/>`
       + `<rect x="0" y="${n(hy)}" width="100" height="${n(100 - hy)}" fill="${plate}"/>`
-      + `<rect x="0" y="${n(hy - 0.5)}" width="100" height="1" fill="${c1}" opacity=".75"/>${lines}`;
+      + `<rect x="0" y="${n(hy - 0.5)}" width="100" height="1" fill="${c1}" opacity=".7"/>${lines}`;
   } else {
     /* prism — hard bands with a knocked-out disc */
     const rot = (rnd() < 0.5 ? -1 : 1) * (4 + rnd() * 48);
@@ -331,9 +353,13 @@ function coverSvg(record, forceMotif) {
         : `<rect x="0" y="${n(62 + rnd() * 20)}" width="100" height="40" fill="${plate}" opacity=".9"/>`);
   }
 
+  /* A flat scrim keeps the hue but drops the luminance, so a generated plate
+     sits at the same weight as a real rendered cover instead of glowing next
+     to it. Then the vignette rolls the edges into the page. */
   return `<svg class="cover__art" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">`
     + `<defs>${defs.join('')}</defs>`
     + `<rect width="100" height="100" fill="${plate}"/>${body}`
+    + `<rect width="100" height="100" fill="${base}" opacity=".16"/>`
     + `<rect width="100" height="100" fill="url(#${uid}v)"/></svg>`;
 }
 
@@ -384,7 +410,7 @@ function toRecord(payload) {
     url,
     filename,
     size: Number(track.size ?? m.size) || 0,
-    title: String(m.title || '').trim() || titleFromPrompt(prompt) || 'Untitled take',
+    title: String(m.title || '').trim() || titleFromPrompt(prompt) || 'Untitled song',
     prompt,
     lyrics: String(m.lyrics ?? ''),
     isInstrumental: Boolean(m.isInstrumental ?? m.is_instrumental),
@@ -398,7 +424,6 @@ function toRecord(payload) {
     createdAt: Number(m.createdAt) || Date.now(),
     source: String(m.source || '') || null,
     parentId: String(m.parentId || '') || null,
-    backend: String(extra.backend || '') || null,
   };
 }
 
@@ -445,6 +470,8 @@ export function mount(root, ctx) {
   let openSheetId = null;
 
   const cleanups = [];
+  /** Row overflow menus built for the current paint; torn down on the next one. */
+  let rowMenus = [];
 
   /* ------------------------------------------------------------- store -- */
 
@@ -452,7 +479,7 @@ export function mount(root, ctx) {
     records = next;
     const ok = saveRecords(ctx.storage, records);
     if (!ok) {
-      ctx.toast('This browser refused to save the library (storage is full or blocked). The list on screen is correct until you reload.', {
+      ctx.toast('This browser refused to save your library — its storage is full or blocked. What you see is correct until you reload.', {
         kind: 'error', title: 'Could not save',
       });
     }
@@ -482,9 +509,9 @@ export function mount(root, ctx) {
     const index = records.findIndex((r) => r.id === id);
     persist(records.filter((r) => r.id !== id));
     if (openSheetId === id) closeSheet();
-    ctx.toast(`Removed “${record.title}”. The rendered file itself stays on the backend at ${record.url || 'its original path'}.`, {
+    ctx.toast(`Removed “${record.title}” from your library. The audio file itself is untouched.`, {
       kind: 'info',
-      title: 'Removed from library',
+      title: 'Removed',
       timeout: 8000,
       action: {
         label: 'Undo',
@@ -503,7 +530,7 @@ export function mount(root, ctx) {
     if (!q) return true;
     const haystack = [
       record.title, record.prompt, record.lyrics, record.filename,
-      record.model, record.format, record.seed === null ? '' : String(record.seed),
+      record.format, record.seed === null ? '' : String(record.seed),
     ].join(' ').toLowerCase();
     return q.split(/\s+/).filter(Boolean).every((term) => haystack.includes(term));
   }
@@ -539,40 +566,25 @@ export function mount(root, ctx) {
         <div class="lib__search">
           ${ctx.iconMarkup('search', 'icon lib__search-icon')}
           <input class="input lib__search-input" type="search" data-role="search"
-                 placeholder="Search titles, captions, lyrics, seeds…" autocomplete="off"
-                 aria-label="Search the library">
-          <button class="iconbtn lib__search-clear" type="button" data-role="search-clear"
+                 placeholder="Search your songs" autocomplete="off"
+                 aria-label="Search your songs">
+          <button class="lib__search-clear" type="button" data-role="search-clear"
                   aria-label="Clear search" hidden>${ctx.iconMarkup('close')}</button>
         </div>
-        <div class="segment lib__filter" role="tablist" aria-label="Filter by type" data-role="filter">
-          ${FILTERS.map((f) => `<button class="segment__item" type="button" role="tab" data-filter="${f.value}">${esc(f.label)}</button>`).join('')}
-        </div>
-        <label class="lib__sort">
-          <span class="visually-hidden">Sort</span>
-          <select class="select" data-role="sort">
-            ${SORTS.map((s) => `<option value="${s.value}">${esc(s.label)}</option>`).join('')}
-          </select>
-        </label>
-        <div class="lib__menu" data-role="menu">
-          <button class="iconbtn" type="button" data-role="menu-toggle" aria-haspopup="menu"
-                  aria-expanded="false" aria-label="Library options" title="Library options">
-            ${ctx.iconMarkup('more')}
-          </button>
-          <div class="lib__pop" role="menu" data-role="menu-pop" hidden>
-            <button class="lib__pop-item" type="button" role="menuitem" data-action="export">
-              ${ctx.iconMarkup('download')}<span>Export library as JSON</span>
-            </button>
-            <button class="lib__pop-item" type="button" role="menuitem" data-action="import">
-              ${ctx.iconMarkup('plus')}<span>Import a library file</span>
-            </button>
-            <div class="lib__pop-sep" role="separator"></div>
-            <button class="lib__pop-item lib__pop-item--danger" type="button" role="menuitem" data-action="clear">
-              ${ctx.iconMarkup('trash')}<span>Clear this library</span>
-            </button>
+        <div class="lib__tools">
+          <div class="segment lib__filter" role="tablist" aria-label="Filter by type" data-role="filter">
+            ${FILTERS.map((f) => `<button class="segment__item" type="button" role="tab" data-filter="${f.value}">${esc(f.label)}</button>`).join('')}
           </div>
+          <label class="lib__sort">
+            <span class="visually-hidden">Sort</span>
+            <select class="select" data-role="sort">
+              ${SORTS.map((s) => `<option value="${s.value}">${esc(s.label)}</option>`).join('')}
+            </select>
+          </label>
+          <span class="lib__menuslot" data-role="menuslot"></span>
         </div>
       </div>
-      <p class="lib__stats" data-role="stats"></p>
+      <p class="lib__stats" data-role="stats" hidden></p>
       <div class="lib__body" data-role="body"></div>
     </div>
     <input type="file" accept="application/json,.json" data-role="import-input" hidden>`;
@@ -584,14 +596,24 @@ export function mount(root, ctx) {
   const searchClear = page.querySelector('[data-role="search-clear"]');
   const filterGroup = page.querySelector('[data-role="filter"]');
   const sortSelect = page.querySelector('[data-role="sort"]');
-  const menuWrap = page.querySelector('[data-role="menu"]');
-  const menuToggle = page.querySelector('[data-role="menu-toggle"]');
-  const menuPop = page.querySelector('[data-role="menu-pop"]');
+  const menuSlot = page.querySelector('[data-role="menuslot"]');
   const statsLine = page.querySelector('[data-role="stats"]');
   const body = page.querySelector('[data-role="body"]');
   const importInput = page.querySelector('[data-role="import-input"]');
 
   sortSelect.value = prefs.sort;
+
+  /* The library-level overflow. Everything destructive lives in a menu. */
+  menuSlot.append(ctx.menu({
+    label: 'Library options',
+    align: 'end',
+    items: () => [
+      { label: 'Export library', icon: 'download', disabled: !records.length, onSelect: exportLibrary },
+      { label: 'Import library', icon: 'plus', onSelect: () => importInput.click() },
+      { separator: true },
+      { label: 'Delete all songs', icon: 'trash', danger: true, disabled: !records.length, onSelect: clearLibrary },
+    ],
+  }));
 
   /* ------------------------------------------------------- header slot -- */
 
@@ -605,19 +627,15 @@ export function mount(root, ctx) {
       <button class="segment__item" type="button" data-view="grid" title="Grid view">
         ${ctx.iconMarkup('covers')}<span class="lib-view__label">Grid</span>
       </button>
-    </div>
-    <button class="btn" type="button" data-action="new">${ctx.iconMarkup('plus')}New song</button>`;
+    </div>`;
   ctx.headerSlot.append(headerTools);
 
   headerTools.addEventListener('click', (e) => {
     const view = e.target.closest('[data-view]');
-    if (view) {
-      prefs.view = view.dataset.view;
-      ctx.storage.set(PREFS_KEY, prefs);
-      render();
-      return;
-    }
-    if (e.target.closest('[data-action="new"]')) ctx.navigate('create');
+    if (!view) return;
+    prefs.view = view.dataset.view;
+    ctx.storage.set(PREFS_KEY, prefs);
+    render();
   });
 
   /* ============================== rendering ============================= */
@@ -626,7 +644,6 @@ export function mount(root, ctx) {
     const empty = records.length === 0;
     headerTools.hidden = empty;
     bar.hidden = empty;
-    statsLine.hidden = empty;
     for (const btn of filterGroup.querySelectorAll('[data-filter]')) {
       btn.classList.toggle('is-active', btn.dataset.filter === prefs.filter);
       btn.setAttribute('aria-selected', String(btn.dataset.filter === prefs.filter));
@@ -637,32 +654,26 @@ export function mount(root, ctx) {
       btn.setAttribute('aria-pressed', String(active));
     }
     searchClear.hidden = !query;
-  }
 
-  function paintStats() {
-    if (!records.length) return;
-    const totalSec = visible.reduce((n, r) => n + (Number.isFinite(r.duration) ? r.duration : 0), 0);
-    const totalBytes = visible.reduce((n, r) => n + (r.size || 0), 0);
-    const parts = [`${visible.length} ${visible.length === 1 ? 'take' : 'takes'}`];
-    const time = fmtTotalTime(totalSec);
-    if (time) parts.push(time);
-    if (totalBytes) parts.push(fmtBytes(totalBytes));
-    const filtered = visible.length !== records.length;
-    statsLine.textContent = filtered
-      ? `${parts.join(' · ')} — filtered from ${records.length}`
-      : parts.join(' · ');
+    /* A count is only worth screen space when it is telling you something you
+       did not already know: that a filter is hiding things. */
+    const filtered = records.length > 0 && visible.length !== records.length;
+    statsLine.hidden = !filtered;
+    if (filtered) {
+      statsLine.textContent = `${visible.length} of ${records.length} songs`;
+    }
   }
 
   /** Cover block shared by both views. */
-  function coverMarkup(record, { badge = true } = {}) {
+  function coverMarkup(record) {
     const art = record.cover
       ? `<img class="cover__img" src="${esc(api.mediaUrl(record.cover))}" alt="" loading="lazy">`
       : coverSvg(record);
-    const time = badge && Number.isFinite(record.duration)
-      ? `<span class="cover__time mono">${fmtDuration(record.duration)}</span>` : '';
-    return `<span class="cover" data-cover>
+    const time = Number.isFinite(record.duration)
+      ? `<span class="cover__time">${fmtDuration(record.duration)}</span>` : '';
+    return `<span class="cover" data-cover role="button" tabindex="-1" aria-hidden="true">
         ${art}
-        <span class="cover__eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="cover__eq"><i></i><i></i><i></i><i></i></span>
         <span class="cover__play">${ctx.iconMarkup('play')}</span>
         ${time}
       </span>`;
@@ -671,8 +682,7 @@ export function mount(root, ctx) {
   function badgesMarkup(record) {
     const out = [];
     if (record.isInstrumental) out.push('<span class="badge lib-badge">Instrumental</span>');
-    if (record.format) out.push(`<span class="badge lib-badge">${esc(record.format)}</span>`);
-    if (record.seed !== null) out.push(`<span class="badge lib-badge lib-badge--seed mono" title="Seed ${record.seed}">seed ${esc(record.seed)}</span>`);
+    if (record.format) out.push(`<span class="badge lib-badge">${esc(record.format.toUpperCase())}</span>`);
     if (record.parentId) out.push('<span class="badge lib-badge">Re-run</span>');
     return out.join('');
   }
@@ -682,25 +692,63 @@ export function mount(root, ctx) {
      the user is never told why. Clicking one toasts the reason instead. */
   function actionsMarkup(record) {
     const reason = regenerateBlockReason(record);
-    const noFile = 'No audio path was recorded for this take, so there is nothing to play or download.';
+    const noFile = 'No audio was saved for this song, so there is nothing to play or download.';
     const canPlay = Boolean(record.url);
     return `
-      <div class="lib-actions">
-        <button class="iconbtn lib-act" type="button" data-act="play"
+      <div class="actionbar lib-actions">
+        <button class="actionchip" type="button" data-act="play"
                 ${canPlay ? '' : 'aria-disabled="true"'}
                 title="${canPlay ? 'Play' : esc(noFile)}" aria-label="Play">${ctx.iconMarkup('play')}</button>
         ${canPlay
-          ? `<a class="iconbtn lib-act" data-act="download" href="${esc(api.mediaUrl(record.url))}"
+          ? `<a class="actionchip" data-act="download" href="${esc(api.mediaUrl(record.url))}"
                 download="${esc(record.filename || `${record.title}.${record.format || 'audio'}`)}"
-                title="Download ${esc(record.filename)}" aria-label="Download">${ctx.iconMarkup('download')}</a>`
-          : `<button class="iconbtn lib-act" type="button" data-act="blocked" aria-disabled="true"
+                title="Download" aria-label="Download">${ctx.iconMarkup('download')}</a>`
+          : `<button class="actionchip" type="button" data-act="blocked" aria-disabled="true"
                 title="${esc(noFile)}" aria-label="Download">${ctx.iconMarkup('download')}</button>`}
-        <button class="iconbtn lib-act" type="button" data-act="regenerate" ${reason ? 'aria-disabled="true"' : ''}
-                title="${esc(reason || `Run this caption again with seed ${record.seed}`)}"
-                aria-label="Re-run with the same seed">${ctx.iconMarkup('refresh')}</button>
-        <button class="iconbtn lib-act lib-act--danger" type="button" data-act="delete"
-                title="Remove from this browser's library" aria-label="Remove">${ctx.iconMarkup('trash')}</button>
+        <button class="actionchip" type="button" data-act="regenerate" ${reason ? 'aria-disabled="true"' : ''}
+                title="${esc(reason || 'Make this song again')}"
+                aria-label="Make this song again">${ctx.iconMarkup('refresh')}</button>
       </div>`;
+  }
+
+  /** The `…` trigger. Its items are attached after paint by `wireRowMenus`. */
+  function overflowMarkup(record) {
+    return `<button class="actionchip lib-more" type="button" data-role="more"
+              data-for="${esc(record.id)}" aria-label="More actions for ${esc(record.title)}"
+              >${ctx.iconMarkup('more')}</button>`;
+  }
+
+  function menuItems(record) {
+    const hasLyrics = Boolean(record.lyrics) && !record.isInstrumental;
+    return [
+      { label: 'Song details', icon: 'info', onSelect: () => openSheet(record.id, null) },
+      { label: 'Copy caption', icon: 'copy', disabled: !record.prompt, onSelect: () => copy(record.prompt, 'Caption') },
+      { label: 'Copy lyrics', icon: 'copy', disabled: !hasLyrics, onSelect: () => copy(record.lyrics, 'Lyrics') },
+      {
+        label: 'Copy seed',
+        icon: 'dice',
+        note: record.seed === null ? '' : String(record.seed),
+        disabled: record.seed === null,
+        onSelect: () => copy(String(record.seed), 'Seed'),
+      },
+      { separator: true },
+      { label: 'Delete song', icon: 'trash', danger: true, onSelect: () => removeRecord(record.id) },
+    ];
+  }
+
+  function wireRowMenus() {
+    for (const controller of rowMenus) { try { controller.destroy(); } catch { /* noop */ } }
+    rowMenus = [];
+    for (const trigger of body.querySelectorAll('[data-role="more"]')) {
+      const id = trigger.dataset.for;
+      rowMenus.push(ctx.attachMenu(trigger, {
+        align: 'end',
+        items: () => {
+          const record = recordById(id);
+          return record ? menuItems(record) : [];
+        },
+      }));
+    }
   }
 
   function jobMarkup(record) {
@@ -725,29 +773,95 @@ export function mount(root, ctx) {
         <p class="lib-row__excerpt">${esc(excerpt(record))}</p>
         ${actionsMarkup(record)}
       </div>
-      <div class="lib-row__meta">
-        <span class="lib-row__when">${esc(fmtWhen(record.createdAt))}</span>
-        <span class="lib-row__size mono">${record.size ? esc(fmtBytes(record.size)) : ''}</span>
-      </div>
+      <span class="lib-row__when">${esc(fmtWhen(record.createdAt))}</span>
+      ${overflowMarkup(record)}
       ${jobMarkup(record)}
     </li>`;
   }
 
   function cardMarkup(record) {
+    const canPlay = Boolean(record.url);
     return `<li class="lib-card" data-id="${esc(record.id)}" tabindex="0">
-      ${coverMarkup(record)}
+      <span class="lib-card__art">
+        ${coverMarkup(record)}
+        <span class="actionbar lib-card__actions">
+          <button class="actionchip actionchip--lg" type="button" data-act="play"
+                  ${canPlay ? '' : 'aria-disabled="true"'}
+                  aria-label="Play" title="Play">${ctx.iconMarkup('play')}</button>
+        </span>
+      </span>
       <div class="lib-card__body">
-        <p class="lib-card__title truncate">${esc(record.title)}</p>
-        <p class="lib-card__meta">
-          <span>${esc(fmtWhen(record.createdAt))}</span>
-          <span class="lib-card__dot">·</span>
-          <span class="mono">${record.seed === null ? 'no seed' : `seed ${esc(record.seed)}`}</span>
-        </p>
+        <div class="lib-card__id">
+          <p class="lib-card__title truncate">${esc(record.title)}</p>
+          <p class="lib-card__meta">
+            <span>${esc(fmtWhen(record.createdAt))}</span>
+            ${record.isInstrumental ? '<span class="lib-card__dot">·</span><span>Instrumental</span>' : ''}
+          </p>
+        </div>
+        ${overflowMarkup(record)}
       </div>
-      ${actionsMarkup(record)}
       ${jobMarkup(record)}
     </li>`;
   }
+
+  /**
+   * The floor. Round 1's list simply stopped at 44% of the viewport and left
+   * flat nothing under it. This card sits on the same left rail and the same
+   * row height as a song, and absorbs whatever height is left over — so three
+   * songs read as a designed sparse library, not a half-failed render.
+   */
+  function tailMarkup() {
+    return `<div class="lib-tail" data-role="tail">
+      <span class="lib-tail__plate" aria-hidden="true">${ctx.iconMarkup('plus')}</span>
+      <div class="lib-tail__main">
+        <p class="lib-tail__title">Write another song</p>
+        <p class="lib-tail__text">Describe an idea and MaxMusic writes the lyrics for you, or bring
+          your own words and shape the arrangement yourself in Studio.</p>
+      </div>
+      <div class="lib-tail__cta">
+        <button class="btn btn--strong" type="button" data-action="go-create">
+          ${ctx.iconMarkup('wand')}New song
+        </button>
+        <button class="btn btn--ghost" type="button" data-action="go-studio">
+          ${ctx.iconMarkup('studio')}Open Studio
+        </button>
+      </div>
+    </div>`;
+  }
+
+  /**
+   * The terminal card always fills the leftover height, so the page has a floor
+   * whatever the list length. When that leftover is most of the frame it also
+   * recomposes into a centred panel.
+   *
+   * The decision is taken from the room *below the list* — never from the
+   * card's own height, which the card's own layout would then change.
+   */
+  function fitTail() {
+    const tail = body.querySelector('[data-role="tail"]');
+    const list = body.querySelector('.lib-list, .lib-grid');
+    if (!tail || !list) return;
+    const room = root.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+    /* Below this the card is close enough to a row to keep the row layout and
+       the left rail; above it, that layout is a thin band floating in a big
+       box, so the card recomposes instead. */
+    tail.classList.toggle('is-tall', room > 290);
+  }
+
+  let fitQueued = false;
+  function queueFit() {
+    if (fitQueued) return;
+    fitQueued = true;
+    requestAnimationFrame(() => { fitQueued = false; fitTail(); });
+  }
+
+  const roomWatch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(queueFit);
+  roomWatch?.observe(root);
+  window.addEventListener('resize', queueFit);
+  cleanups.push(() => {
+    roomWatch?.disconnect();
+    window.removeEventListener('resize', queueFit);
+  });
 
   function emptyLibraryMarkup() {
     const plates = [2, 0, 1]
@@ -758,12 +872,11 @@ export function mount(root, ctx) {
       <div class="lib-empty__art" aria-hidden="true">${plates}</div>
       <h2 class="lib-empty__title">Nothing here yet</h2>
       <p class="lib-empty__lead">
-        Every take you render lands here — with the caption it was built from, its
-        seed, and the original file. Nothing is uploaded anywhere: the list lives in
-        this browser and the audio stays on your backend.
+        Every song you make lands here — with the caption it was built from, its
+        lyrics, its seed and the original audio file, ready to download.
       </p>
       <div class="lib-empty__cta">
-        <button class="btn btn--primary btn--lg" type="button" data-action="go-create">
+        <button class="btn btn--strong btn--lg" type="button" data-action="go-create">
           ${ctx.iconMarkup('wand')}Write a song
         </button>
         <button class="btn btn--lg" type="button" data-action="go-studio">
@@ -772,49 +885,53 @@ export function mount(root, ctx) {
       </div>
       <ul class="lib-empty__facts">
         <li><span class="lib-empty__fact-icon">${ctx.iconMarkup('dice')}</span>
-          <b>Reproducible</b><span>Each take keeps its seed and caption, so one click runs the exact same song again.</span></li>
+          <b>Reproducible</b><span>Every song keeps its seed and caption, so one click makes the exact same song again.</span></li>
         <li><span class="lib-empty__fact-icon">${ctx.iconMarkup('download')}</span>
-          <b>Yours to keep</b><span>Download the file the backend rendered — FLAC, WAV or MP3, untouched.</span></li>
+          <b>Yours to keep</b><span>Download the file exactly as it was rendered — FLAC, WAV or MP3, untouched.</span></li>
         <li><span class="lib-empty__fact-icon">${ctx.iconMarkup('lock')}</span>
-          <b>Local index</b><span>The backend has no library endpoint, so MaxMusic remembers your takes in this browser only.</span></li>
+          <b>Stays private</b><span>Your library is kept on this computer. Nothing is published and nothing is uploaded.</span></li>
       </ul>
       <p class="lib-empty__note">
-        Moving machines, or clearing site data? <button class="lib-link" type="button" data-action="import">Import a library file</button>
-        you exported earlier — the audio paths stay valid as long as the backend still has the files.
+        Moving to another machine? <button class="lib-link" type="button" data-action="import">Import a library file</button>
+        you exported earlier and your songs come with you.
       </p>
     </div>`;
   }
 
   function emptyResultsMarkup() {
-    return `<div class="empty lib-noresults">
-      <span class="empty__icon">${ctx.iconMarkup('search')}</span>
-      <h2 class="empty__title">No takes match</h2>
-      <p class="empty__text">
-        Nothing in ${records.length} ${records.length === 1 ? 'take' : 'takes'} matches
-        ${query ? `“${esc(query)}”` : 'this filter'}${prefs.filter !== 'all' ? ` in ${prefs.filter} takes` : ''}.
+    return `<div class="lib-noresults">
+      <span class="lib-noresults__icon">${ctx.iconMarkup('search')}</span>
+      <h2 class="lib-noresults__title">No songs match</h2>
+      <p class="lib-noresults__text">
+        Nothing in your ${records.length} ${records.length === 1 ? 'song' : 'songs'} matches
+        ${query ? `“${esc(query)}”` : 'this filter'}${prefs.filter !== 'all' ? ` in ${prefs.filter} songs` : ''}.
       </p>
-      <button class="btn" type="button" data-action="reset-filters">Reset search and filters</button>
+      <button class="btn" type="button" data-action="reset-filters">Clear search and filters</button>
     </div>`;
   }
 
   function render() {
     compute();
     paintChrome();
-    paintStats();
 
     if (!records.length) {
       body.innerHTML = emptyLibraryMarkup();
+      wireRowMenus();
       return;
     }
     if (!visible.length) {
       body.innerHTML = emptyResultsMarkup();
+      wireRowMenus();
       return;
     }
 
     const grid = prefs.view === 'grid';
     body.innerHTML = `<ul class="${grid ? 'lib-grid' : 'lib-list'}" role="list">`
       + visible.map(grid ? cardMarkup : rowMarkup).join('')
-      + '</ul>';
+      + '</ul>'
+      + tailMarkup();
+    wireRowMenus();
+    fitTail();
     paintPlaying();
     paintJobs();
   }
@@ -826,6 +943,13 @@ export function mount(root, ctx) {
       const isCurrent = node.dataset.id === playing.id;
       node.classList.toggle('is-current', isCurrent);
       node.classList.toggle('is-playing', isCurrent && playing.isPlaying);
+      const play = node.querySelector('[data-act="play"]');
+      if (play) {
+        const on = isCurrent && playing.isPlaying;
+        play.setAttribute('aria-label', on ? 'Pause' : 'Play');
+        play.setAttribute('title', on ? 'Pause' : 'Play');
+        play.classList.toggle('is-active', on);
+      }
     }
   }
 
@@ -883,7 +1007,7 @@ export function mount(root, ctx) {
 
   function play(record) {
     if (!record?.url) {
-      ctx.toast('This entry has no audio path recorded, so there is nothing to play.', { kind: 'warn', title: 'Cannot play' });
+      ctx.toast('No audio was saved for this song, so there is nothing to play.', { kind: 'warn', title: 'Cannot play' });
       return;
     }
     const from = visible.findIndex((r) => r.id === record.id);
@@ -921,8 +1045,8 @@ export function mount(root, ctx) {
 
   /** @returns {string} empty when a re-run is possible, otherwise the honest reason. */
   function regenerateBlockReason(record) {
-    if (jobs.has(record.id)) return 'This take is already running.';
-    if (record.seed === null) return 'No seed was recorded for this take, so it cannot be reproduced exactly.';
+    if (jobs.has(record.id)) return 'This song is already being made.';
+    if (record.seed === null) return 'No seed was saved for this song, so it cannot be made again exactly.';
     const check = api.validateGeneration(regenerateInput(record));
     if (!check.valid) return check.errors.join(' ');
     if (health && health.status !== 'online') return health.message;
@@ -931,10 +1055,10 @@ export function mount(root, ctx) {
 
   async function regenerate(record) {
     const reason = regenerateBlockReason(record);
-    if (reason) { ctx.toast(reason, { kind: 'warn', title: 'Cannot re-run' }); return; }
+    if (reason) { ctx.toast(reason, { kind: 'warn', title: 'Cannot make this again' }); return; }
 
     const controller = new AbortController();
-    const job = { id: record.id, status: 'Sending to the backend…', startedAt: Date.now(), controller, title: record.title };
+    const job = { id: record.id, status: 'Starting…', startedAt: Date.now(), controller, title: record.title };
     jobs.set(record.id, job);
     hooks.jobs?.();
 
@@ -947,9 +1071,9 @@ export function mount(root, ctx) {
       const result = await api.generateStream(regenerateInput(record), {
         signal: controller.signal,
         onEvent: (event) => {
-          if (event?.status === 'queued') bump(`Queued on ${event.backend || 'the generator'}…`);
-          else if (event?.partial) bump('Streaming a partial take…');
-          else if (event?.done) bump('Writing the file…');
+          if (event?.status === 'queued') bump('Waiting for a free slot…');
+          else if (event?.partial) bump('Writing the music…');
+          else if (event?.done) bump('Finishing the mix…');
         },
       });
 
@@ -984,19 +1108,19 @@ export function mount(root, ctx) {
       }
       if (hooks.reload) hooks.reload(); else hooks.jobs?.();
 
-      (shell?.toast || ctx.toast)(`“${fresh.title}” finished with seed ${record.seed}.`, {
+      (shell?.toast || ctx.toast)(`“${fresh.title}” is ready.`, {
         kind: 'success',
-        title: 'Re-run complete',
+        title: 'Done',
         action: { label: 'Play', onClick: () => ctx.bus.emit('player:play', playPayload(fresh)) },
       });
     } catch (err) {
       jobs.delete(record.id);
       hooks.jobs?.();
       if (err?.name === 'AbortError') {
-        (shell?.toast || ctx.toast)(`Re-run of “${record.title}” cancelled.`, { kind: 'info', timeout: 3000 });
+        (shell?.toast || ctx.toast)(`Stopped making “${record.title}”.`, { kind: 'info', timeout: 3000 });
         return;
       }
-      (shell?.toast || ctx.toast)(api.errorText(err), { kind: 'error', title: 'Re-run failed' });
+      (shell?.toast || ctx.toast)(api.errorText(err), { kind: 'error', title: 'Could not make this song' });
     }
   }
 
@@ -1013,7 +1137,7 @@ export function mount(root, ctx) {
     a.download = `maxmusic-library-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    ctx.toast(`Exported ${records.length} ${records.length === 1 ? 'take' : 'takes'}.`, { kind: 'success', timeout: 3000 });
+    ctx.toast(`Exported ${records.length} ${records.length === 1 ? 'song' : 'songs'}.`, { kind: 'success', timeout: 3000 });
   }
 
   async function importLibrary(file) {
@@ -1021,14 +1145,14 @@ export function mount(root, ctx) {
       const text = await file.text();
       const parsed = JSON.parse(text);
       const list = Array.isArray(parsed) ? parsed : parsed?.tracks;
-      if (!Array.isArray(list)) throw new Error('That file has no "tracks" array.');
+      if (!Array.isArray(list)) throw new Error('That file does not look like a MaxMusic library.');
       const incoming = list.filter((r) => r && typeof r === 'object' && (r.url || r.id)).map(coerce);
-      if (!incoming.length) throw new Error('That file contained no usable takes.');
+      if (!incoming.length) throw new Error('That file contained no songs.');
       const added = addRecords(incoming);
       const skipped = incoming.length - added;
       ctx.toast(added
-        ? `Imported ${added} ${added === 1 ? 'take' : 'takes'}.${skipped ? ` ${skipped} ${skipped === 1 ? 'was' : 'were'} already here.` : ''}`
-        : `All ${incoming.length} ${incoming.length === 1 ? 'take' : 'takes'} in that file are already in the library.`,
+        ? `Imported ${added} ${added === 1 ? 'song' : 'songs'}.${skipped ? ` ${skipped} ${skipped === 1 ? 'was' : 'were'} already here.` : ''}`
+        : `All ${incoming.length} ${incoming.length === 1 ? 'song' : 'songs'} in that file are already in your library.`,
       { kind: added ? 'success' : 'info', title: 'Import' });
     } catch (err) {
       ctx.toast(`Could not read that file: ${err?.message || err}`, { kind: 'error', title: 'Import failed' });
@@ -1040,7 +1164,7 @@ export function mount(root, ctx) {
     const backup = records.slice();
     persist([]);
     closeSheet();
-    ctx.toast(`Cleared ${backup.length} ${backup.length === 1 ? 'take' : 'takes'} from this browser. The files stay on the backend.`, {
+    ctx.toast(`Deleted ${backup.length} ${backup.length === 1 ? 'song' : 'songs'} from your library. The audio files themselves are untouched.`, {
       kind: 'warn',
       title: 'Library cleared',
       timeout: 10000,
@@ -1055,7 +1179,7 @@ export function mount(root, ctx) {
   sheet.hidden = true;
   sheet.innerHTML = `
     <div class="lib-sheet__scrim" data-role="scrim"></div>
-    <aside class="lib-sheet__panel" role="dialog" aria-modal="true" aria-label="Take details" data-role="panel"></aside>`;
+    <aside class="lib-sheet__panel" role="dialog" aria-modal="true" aria-label="Song details" data-role="panel"></aside>`;
   page.append(sheet);
 
   const sheetPanel = sheet.querySelector('[data-role="panel"]');
@@ -1070,8 +1194,8 @@ export function mount(root, ctx) {
   function sheetMarkup(record) {
     const reason = regenerateBlockReason(record);
     const lyrics = record.isInstrumental
-      ? 'Instrumental take — MiniMax Music 3 ignores lyrics when the instrumental flag is set.'
-      : (record.lyrics || 'No lyrics were recorded with this take.');
+      ? 'Instrumental — this song was made without lyrics.'
+      : (record.lyrics || 'No lyrics were saved with this song.');
     return `
       <header class="lib-sheet__head">
         <span class="lib-sheet__cover">${record.cover
@@ -1079,45 +1203,41 @@ export function mount(root, ctx) {
           : coverSvg(record)}</span>
         <div class="lib-sheet__id">
           <h2 class="lib-sheet__title">${esc(record.title)}</h2>
-          <p class="lib-sheet__badges">${badgesMarkup(record) || '<span class="badge lib-badge">Take</span>'}</p>
-          <p class="lib-sheet__when">${esc(fmtStamp(record.createdAt))}${record.backend ? ` · ${esc(record.backend)}` : ''}</p>
+          <p class="lib-sheet__badges">${badgesMarkup(record) || '<span class="badge lib-badge">Song</span>'}</p>
+          <p class="lib-sheet__when">${esc(fmtStamp(record.createdAt))}</p>
         </div>
-        <button class="iconbtn lib-sheet__close" type="button" data-act="close" aria-label="Close details">
+        <button class="actionchip lib-sheet__close" type="button" data-act="close" aria-label="Close details">
           ${ctx.iconMarkup('close')}
         </button>
       </header>
 
       <div class="lib-sheet__actions">
-        <button class="btn btn--primary" type="button" data-act="play" ${record.url ? '' : 'disabled'}>
+        <button class="btn btn--strong" type="button" data-act="play" ${record.url ? '' : 'disabled'}>
           ${ctx.iconMarkup('play')}Play
         </button>
         ${record.url
           ? `<a class="btn" data-act="download" href="${esc(api.mediaUrl(record.url))}" download="${esc(record.filename)}">
                ${ctx.iconMarkup('download')}Download</a>`
-          : `<button class="btn" type="button" disabled title="No file path recorded">${ctx.iconMarkup('download')}Download</button>`}
+          : `<button class="btn" type="button" disabled title="No audio was saved for this song">${ctx.iconMarkup('download')}Download</button>`}
         <button class="btn" type="button" data-act="regenerate" ${reason ? 'disabled' : ''} title="${esc(reason)}">
-          ${ctx.iconMarkup('refresh')}Re-run seed
+          ${ctx.iconMarkup('refresh')}Make it again
         </button>
-        <button class="btn btn--danger btn--icon" type="button" data-act="delete" aria-label="Remove from library"
-                title="Remove from this browser's library">${ctx.iconMarkup('trash')}</button>
       </div>
       ${reason ? `<p class="hint hint--warn lib-sheet__blocked">${ctx.iconMarkup('info')}${esc(reason)}</p>` : ''}
       <div class="lib-sheet__job" data-role="sheet-job"></div>
 
       <dl class="lib-meta">
-        ${metaRow('Duration', fmtDuration(record.duration))}
-        ${metaRow('Seed', record.seed === null ? 'not recorded' : String(record.seed), { mono: true })}
+        ${metaRow('Length', fmtDuration(record.duration))}
         ${metaRow('Format', record.format ? record.format.toUpperCase() : '—')}
-        ${metaRow('Sample rate', record.sampleRate ? `${record.sampleRate} Hz` : '—', { mono: true })}
-        ${metaRow('Size', fmtBytes(record.size))}
-        ${metaRow('Model', record.model || 'backend default')}
+        ${metaRow('Quality', fmtSampleRate(record.sampleRate))}
+        ${metaRow('Seed', record.seed === null ? 'not saved' : String(record.seed), { mono: true })}
       </dl>
 
       <section class="lib-sheet__block">
         <h3 class="lib-sheet__label">Caption
           <button class="lib-link" type="button" data-act="copy-prompt" ${record.prompt ? '' : 'disabled'}>Copy</button>
         </h3>
-        <div class="lib-sheet__text">${esc(record.prompt || 'No caption was recorded for this take.')}</div>
+        <div class="lib-sheet__text">${esc(record.prompt || 'No caption was saved with this song.')}</div>
       </section>
 
       <section class="lib-sheet__block">
@@ -1128,8 +1248,10 @@ export function mount(root, ctx) {
       </section>
 
       <footer class="lib-sheet__foot">
-        <span class="lib-sheet__path mono truncate" title="${esc(record.url)}">${esc(record.url || 'no path recorded')}</span>
-        ${record.url ? `<a class="lib-link" href="${esc(api.mediaUrl(record.url))}" target="_blank" rel="noopener">Open file${ctx.iconMarkup('external')}</a>` : ''}
+        <span class="lib-sheet__file truncate">${esc(record.filename || 'No audio file was saved.')}</span>
+        <button class="btn btn--sm btn--danger" type="button" data-act="delete">
+          ${ctx.iconMarkup('trash')}Delete
+        </button>
       </footer>`;
   }
 
@@ -1233,23 +1355,6 @@ export function mount(root, ctx) {
     render();
   });
 
-  function setMenu(open) {
-    menuPop.hidden = !open;
-    menuToggle.setAttribute('aria-expanded', String(open));
-    menuWrap.classList.toggle('is-open', open);
-  }
-
-  menuToggle.addEventListener('click', () => setMenu(menuPop.hidden));
-  menuPop.addEventListener('click', (e) => {
-    const item = e.target.closest('[data-action]');
-    if (!item) return;
-    setMenu(false);
-    const action = item.dataset.action;
-    if (action === 'export') exportLibrary();
-    else if (action === 'import') importInput.click();
-    else if (action === 'clear') clearLibrary();
-  });
-
   importInput.addEventListener('change', () => {
     const file = importInput.files?.[0];
     if (file) importLibrary(file);
@@ -1278,18 +1383,19 @@ export function mount(root, ctx) {
     const record = recordById(item.dataset.id);
     if (!record) return;
 
+    if (e.target.closest('[data-role="more"]')) return; // the menu owns its trigger
+
     const act = e.target.closest('[data-act]');
     if (act) {
       if (act.dataset.act === 'download') return; // the anchor does the work
       if (act.disabled) return;
       e.preventDefault();
       if (act.getAttribute('aria-disabled') === 'true') {
-        ctx.toast(act.title, { kind: 'warn', title: 'Not available for this take' });
+        ctx.toast(act.title, { kind: 'warn', title: 'Not available for this song' });
         return;
       }
       if (act.dataset.act === 'play') play(record);
       else if (act.dataset.act === 'regenerate') regenerate(record);
-      else if (act.dataset.act === 'delete') removeRecord(record.id);
       else if (act.dataset.act === 'cancel-job') jobs.get(record.id)?.controller.abort();
       return;
     }
@@ -1309,15 +1415,10 @@ export function mount(root, ctx) {
     }
   });
 
-  function onDocClick(e) {
-    if (!menuPop.hidden && !menuWrap.contains(e.target)) setMenu(false);
-  }
-
   function onKeydown(e) {
     onSheetKeydown(e);
     if (e.key === 'Escape') {
       if (!sheet.hidden) { closeSheet(); return; }
-      if (!menuPop.hidden) { setMenu(false); return; }
       if (query) { searchInput.value = ''; setQuery(''); }
       return;
     }
@@ -1331,9 +1432,7 @@ export function mount(root, ctx) {
     }
   }
 
-  document.addEventListener('click', onDocClick);
   document.addEventListener('keydown', onKeydown);
-  cleanups.push(() => document.removeEventListener('click', onDocClick));
   cleanups.push(() => document.removeEventListener('keydown', onKeydown));
 
   /* --------------------------------------------------------------- bus -- */
@@ -1345,13 +1444,13 @@ export function mount(root, ctx) {
       addRecords(record);
     } catch (err) {
       console.error('[library] could not store a new track', err);
-      ctx.toast(`A finished track could not be added to the library: ${err?.message || err}`, {
+      ctx.toast(`A finished song could not be added to your library: ${err?.message || err}`, {
         kind: 'error', title: 'Library',
       });
     }
   });
 
-  /* Durations we stored are what the take was *asked* for. Once the player has
+  /* Durations we stored are what the song was *asked* for. Once the player has
      decoded the file it knows the real length — take it, once per track. */
   const measured = new Set();
 
@@ -1391,7 +1490,7 @@ export function mount(root, ctx) {
       setTimeout(() => node?.classList.remove('is-flagged'), 2400);
       openSheet(target.id, node);
     } else {
-      ctx.toast(`No take with id ${deepLink} is in this browser's library.`, { kind: 'warn', title: 'Not found' });
+      ctx.toast('That song is not in your library on this computer.', { kind: 'warn', title: 'Not found' });
     }
   }
 
@@ -1399,6 +1498,8 @@ export function mount(root, ctx) {
 
   return () => {
     for (const off of cleanups) { try { off(); } catch { /* noop */ } }
+    for (const controller of rowMenus) { try { controller.destroy(); } catch { /* noop */ } }
+    rowMenus = [];
     headerTools.remove();
     sheet.remove();
     // In-flight re-runs are deliberately left running; they finish into storage.

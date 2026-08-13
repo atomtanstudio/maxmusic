@@ -15,7 +15,7 @@
 
 export const meta = {
   title: 'Studio',
-  subtitle: 'Lyrics + structured caption, full control',
+  subtitle: 'Lyrics + description, full control',
   css: '/css/screens/studio.css',
 };
 
@@ -35,13 +35,14 @@ const WORDS_PER_SEC = 1.4;
  * The three caption fields, each with the labelled sub-structure SPEC §3c
  * requires. `test` decides whether a label is already present in the text, so
  * the chips can tick themselves off as the writer works.
+ *
+ * `summary` is the one-line "what goes in here" strip beside the field name.
  */
 const CAPTION_FIELDS = [
   {
     key: 'global',
     label: 'Global metadata',
-    lede: 'One paragraph, these four labels in this order.',
-    grammar: 'Basic Attributes: bpm is <n>. key is <letter>, and scale is <major|minor>. <Genre / Subgenre>.',
+    summary: 'genre · tempo · key & scale · mood arc · scenario · production',
     parts: [
       { label: 'Basic Attributes', hint: 'bpm · key · scale · genre' },
       { label: 'Global Emotional Progression', hint: 'the arc, section by section' },
@@ -52,8 +53,8 @@ const CAPTION_FIELDS = [
   {
     key: 'vocal',
     label: 'Vocal details',
-    lede: 'Who is singing, how, and what sits behind them.',
-    grammar: 'Vocal Gender & Timbre: Singer A (<Male|Female>), <timbre/register>.',
+    summary: 'gender · timbre · style per section · harmonies · effects',
+    instrumentalSummary: 'no vocals · the instrument that carries the tune',
     parts: [
       { label: 'Vocal Gender & Timbre', hint: 'Singer A (Female), warm alto…' },
       { label: 'Vocal Style', hint: 'phrasing and delivery per section' },
@@ -65,13 +66,11 @@ const CAPTION_FIELDS = [
       { label: 'Instrumental, no vocals.', hint: 'state it plainly', literal: true, test: /instrumental,\s*no\s*vocals/i },
       { label: 'Lead Melodic Voice', hint: 'the instrument that carries the tune' },
     ],
-    instrumentalGrammar: 'Instrumental, no vocals. Lead Melodic Voice: <instrument, register, articulation>.',
   },
   {
     key: 'arrangement',
     label: 'Arrangement',
-    lede: 'Lifecycles, not a gear list — state what enters, exits and intensifies per section.',
-    grammar: 'Instrument Lifecycle Description (Primary/Secondary Layering): Primary: … Secondary: …',
+    summary: 'primary & secondary layers · groove · textures and space',
     parts: [
       { label: 'Instrument Lifecycle Description (Primary/Secondary Layering)', short: 'Instrument Lifecycle', hint: 'Primary: … Secondary: …' },
       { label: 'Groove & Foundation Progression', hint: 'drums and bass, section by section' },
@@ -150,11 +149,35 @@ function clock(seconds) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-function bytes(n) {
-  const v = Number(n);
-  if (!Number.isFinite(v) || v <= 0) return '—';
-  if (v >= 1024 * 1024) return `${(v / (1024 * 1024)).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(v / 1024))} KB`;
+/** "2:30" · "150" · "150s" → seconds. Returns `fallback` for anything else. */
+function parseClock(raw, fallback) {
+  const s = String(raw).trim().toLowerCase().replace(/\s+/g, '');
+  if (!s) return fallback;
+  const mmss = /^(\d{1,2}):([0-5]?\d(?:\.\d+)?)$/.exec(s);
+  if (mmss) return Number(mmss[1]) * 60 + Number(mmss[2]);
+  const n = Number(s.replace(/(sec|secs|s)$/, ''));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * A model name a customer can read.
+ *
+ * The backend labels its models with quantization strings ("… official FP16 +
+ * INT8 ConvRot encoder"). Those are build internals — house rule 0 — so keep
+ * the family name up to the first separator and take the tier from the key.
+ */
+function modelLabel(key, raw) {
+  const family = String(raw || '').split(/\s[-–—]\s|\(/)[0].trim();
+  const flat = family.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const tier = String(key)
+    .split(/[_\-\s]+/)
+    // Drop the tokens that only repeat the family name; keep short ones like
+    // "max", which is a substring of "minimax" but is a real tier word.
+    .filter((w) => w && !(w.length >= 4 && flat.includes(w.toLowerCase())))
+    .join(' ')
+    .replace(/^./, (c) => c.toUpperCase());
+  if (family && tier) return `${family} · ${tier}`;
+  return family || tier || String(key);
 }
 
 function debounce(fn, ms) {
@@ -289,15 +312,15 @@ function analyse(text, { duration, instrumental }) {
           line: rec,
           fixable: Boolean(rec.fixTo),
           message: rec.fixTo
-            ? `"${rec.literal.trim()}" is not one of the nine tags — MM3 reads it as a lyric line. Use [${rec.fixTo}].`
-            : `"${rec.literal.trim()}" is not one of the nine tags. MM3 will sing it. Legal tags: ${LEGAL_NAMES.map((n) => `[${n}]`).join(' ')}.`,
+            ? `"${rec.literal.trim()}" is not one of the nine section tags, so it gets sung as a lyric. Use [${rec.fixTo}].`
+            : `"${rec.literal.trim()}" is not one of the nine section tags, so it gets sung as a lyric. Use one of: ${LEGAL_NAMES.map((n) => `[${n}]`).join(' ')}.`,
         });
       } else if (rec.caseIssue) {
         issues.push({
           severity: 'warn',
           line: rec,
           fixable: true,
-          message: `Write the tag exactly as [${rec.name}] — lower case, no padding.`,
+          message: `Write this tag as [${rec.name}] — lower case, nothing else on the line.`,
         });
       }
       if (rec.extra) {
@@ -329,7 +352,7 @@ function analyse(text, { duration, instrumental }) {
         severity: 'warn',
         line: rec,
         fixable: false,
-        message: 'A bracketed tag mid-line is sung as text. Tags belong alone on their own line.',
+        message: 'A tag in the middle of a line gets sung as words. Tags belong alone on their own line.',
       });
     }
 
@@ -349,7 +372,7 @@ function analyse(text, { duration, instrumental }) {
       severity: 'warn',
       line: null,
       fixable: false,
-      message: 'No section tags. MM3 is trained on tagged sections — start with [intro] or [verse].',
+      message: 'No section tags yet. Tracks come out stronger when the sections are marked — start with [intro] or [verse].',
     });
   }
 
@@ -358,7 +381,7 @@ function analyse(text, { duration, instrumental }) {
       severity: 'warn',
       line: null,
       fixable: false,
-      message: `Instrumental is on, so these ${sungWords} words are ignored. Instrumentals use [instrumental] sections with no words.`,
+      message: `Instrumental is on, so these ${sungWords} words will not be sung. Instrumentals use [instrumental] sections with no words.`,
     });
   } else if (hasText && !instrumental && sungWords > 0) {
     if (sungWords < lo) {
@@ -366,14 +389,14 @@ function analyse(text, { duration, instrumental }) {
         severity: 'warn',
         line: null,
         fixable: false,
-        message: `${sungWords} sung words is thin for ${clock(duration)} — aim for ${lo}–${hi}. Expect long instrumental stretches.`,
+        message: `${sungWords} sung words is thin for ${clock(duration)} — aim for ${lo}–${hi}, or expect long stretches with no singing.`,
       });
     } else if (sungWords > hi) {
       issues.push({
         severity: 'warn',
         line: null,
         fixable: false,
-        message: `${sungWords} sung words is dense for ${clock(duration)} — aim for ${lo}–${hi}, or raise the duration to ${clock(Math.ceil(sungWords / WORDS_PER_10S[1] * 10))}.`,
+        message: `${sungWords} sung words is dense for ${clock(duration)} — aim for ${lo}–${hi}, or stretch the track to ${clock(Math.ceil(sungWords / WORDS_PER_10S[1] * 10))}.`,
       });
     }
   }
@@ -387,7 +410,7 @@ function analyse(text, { duration, instrumental }) {
         severity: 'info',
         line: null,
         fixable: false,
-        message: `At ${clock(duration)} MM3 expects ${want.join(' ')} — missing ${missing.map((n) => `[${n}]`).join(' ')}.`,
+        message: `A ${clock(duration)} track usually runs ${want.join(' ')} — yours is missing ${missing.map((n) => `[${n}]`).join(' ')}.`,
       });
     }
   }
@@ -452,16 +475,16 @@ function template(ctx) {
     <section class="capfield" data-capfield="${f.key}">
       <header class="capfield__head">
         <h4 class="capfield__label">${escapeHtml(f.label)}</h4>
-        <span class="capfield__meter mono" data-cap-meter="${f.key}">0/${f.parts.length} labels</span>
-        <button class="btn btn--sm btn--ghost" type="button" data-scaffold="${f.key}">
-          ${i('plus')}Add missing labels
-        </button>
+        <span class="capfield__summary" data-cap-summary="${f.key}"></span>
+        <span class="capfield__meter mono" data-cap-meter="${f.key}"></span>
       </header>
-      <p class="capfield__lede">${escapeHtml(f.lede)}</p>
-      <div class="partbar" data-partbar="${f.key}"></div>
+      <div class="partbar" data-partbar="${f.key}">
+        <button class="btn btn--sm btn--ghost partbar__add" type="button" data-scaffold="${f.key}">
+          ${i('plus')}Fill in the rest
+        </button>
+      </div>
       <textarea class="textarea capfield__text" data-cap="${f.key}" rows="5"
         spellcheck="true" aria-label="${escapeHtml(f.label)}"></textarea>
-      <p class="hint capfield__grammar" data-grammar="${f.key}"></p>
       ${f.key === 'global' ? '<div class="capfield__suggest" data-style-tags hidden></div>' : ''}
     </section>`).join('');
 
@@ -486,19 +509,18 @@ function template(ctx) {
           <h3 class="panel__title">${i('lyrics')}Lyrics</h3>
           <span class="studio__count mono" data-lyrics-count>0 / 3500</span>
           <div class="spacer"></div>
-          <button class="btn btn--sm" type="button" data-draft>${i('wand')}Draft with Codex</button>
-          <button class="btn btn--sm btn--ghost" type="button" data-revise>${i('refresh')}Revise</button>
-          <button class="btn btn--sm btn--ghost" type="button" data-skeleton>${i('plus')}Skeleton</button>
+          <button class="btn btn--sm" type="button" data-draft>${i('wand')}Write for me</button>
+          <button class="btn btn--sm btn--ghost" type="button" data-revise>${i('refresh')}Rewrite</button>
+          <button class="btn btn--sm btn--ghost" type="button" data-skeleton>${i('plus')}Add structure</button>
         </header>
 
         <div class="panel__body studio__body">
           <div class="notice notice--info studio__twostep" data-twostep hidden>
             <span class="notice__icon">${i('info')}</span>
             <div>
-              <p class="notice__title">Vocal generation needs lyrics</p>
-              The music backend will not write them. <b>Draft with Codex</b> posts
-              <code class="code">/api/lyrics</code> first and drops the result here, then
-              <code class="code">/api/generate</code> renders it.
+              <p class="notice__title">A sung track needs words</p>
+              Write them here, or let <b>Write for me</b> draft a full set from your
+              description first. Switch to Instrumental if you want no vocals at all.
             </div>
           </div>
 
@@ -514,7 +536,7 @@ function template(ctx) {
 
           <div class="fit" data-fit>
             <div class="fit__head">
-              <span class="fit__value gradient-text" data-fit-words>0</span>
+              <span class="fit__value" data-fit-words>0</span>
               <span class="fit__unit">sung words</span>
               <span class="fit__target" data-fit-target></span>
               <div class="spacer"></div>
@@ -536,21 +558,21 @@ function template(ctx) {
       <!-- ======================= STRUCTURED CAPTION ===================== -->
       <section class="panel studio__panel">
         <header class="panel__head studio__head">
-          <h3 class="panel__title">${i('panel')}Structured caption</h3>
+          <h3 class="panel__title">${i('panel')}Description</h3>
           <span class="studio__count mono" data-prompt-count>0 / 2000</span>
           <div class="spacer"></div>
-          <button class="btn btn--sm btn--ghost" type="button" data-copy-prompt>${i('copy')}Copy prompt</button>
+          <button class="btn btn--sm btn--ghost" type="button" data-copy-prompt>${i('copy')}Copy</button>
         </header>
         <div class="panel__body studio__body">
           <p class="hint studio__lede">
-            MM3 is trained on a three-part labelled caption. These three fields are joined
-            into the single <code class="code">prompt</code> string on submit — roughly
-            250–400 words in total, never quoting a lyric line.
+            Three labelled fields describe the sound. Together they tell the model what
+            to play — around 250–400 words in total works best, and lyric lines never
+            belong in here.
           </p>
           ${captionBlocks}
           <details class="composed" data-composed>
             <summary class="composed__summary">
-              ${i('chevron-right')}<span>Composed <code class="code">prompt</code></span>
+              ${i('chevron-right')}<span>Preview the full description</span>
               <span class="composed__meta mono" data-composed-meta></span>
             </summary>
             <pre class="composed__body mono" data-composed-body></pre>
@@ -562,106 +584,110 @@ function template(ctx) {
 
   <!-- ============================== RENDER =============================== -->
   <aside class="studio__side" data-side>
-    <div class="studio__sidewrap">
+    <div class="dock studio__dock">
+      <div class="dock__scroll">
+        <div class="rack">
 
-      <div class="render">
-        <header class="render__head">
-          <h3 class="render__title">Render</h3>
-          <span class="badge" data-backend>checking…</span>
-        </header>
-
-        <div class="field">
-          <label class="label" for="st-model">Model
-            <span class="label__hint" data-model-note></span>
-          </label>
-          <select class="select" id="st-model" data-model disabled>
-            <option value="">Server default</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label class="label" for="st-duration">Duration
-            <span class="label__hint mono" data-duration-read>2:00</span>
-          </label>
-          <div class="row">
-            <input class="range" id="st-duration" type="range" data-duration-range
-                   min="5" max="360" step="1" value="120" aria-label="Duration in seconds">
-            <input class="input input--num mono" type="number" data-duration-num
-                   min="0.04" max="360" step="1" value="120" aria-label="Duration in seconds">
+          <div class="field rack__group">
+            <label class="label" for="st-model">Model</label>
+            <select class="select" id="st-model" data-model disabled>
+              <option value="">Studio default</option>
+            </select>
           </div>
-          <div class="row row--wrap presets" data-duration-presets></div>
-        </div>
 
-        <div class="field">
-          <label class="label" for="st-seed">Seed
-            <span class="label__hint">empty = random</span>
-          </label>
-          <div class="row">
-            <input class="input mono" id="st-seed" type="number" data-seed placeholder="random"
-                   min="0" step="1" autocomplete="off">
-            <button class="btn btn--icon" type="button" data-seed-dice title="Roll a random seed">${i('dice')}</button>
-            <button class="btn btn--icon btn--ghost" type="button" data-seed-clear title="Clear the seed">${i('close')}</button>
+          <div class="field rack__group">
+            <label class="label" for="st-duration">Length
+              <input class="input rack__num mono" id="st-duration" type="text" data-duration
+                     inputmode="numeric" autocomplete="off" spellcheck="false"
+                     aria-label="Track length, minutes and seconds">
+            </label>
+            <div class="chiprow" data-duration-presets role="group" aria-label="Track length"></div>
           </div>
-          <p class="hint">Same seed + same inputs reproduces the take.</p>
-        </div>
 
-        <hr class="divider">
-
-        <div class="grid2">
-          <div class="field">
-            <label class="label" for="st-format">Format</label>
-            <select class="select" id="st-format" data-format></select>
+          <div class="field rack__group">
+            <span class="label">Takes</span>
+            <div class="segment segment--block" data-takes-seg role="group" aria-label="Number of takes">
+              <button class="segment__item is-active" type="button" data-takes="one" aria-pressed="true">One</button>
+              <button class="segment__item" type="button" data-takes="two" aria-pressed="false">Two</button>
+            </div>
+            <p class="hint" data-takes-note></p>
           </div>
-          <div class="field">
-            <label class="label" for="st-rate">Sample rate</label>
-            <select class="select" id="st-rate" data-rate></select>
+
+          <div class="field rack__group">
+            <label class="label" for="st-seed">Seed</label>
+            <div class="rack__row">
+              <input class="input mono" id="st-seed" type="number" data-seed placeholder="Random"
+                     min="0" step="1" autocomplete="off">
+              <button class="actionchip" type="button" data-seed-dice
+                      aria-label="Pick a random seed" title="Pick a random seed">${i('dice')}</button>
+            </div>
+            <p class="hint">Keep a seed to make the same track again. Empty means a new one every time.</p>
           </div>
-        </div>
 
-        <div class="field">
-          <label class="label" for="st-bitrate">Bitrate
-            <span class="label__hint" data-bitrate-note>mp3 only</span>
-          </label>
-          <select class="select" id="st-bitrate" data-bitrate></select>
-        </div>
+          <details class="fold rack__group" data-audio>
+            <summary class="fold__summary">
+              ${i('chevron-right')}<span>Audio file</span>
+              <span class="fold__meta mono" data-audio-meta></span>
+            </summary>
+            <div class="fold__body">
+              <div class="grid2">
+                <div class="field">
+                  <label class="label" for="st-format">Format</label>
+                  <select class="select" id="st-format" data-format></select>
+                </div>
+                <div class="field">
+                  <label class="label" for="st-rate">Sample rate</label>
+                  <select class="select" id="st-rate" data-rate></select>
+                </div>
+              </div>
 
-        <label class="switch render__switch">
-          <input type="checkbox" data-tiled>
-          <span class="switch__track"></span>
-          <span class="switch__label">Tiled decode
-            <span class="render__sub">saves VRAM on long renders</span>
-          </span>
-        </label>
+              <div class="field" data-bitrate-field>
+                <label class="label" for="st-bitrate">Bitrate
+                  <span class="label__hint">MP3 only</span>
+                </label>
+                <select class="select" id="st-bitrate" data-bitrate></select>
+              </div>
 
-        <div class="field">
-          <span class="label">Takes</span>
-          <div class="segment segment--block" data-takes-seg role="group" aria-label="Number of takes">
-            <button class="segment__item is-active" type="button" data-takes="one" aria-pressed="true">One take</button>
-            <button class="segment__item" type="button" data-takes="two" aria-pressed="false">Two takes</button>
-          </div>
-          <p class="hint" data-takes-note></p>
+              <label class="switch rack__switch">
+                <input type="checkbox" data-tiled>
+                <span class="switch__track"></span>
+                <span class="switch__label">Careful rendering
+                  <span class="rack__sub">Steadier on long tracks, a little slower.</span>
+                </span>
+              </label>
+            </div>
+          </details>
+
+          <section class="output" data-output>
+            <h3 class="rack__title">Output</h3>
+            <div class="takes" data-takes-list></div>
+            <div class="output__empty" data-output-empty>
+              <span class="brandmark output__mark" style="--mark-size:40px"><img src="/logo.png" alt=""></span>
+              <p class="output__title">Your take lands here</p>
+              <p class="output__text">Finished tracks play straight away and are kept in your library.</p>
+            </div>
+          </section>
         </div>
       </div>
 
-      <div class="render__foot">
-        <div class="render__issues" data-issues></div>
-        <div class="render__busy" data-busy hidden>
-          <div class="brandline"></div>
-          <div class="render__busyrow">
-            <svg class="icon spinner" aria-hidden="true"><use href="#i-spinner"/></svg>
-            <span data-busy-label>Queued…</span>
-            <span class="spacer"></span>
-            <span class="mono" data-busy-time>0:00</span>
+      <div class="dock__foot dock__foot--fade">
+        <div class="foot">
+          <div class="foot__issues" data-issues></div>
+          <div class="foot__busy" data-busy hidden>
+            <div class="brandline"></div>
+            <div class="foot__busyrow">
+              <svg class="icon spinner" aria-hidden="true"><use href="#i-spinner"/></svg>
+              <span data-busy-label>Queued</span>
+              <span class="spacer"></span>
+              <span class="mono" data-busy-time>0:00</span>
+            </div>
+            <button class="btn btn--sm btn--danger btn--block" type="button" data-cancel>Stop rendering</button>
           </div>
-          <button class="btn btn--sm btn--danger btn--block" type="button" data-cancel>Cancel render</button>
+          <button class="btn btn--primary btn--lg btn--block" type="button" data-generate>
+            ${i('wave')}<span data-generate-label>Generate</span>
+          </button>
         </div>
-        <button class="btn btn--primary btn--lg btn--block" type="button" data-generate>
-          ${i('wave')}<span data-generate-label>Generate</span>
-        </button>
-        <p class="render__endpoint mono" data-endpoint>POST /api/generate-stream</p>
       </div>
-
-      <div class="takes" data-takes-list></div>
     </div>
   </aside>
 </div>`;
@@ -700,8 +726,13 @@ export async function mount(root, ctx) {
     model: '',
   };
 
+  // First run opens on a complete, well-formed draft rather than an empty
+  // document — the same choice the reference product makes. Everything in it
+  // is editable and "Clear draft" empties it for good.
   const stored = ctx.storage.get(STORAGE_KEY, null);
-  const state = { ...defaults, ...(stored && typeof stored === 'object' ? stored : {}) };
+  const state = stored && typeof stored === 'object'
+    ? { ...defaults, ...stored }
+    : { ...defaults, ...EXAMPLE };
   // Never trust storage: clamp everything back into SPEC §3a.
   state.duration = clamp(Number(state.duration) || LIMITS.DURATION_DEFAULT, LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
   if (!FORMATS.includes(state.format)) state.format = 'flac';
@@ -756,20 +787,16 @@ export async function mount(root, ctx) {
     composedMeta: q('[data-composed-meta]'),
     composedBody: q('[data-composed-body]'),
     styleTags: q('[data-style-tags]'),
-    backend: q('[data-backend]'),
     model: q('[data-model]'),
-    modelNote: q('[data-model-note]'),
-    durRange: q('[data-duration-range]'),
-    durNum: q('[data-duration-num]'),
-    durRead: q('[data-duration-read]'),
+    duration: q('[data-duration]'),
     durPresets: q('[data-duration-presets]'),
     seed: q('[data-seed]'),
     seedDice: q('[data-seed-dice]'),
-    seedClear: q('[data-seed-clear]'),
+    audioMeta: q('[data-audio-meta]'),
     format: q('[data-format]'),
     rate: q('[data-rate]'),
     bitrate: q('[data-bitrate]'),
-    bitrateNote: q('[data-bitrate-note]'),
+    bitrateField: q('[data-bitrate-field]'),
     tiled: q('[data-tiled]'),
     takesSeg: qa('[data-takes]'),
     takesNote: q('[data-takes-note]'),
@@ -780,13 +807,14 @@ export async function mount(root, ctx) {
     cancel: q('[data-cancel]'),
     generate: q('[data-generate]'),
     generateLabel: q('[data-generate-label]'),
-    endpoint: q('[data-endpoint]'),
+    output: q('[data-output]'),
+    outputEmpty: q('[data-output-empty]'),
     takesList: q('[data-takes-list]'),
     caption: Object.fromEntries(CAPTION_FIELDS.map((f) => [f.key, {
       area: q(`[data-cap="${f.key}"]`),
       bar: q(`[data-partbar="${f.key}"]`),
       meter: q(`[data-cap-meter="${f.key}"]`),
-      grammar: q(`[data-grammar="${f.key}"]`),
+      summary: q(`[data-cap-summary="${f.key}"]`),
       scaffold: q(`[data-scaffold="${f.key}"]`),
     }])),
   };
@@ -797,16 +825,17 @@ export async function mount(root, ctx) {
 
   /* ------------------------------------------------------- static options */
 
+  const FORMAT_LABEL = { flac: 'FLAC · lossless', mp3: 'MP3', wav: 'WAV · lossless' };
   for (const f of FORMATS) {
     const o = document.createElement('option');
     o.value = f;
-    o.textContent = f === 'flac' ? 'FLAC — lossless (backend default)' : f.toUpperCase();
+    o.textContent = FORMAT_LABEL[f] || f.toUpperCase();
     el.format.append(o);
   }
   for (const r of SAMPLE_RATES) {
     const o = document.createElement('option');
     o.value = String(r);
-    o.textContent = `${(r / 1000).toFixed(r % 1000 ? 1 : 0)} kHz${r === 32000 ? ' — model native' : ''}`;
+    o.textContent = `${(r / 1000).toFixed(r % 1000 ? 1 : 0)} kHz`;
     el.rate.append(o);
   }
   for (const b of BITRATES) {
@@ -849,7 +878,8 @@ export async function mount(root, ctx) {
   }
 
   function buildPartBar(field) {
-    const box = el.caption[field.key].bar;
+    const refs = el.caption[field.key];
+    const box = refs.bar;
     box.replaceChildren();
     for (const part of partsFor(field)) {
       const b = document.createElement('button');
@@ -860,8 +890,9 @@ export async function mount(root, ctx) {
       b.innerHTML = `${ctx.iconMarkup('check', 'icon partchip__tick')}<span>${escapeHtml(part.short || part.label)}</span>`;
       box.append(b);
     }
-    el.caption[field.key].grammar.textContent =
-      (field.key === 'vocal' && state.instrumental ? field.instrumentalGrammar : field.grammar) || '';
+    box.append(refs.scaffold); // the "fill in the rest" button closes the row
+    refs.summary.textContent =
+      (field.key === 'vocal' && state.instrumental ? field.instrumentalSummary : field.summary) || '';
   }
 
   function syncCaptionField(field) {
@@ -879,12 +910,9 @@ export async function mount(root, ctx) {
       }
     }
     const words = countWords(text);
-    refs.meter.textContent = `${present}/${parts.length} labels · ${words} words`;
-    refs.meter.dataset.state = present === parts.length ? 'full' : (present ? 'partial' : 'empty');
-    refs.scaffold.disabled = present === parts.length;
-    refs.scaffold.title = present === parts.length
-      ? 'Every label for this field is already present'
-      : 'Append the labels this field is still missing';
+    refs.meter.textContent = words ? `${words} words` : '';
+    refs.scaffold.hidden = present === parts.length;
+    refs.scaffold.title = 'Add the parts this field is still missing';
   }
 
   /* ----------------------------------------------------------- composing */
@@ -929,7 +957,7 @@ export async function mount(root, ctx) {
     // backdrop
     el.hl.innerHTML = text
       ? highlight(text, analysis)
-      : '<i class="ly-ph">Section tags go alone on their own line. Tap a chip above, or hit Skeleton for the structure this duration wants.</i>';
+      : `<i class="ly-ph">Start writing, tap a section tag above, or hit Add structure for the shape a ${clock(state.duration)} track wants. Tags sit alone on their own line.</i>`;
     autosize();
 
     // counter
@@ -942,8 +970,8 @@ export async function mount(root, ctx) {
     const scale = Math.max(hi * 1.5, analysis.sungWords * 1.08, 1);
     el.fitWords.textContent = String(analysis.sungWords);
     el.fitTarget.textContent = state.instrumental
-      ? 'lyrics ignored while Instrumental is on'
-      : `target ${lo}–${hi} for ${clock(state.duration)}`;
+      ? 'not sung while Instrumental is on'
+      : `${lo}–${hi} fits ${clock(state.duration)}`;
     el.fitFill.style.width = `${clamp((analysis.sungWords / scale) * 100, 0, 100)}%`;
     el.fitBand.style.left = `${clamp((lo / scale) * 100, 0, 100)}%`;
     el.fitBand.style.width = `${clamp(((hi - lo) / scale) * 100, 0, 100)}%`;
@@ -957,12 +985,12 @@ export async function mount(root, ctx) {
     else { fitState = 'good'; badge = 'Good fit'; }
     el.fit.dataset.fit = fitState;
     el.fitBadge.textContent = badge;
-    el.fitBadge.className = `badge ${{ good: 'badge--ok', over: 'badge--warn', under: 'badge--warn', off: 'badge--info', empty: '' }[fitState] || ''}`;
+    el.fitBadge.className = `badge ${{ good: 'badge--ok', over: 'badge--warn', under: 'badge--warn' }[fitState] || ''}`;
 
     const tagged = analysis.sections.filter((s) => s.name).length;
     el.fitFoot.textContent = state.instrumental
-      ? `Instrumental mode posts is_instrumental — the lyrics field is dropped from the payload.`
-      : `≈ ${clock(analysis.sungSeconds)} of singing at ${WORDS_PER_10S.join('–')} words / 10s · ${tagged} tagged ${tagged === 1 ? 'section' : 'sections'}`;
+      ? 'Instrumental is on, so nothing here gets sung.'
+      : `≈ ${clock(analysis.sungSeconds)} of singing · ${tagged} tagged ${tagged === 1 ? 'section' : 'sections'}`;
 
     // section outline
     el.sections.hidden = analysis.sections.length === 0;
@@ -985,7 +1013,7 @@ export async function mount(root, ctx) {
       const ok = document.createElement('p');
       ok.className = 'lint__ok';
       ok.innerHTML = `${ctx.iconMarkup('check')}<span>${text.trim()
-        ? 'Lyrics match every §3d rule for this duration.'
+        ? `Lyrics fit the ${clock(state.duration)} target.`
         : 'Nothing to check yet.'}</span>`;
       el.lint.append(ok);
     } else {
@@ -996,7 +1024,7 @@ export async function mount(root, ctx) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn--sm';
-        btn.innerHTML = `${ctx.iconMarkup('wand')}Auto-fix ${analysis.fixable}`;
+        btn.innerHTML = `${ctx.iconMarkup('wand')}Fix ${analysis.fixable}`;
         btn.addEventListener('click', () => {
           replaceAll(el.lyrics, autofix(el.lyrics.value));
           state.lyrics = el.lyrics.value;
@@ -1042,17 +1070,17 @@ export async function mount(root, ctx) {
     const providerOff = health ? !health.lyricsEnabled : false;
     const busy = Boolean(lyricsJob);
     const reason = providerOff
-      ? `/api/health reports lyrics: ${health.lyricsProvider} — this backend cannot write lyrics.`
+      ? 'Lyric writing is switched off for this studio.'
       : (state.instrumental
-        ? 'Instrumental is on, so the lyrics field is dropped from the payload.'
-        : `POST /api/lyrics via ${health?.lyricsProvider || 'the local lyrics service'}`);
+        ? 'Instrumental tracks are rendered without lyrics.'
+        : 'Draft a full set of lyrics from your description.');
 
     el.draft.disabled = providerOff || state.instrumental || busy;
     el.revise.disabled = el.draft.disabled || !state.lyrics.trim();
     el.draft.title = reason;
     el.revise.title = !el.draft.disabled && !state.lyrics.trim()
-      ? 'Nothing to revise yet — write or draft some lyrics first.'
-      : reason;
+      ? 'Write or draft some lyrics first.'
+      : (providerOff || state.instrumental ? reason : 'Rewrite what is here, keeping the same brief.');
   }
 
   function syncCaption() {
@@ -1062,9 +1090,9 @@ export async function mount(root, ctx) {
     const words = countWords(prompt);
     el.promptCount.textContent = `${chars.toLocaleString()} / ${LIMITS.PROMPT_MAX.toLocaleString()}`;
     el.promptCount.dataset.state = chars > LIMITS.PROMPT_MAX ? 'over' : (chars > LIMITS.PROMPT_MAX * 0.9 ? 'near' : '');
-    el.composedMeta.textContent = `${words} words · ${chars.toLocaleString()} chars`;
+    el.composedMeta.textContent = words ? `${words} words` : '';
     el.composedMeta.dataset.state = words >= 250 && words <= 400 ? 'ok' : 'off';
-    el.composedBody.textContent = prompt || '(empty — the request would carry no caption)';
+    el.composedBody.textContent = prompt || 'Nothing describes the sound yet.';
     el.copyPrompt.disabled = !prompt;
   }
 
@@ -1085,14 +1113,11 @@ export async function mount(root, ctx) {
     const busy = Boolean(job);
     el.generate.disabled = !v.valid || Boolean(blockedByBackend) || busy;
     el.generateLabel.textContent = busy
-      ? 'Rendering…'
+      ? 'Rendering'
       : (state.takes === 'two' ? 'Generate two takes' : 'Generate');
-    el.endpoint.textContent = state.takes === 'two'
-      ? 'POST /api/generate-dual  ·  more_variation: true'
-      : 'POST /api/generate-stream';
     el.takesNote.textContent = state.takes === 'two'
-      ? 'Posts /api/generate-dual with more_variation, so take B explores a different arrangement.'
-      : 'Streams /api/generate-stream so status arrives while ComfyUI works.';
+      ? 'Two takes from the same brief — the second explores a different arrangement.'
+      : 'Progress updates live while your track renders.';
     return v;
   }
 
@@ -1108,19 +1133,32 @@ export async function mount(root, ctx) {
     el.title.value = state.title;
     el.lyrics.value = state.lyrics;
     for (const f of CAPTION_FIELDS) el.caption[f.key].area.value = state[f.key];
-    el.durRange.value = String(clamp(state.duration, 5, 360));
-    el.durNum.value = String(state.duration);
-    el.durRead.textContent = clock(state.duration);
-    el.durRange.style.setProperty('--range-fill', `${((clamp(state.duration, 5, 360) - 5) / 355) * 100}%`);
+
+    // ONE authoritative length value: this field. The chips are shortcuts into it.
+    if (document.activeElement !== el.duration) el.duration.value = clock(state.duration);
     for (const chip of el.durPresets.children) {
-      chip.classList.toggle('is-active', Number(chip.dataset.preset) === Number(state.duration));
+      const on = Number(chip.dataset.preset) === Number(state.duration);
+      chip.classList.toggle('is-active', on);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
+
     el.seed.value = state.seed;
     el.format.value = state.format;
     el.rate.value = String(state.sampleRate);
     el.bitrate.value = String(state.bitrate);
-    el.bitrate.disabled = state.format !== 'mp3';
-    el.bitrateNote.textContent = state.format === 'mp3' ? 'mp3 only' : `ignored for ${state.format}`;
+
+    // Bitrate is a lossy-format setting. When it cannot do anything it reads
+    // as disabled — label included — instead of being annotated as ignored.
+    const lossy = state.format === 'mp3';
+    el.bitrate.disabled = !lossy;
+    el.bitrateField.dataset.off = lossy ? 'false' : 'true';
+
+    el.audioMeta.textContent = [
+      (el.format.selectedOptions[0]?.textContent || state.format).split(' · ')[0],
+      lossy ? `${Number(state.bitrate) / 1000} kbps` : null,
+      `${(Number(state.sampleRate) / 1000).toFixed(Number(state.sampleRate) % 1000 ? 1 : 0)} kHz`,
+    ].filter(Boolean).join(' · ');
+
     el.tiled.checked = state.tiled;
     for (const b of el.takesSeg) {
       const on = b.dataset.takes === state.takes;
@@ -1147,29 +1185,22 @@ export async function mount(root, ctx) {
     health = h;
     if (!h) return;
 
-    el.backend.textContent = h.status === 'online' ? h.backend : h.status;
-    el.backend.className = `badge ${{ online: 'badge--ok', degraded: 'badge--warn', offline: 'badge--danger' }[h.status] || ''}`;
-    el.backend.title = h.message;
-
     const keys = h.modelKeys || [];
     const previous = state.model;
     el.model.replaceChildren();
     const def = document.createElement('option');
     def.value = '';
-    def.textContent = 'Server default';
+    def.textContent = 'Studio default';
     el.model.append(def);
     for (const key of keys) {
       const o = document.createElement('option');
       o.value = key;
-      o.textContent = h.musicModels[key] || key;
+      o.textContent = modelLabel(key, h.musicModels?.[key]);
       el.model.append(o);
     }
     el.model.disabled = keys.length === 0;
     el.model.value = keys.includes(previous) ? previous : '';
     state.model = el.model.value;
-    el.modelNote.textContent = keys.length
-      ? `${keys.length} available`
-      : (h.status === 'offline' ? 'backend unreachable' : 'none reported by /api/health');
 
     syncLyricButtons();
     syncValidation();
@@ -1183,7 +1214,7 @@ export async function mount(root, ctx) {
     if (lyricsJob) return;
     const prompt = composePrompt();
     if (!prompt && !state.title.trim() && mode === 'write_full_song') {
-      ctx.toast('Describe the song in Global metadata (or give it a title) so Codex has something to work from.', {
+      ctx.toast('Describe the song under Global metadata, or give it a title, so there is something to write from.', {
         kind: 'warn', title: 'Nothing to write from',
       });
       return;
@@ -1212,7 +1243,7 @@ export async function mount(root, ctx) {
       );
       if (!alive) return;
       const text = String(res?.lyrics || '').trim();
-      if (!text) throw new api.ApiError('The lyrics service returned an empty result.', { endpoint: '/api/lyrics' });
+      if (!text) throw new Error('The lyrics came back empty. Try again, or add more detail to the description.');
 
       replaceAll(el.lyrics, text);
       state.lyrics = el.lyrics.value;
@@ -1226,12 +1257,12 @@ export async function mount(root, ctx) {
       syncLyrics();
       syncValidation();
       ctx.toast(
-        `${countWords(text.replace(/^\[.*\]$/gm, ''))} sung words written by ${res.provider || 'the lyrics service'}${res.model ? ` · ${res.model}` : ''}.`,
-        { kind: 'success', title: mode === 'edit' ? 'Lyrics revised' : 'Lyrics written' },
+        `${countWords(text.replace(/^\[.*\]$/gm, ''))} sung words, ready to edit.`,
+        { kind: 'success', title: mode === 'edit' ? 'Lyrics rewritten' : 'Lyrics written' },
       );
     } catch (err) {
       if (err?.name === 'AbortError') return;
-      ctx.toast(api.errorText(err), { kind: 'error', title: 'POST /api/lyrics failed' });
+      ctx.toast(api.errorText(err), { kind: 'error', title: 'Could not write the lyrics' });
     } finally {
       lyricsJob = null;
       if (alive) {
@@ -1247,7 +1278,7 @@ export async function mount(root, ctx) {
     el.styleTags.replaceChildren();
     const label = document.createElement('span');
     label.className = 'capfield__suggestlabel';
-    label.textContent = 'Codex suggested style tags:';
+    label.textContent = 'Suggested style tags';
     const value = document.createElement('code');
     value.className = 'code';
     value.textContent = styleTags;
@@ -1286,9 +1317,10 @@ export async function mount(root, ctx) {
     j.hook = (kind, payload) => {
       if (!alive) return;
       if (kind === 'event') {
-        if (payload?.status) el.busyLabel.textContent = `${payload.status} on ${payload.backend || health?.backend || 'the backend'}…`;
-        else if (payload?.partial) el.busyLabel.textContent = 'Partial audio received…';
-        else if (payload?.done) el.busyLabel.textContent = 'Writing the file…';
+        if (payload?.partial) el.busyLabel.textContent = 'First audio coming through';
+        else if (payload?.done) el.busyLabel.textContent = 'Finishing the file';
+        else if (payload?.status === 'queued') el.busyLabel.textContent = 'Queued';
+        else if (payload?.status) el.busyLabel.textContent = 'Rendering your track';
       } else if (kind === 'done') {
         renderTakes(payload, j);
       } else if (kind === 'error') {
@@ -1302,7 +1334,7 @@ export async function mount(root, ctx) {
         setBusy(false);
       }
     };
-    el.busyLabel.textContent = j.dual ? 'Rendering two takes…' : 'Queued…';
+    el.busyLabel.textContent = j.dual ? 'Rendering two takes' : 'Queued';
     setBusy(true);
     tickBusy();
     clearInterval(busyTimer);
@@ -1361,8 +1393,8 @@ export async function mount(root, ctx) {
           announce(res?.takes?.B, 'B');
           const made = [res?.takes?.A, res?.takes?.B].filter((t) => t?.track).length;
           ctx.toast(
-            `${made} of 2 takes rendered${res?.errors?.length ? ` · ${res.errors.map((e) => `${e.slot}: ${e.error}`).join(' · ')}` : ''}`,
-            { kind: made ? 'success' : 'error', title: 'generate-dual finished' },
+            `${made} of 2 takes finished${res?.errors?.length ? `\n${res.errors.map((e) => `Take ${e.slot}: ${e.error}`).join('\n')}` : ''}`,
+            { kind: made ? 'success' : 'error', title: made ? 'Takes ready' : 'Render failed' },
           );
         } else {
           announce(res, null);
@@ -1374,8 +1406,8 @@ export async function mount(root, ctx) {
         return res;
       })
       .catch((err) => {
-        if (err?.name === 'AbortError') ctx.toast('Render cancelled.', { kind: 'info' });
-        else ctx.toast(api.errorText(err), { kind: 'error', title: dual ? 'POST /api/generate-dual failed' : 'Render failed' });
+        if (err?.name === 'AbortError') ctx.toast('Render stopped.', { kind: 'info' });
+        else ctx.toast(api.errorText(err), { kind: 'error', title: 'Render failed' });
         j.hook?.('error', err);
       })
       .finally(() => {
@@ -1385,6 +1417,7 @@ export async function mount(root, ctx) {
 
     job = j;
     el.takesList.replaceChildren();
+    syncOutput();
     attachJob(j);
     syncValidation();
   }
@@ -1398,19 +1431,16 @@ export async function mount(root, ctx) {
     const box = document.createElement('div');
     box.className = 'notice notice--error take__error';
     box.innerHTML = `<span class="notice__icon">${ctx.iconMarkup('alert')}</span><div>
-      <p class="notice__title"></p><span class="take__errmsg"></span>
+      <p class="notice__title">Render failed</p><span class="take__errmsg"></span>
       <p class="take__errfoot mono"></p></div>`;
-    box.querySelector('.notice__title').textContent = j.dual
-      ? 'POST /api/generate-dual failed'
-      : 'POST /api/generate-stream failed';
     box.querySelector('.take__errmsg').textContent = api.errorText(err);
+    // Diagnostics are legitimate here: this only exists when something broke.
     box.querySelector('.take__errfoot').textContent = [
       err?.status ? `HTTP ${err.status}` : null,
-      `format ${j.meta.format}`,
-      `${j.meta.duration}s`,
       err?.traceId ? `trace ${err.traceId}` : null,
     ].filter(Boolean).join(' · ');
     el.takesList.replaceChildren(box);
+    syncOutput();
   }
 
   /** `extra_info.music_duration` comes back in milliseconds on this backend. */
@@ -1424,32 +1454,43 @@ export async function mount(root, ctx) {
     const card = document.createElement('article');
     card.className = 'take';
     const x = result?.extra_info || {};
+    const title = label ? `${j.meta.title} · Take ${label}` : j.meta.title;
     const bits = [
-      j.meta.format,
       clock(resultSeconds(x, j.meta.duration)),
-      bytes(result?.track?.size),
-      x.music_sample_rate ? `${(x.music_sample_rate / 1000).toFixed(1)} kHz` : null,
+      String(j.meta.format || '').toUpperCase(),
       j.meta.seed === undefined || j.meta.seed === null ? null : `seed ${j.meta.seed}`,
     ].filter(Boolean);
 
     card.innerHTML = `
-      <span class="brandmark take__art" style="--mark-size:56px"><img src="/logo.png" alt=""></span>
+      <span class="brandmark take__art" style="--mark-size:44px"><img src="/logo.png" alt=""></span>
       <div class="take__body">
         <h4 class="take__title"></h4>
-        <p class="take__meta mono"></p>
+        <p class="take__meta">${bits.map((b) => `<span>${escapeHtml(b)}</span>`).join('')}</p>
       </div>
-      <div class="take__actions">
-        <button class="btn btn--sm" type="button" data-play>${ctx.iconMarkup('play')}Play</button>
-        <a class="btn btn--sm btn--ghost" data-dl download>${ctx.iconMarkup('download')}Save</a>
+      <div class="actionbar actionbar--end">
+        <button class="actionchip actionchip--lg" type="button" data-play aria-label="Play this take">
+          ${ctx.iconMarkup('play')}
+        </button>
       </div>`;
 
-    const title = label ? `${j.meta.title} · Take ${label}` : j.meta.title;
     card.querySelector('.take__title').textContent = title;
-    card.querySelector('.take__meta').textContent = bits.join(' · ');
 
-    const dl = card.querySelector('[data-dl]');
-    dl.href = api.mediaUrl(result?.track);
-    dl.download = result?.track?.filename || '';
+    const url = api.mediaUrl(result?.track);
+    card.querySelector('.actionbar').append(ctx.menu({
+      label: 'More for this take',
+      items: () => [
+        { label: 'Download', icon: 'download', note: String(j.meta.format || '').toUpperCase(), href: url },
+        { label: 'Open in library', icon: 'library', onSelect: () => ctx.navigate('library') },
+        { separator: true },
+        {
+          label: 'Remove from this list',
+          icon: 'trash',
+          danger: true,
+          onSelect: () => { card.remove(); syncOutput(); },
+        },
+      ],
+    }));
+
     card.querySelector('[data-play]').addEventListener('click', () => {
       ctx.bus.emit('player:play', {
         track: result.track,
@@ -1460,9 +1501,14 @@ export async function mount(root, ctx) {
     return card;
   }
 
+  /** The rail always has a floor: either takes, or the card that says so. */
+  function syncOutput() {
+    el.outputEmpty.hidden = el.takesList.children.length > 0;
+  }
+
   function renderTakes(res, j) {
     el.takesList.replaceChildren();
-    if (!res) return;
+    if (!res) { syncOutput(); return; }
     if (j.dual) {
       if (res?.takes?.A?.track) el.takesList.append(takeCard(res.takes.A, 'A', j));
       if (res?.takes?.B?.track) el.takesList.append(takeCard(res.takes.B, 'B', j));
@@ -1476,7 +1522,8 @@ export async function mount(root, ctx) {
     } else if (res.track) {
       el.takesList.append(takeCard(res, null, j));
     }
-    if (el.takesList.children.length) el.takesList.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    syncOutput();
+    if (el.takesList.children.length) el.output.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   /* ------------------------------------------------------------- wiring */
@@ -1598,17 +1645,19 @@ export async function mount(root, ctx) {
     });
   }
 
-  on(el.copyPrompt, 'click', async () => {
+  async function copyPrompt() {
     const text = composePrompt();
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      ctx.toast(`${text.length.toLocaleString()} characters copied.`, { kind: 'success', title: 'Composed prompt copied' });
+      ctx.toast(`${countWords(text)} words copied.`, { kind: 'success', title: 'Description copied' });
     } catch (err) {
-      ctx.toast(`Clipboard refused: ${err?.message || err}. The composed prompt is expanded below instead.`, { kind: 'warn' });
+      ctx.toast(`Your browser blocked the clipboard: ${err?.message || err}. The full description is open below instead.`, { kind: 'warn' });
       el.composed.open = true;
+      el.composed.scrollIntoView({ block: 'nearest' });
     }
-  });
+  }
+  on(el.copyPrompt, 'click', copyPrompt);
 
   const setDuration = (value) => {
     state.duration = clamp(Number(value) || 0, LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
@@ -1617,19 +1666,16 @@ export async function mount(root, ctx) {
     syncLyrics();
     syncValidation();
   };
-  on(el.durRange, 'input', () => setDuration(el.durRange.value));
-  on(el.durNum, 'input', () => {
-    const raw = Number(el.durNum.value);
-    if (!Number.isFinite(raw)) return;
-    state.duration = clamp(raw, LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
-    save();
-    el.durRange.value = String(clamp(state.duration, 5, 360));
-    el.durRead.textContent = clock(state.duration);
-    el.durRange.style.setProperty('--range-fill', `${((clamp(state.duration, 5, 360) - 5) / 355) * 100}%`);
-    syncLyrics();
-    syncValidation();
+  const commitDuration = () => {
+    const next = clamp(parseClock(el.duration.value, state.duration), LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
+    el.duration.blur();
+    setDuration(next);
+  };
+  on(el.duration, 'change', commitDuration);
+  on(el.duration, 'keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitDuration(); }
+    if (e.key === 'Escape') { el.duration.value = clock(state.duration); el.duration.blur(); }
   });
-  on(el.durNum, 'change', () => setDuration(el.durNum.value));
   on(el.durPresets, 'click', (e) => {
     const chip = e.target.closest('[data-preset]');
     if (chip) setDuration(chip.dataset.preset);
@@ -1643,12 +1689,6 @@ export async function mount(root, ctx) {
   on(el.seedDice, 'click', () => {
     state.seed = String(Math.floor(Math.random() * (LIMITS.SEED_MAX + 1)));
     el.seed.value = state.seed;
-    save();
-    syncValidation();
-  });
-  on(el.seedClear, 'click', () => {
-    state.seed = '';
-    el.seed.value = '';
     save();
     syncValidation();
   });
@@ -1685,12 +1725,7 @@ export async function mount(root, ctx) {
 
   /* ------------------------------------------------------- topbar actions */
 
-  const exampleBtn = document.createElement('button');
-  exampleBtn.type = 'button';
-  exampleBtn.className = 'btn btn--sm btn--ghost';
-  exampleBtn.innerHTML = `${ctx.iconMarkup('wand')}Load example`;
-  exampleBtn.title = 'Fill every field with a complete, well-formed draft';
-  exampleBtn.addEventListener('click', () => {
+  const loadExample = () => {
     Object.assign(state, {
       title: EXAMPLE.title,
       global: EXAMPLE.global,
@@ -1704,24 +1739,19 @@ export async function mount(root, ctx) {
     buildPartBar(CAPTION_FIELDS.find((f) => f.key === 'vocal'));
     syncAll();
     el.lyrics.scrollIntoView({ block: 'nearest' });
-  });
+  };
 
-  const clearBtn = document.createElement('button');
-  clearBtn.type = 'button';
-  clearBtn.className = 'btn btn--sm btn--ghost';
-  clearBtn.innerHTML = `${ctx.iconMarkup('trash')}Clear`;
-  clearBtn.title = 'Empty every field and forget the saved draft';
-  clearBtn.addEventListener('click', () => {
+  const clearDraft = () => {
     const snapshot = { ...state };
     Object.assign(state, defaults, { model: state.model });
-    ctx.storage.remove(STORAGE_KEY);
+    ctx.storage.set(STORAGE_KEY, state);
     buildPartBar(CAPTION_FIELDS.find((f) => f.key === 'vocal'));
     styleTags = '';
     renderStyleTags();
     syncAll();
     ctx.toast('Draft cleared.', {
       kind: 'info',
-      action: {
+      actions: [{
         label: 'Undo',
         onClick: () => {
           Object.assign(state, snapshot);
@@ -1729,22 +1759,40 @@ export async function mount(root, ctx) {
           buildPartBar(CAPTION_FIELDS.find((f) => f.key === 'vocal'));
           syncAll();
         },
-      },
+      }],
     });
+  };
+
+  const newSongBtn = document.createElement('button');
+  newSongBtn.type = 'button';
+  newSongBtn.className = 'btn btn--sm btn--ghost';
+  newSongBtn.innerHTML = `${ctx.iconMarkup('wand')}Example song`;
+  newSongBtn.title = 'Fill every field with a complete, well-formed draft';
+  newSongBtn.addEventListener('click', loadExample);
+
+  const overflow = ctx.menu({
+    label: 'Draft actions',
+    items: () => [
+      { label: 'Copy description', icon: 'copy', disabled: !composePrompt(), onSelect: copyPrompt },
+      { label: 'Load example song', icon: 'wand', onSelect: loadExample },
+      { separator: true },
+      { label: 'Clear draft', icon: 'trash', danger: true, onSelect: clearDraft },
+    ],
   });
 
-  ctx.headerSlot.append(exampleBtn, clearBtn);
+  ctx.headerSlot.append(newSongBtn, overflow);
 
   /* ------------------------------------------------------------- startup */
 
   for (const f of CAPTION_FIELDS) buildPartBar(f);
   syncAll();
+  syncOutput();
   ctx.onHealth(applyHealth); // fires immediately when a snapshot already exists
 
   // Re-attach to a render that survived a screen change.
   if (job) {
     attachJob(job);
-    ctx.toast('Re-attached to the render already in flight.', { kind: 'info' });
+    ctx.toast('Still rendering — picked up where it left off.', { kind: 'info' });
   }
 
   /* ------------------------------------------------------------ teardown */
@@ -1760,7 +1808,7 @@ export async function mount(root, ctx) {
       // Deliberate: a local render takes minutes. It keeps running, still emits
       // `track:new` and still toasts; only the DOM hook is dropped.
       job.hook = null;
-      ctx.toast('The render keeps going in the background — it will land in your library.', { kind: 'info' });
+      ctx.toast('Your track keeps rendering in the background — it will land in your library.', { kind: 'info' });
     }
   };
 }

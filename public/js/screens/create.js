@@ -1,13 +1,20 @@
 /**
- * Create — the front door. One line in, a finished song out.
+ * Create — the front door.
+ *
+ * Left: a creation surface. One idea, who sings it, how long, and a disclosure
+ * for the few remaining SPEC §3a parameters. One authoritative control per
+ * value — no slider shadowing a number shadowing a chip row.
+ *
+ * Right: the workspace. Every song made here, newest first, on one fixed row
+ * rhythm, with the run in flight sitting at the top of the same list.
  *
  * SPEC §3e: vocal generation needs lyrics and the music backend will not write
- * them, so this is two calls behind one button —
- *   1. `POST /api/lyrics`   (local Codex CLI) — shown, not hidden.
- *   2. `POST /api/generate` (or `/api/generate-dual` for two takes).
+ * them, so this is two calls behind one button — the lyrics call, then the
+ * render — and the lyrics it wrote are shown, never hidden.
  *
- * Only SPEC §3a parameters are exposed. Guidance/cfg, flow-matching steps and
- * `lyrics_optimizer` are server-side only and deliberately absent.
+ * House rule 0: nothing in here prints a host, a port, an endpoint, a provider,
+ * a model string or a byte size. Diagnostics live in Settings and in transient
+ * error states, where the backend's own words are shown verbatim.
  *
  * Owned by the create lane: this file + public/css/screens/create.css.
  */
@@ -22,28 +29,40 @@ export const meta = {
  * Constants
  * -------------------------------------------------------------------------- */
 
-const STORE_KEY = 'create.simple';
+const FORM_KEY = 'create.simple';
+const HISTORY_KEY = 'create.history';
+const LIKES_KEY = 'create.liked';
+const PREFS_KEY = 'create.workspace';
+const LIBRARY_KEY = 'library.tracks';
 
-/** Starter ideas. Clicking one fills the idea field — nothing decorative. */
+const HISTORY_MAX = 80;
+
+/** Starter ideas — clicking one fills the idea field. Nothing decorative. */
 const STARTERS = [
-  'a smoky late-night soul ballad about old flames, warm female voice',
-  'a defiant punk anthem about staying up far too late',
-  'a cozy lo-fi hip hop beat for studying, no vocals',
-  'stadium synthwave about driving home at 4am with the windows down',
-  'a hushed acoustic lullaby for a sleepless city',
-  'a triumphant orchestral cue for the last five minutes of a heist',
-  'gritty desert blues rock about a car that never starts',
-  'a bright afrobeats summer single about calling in sick',
-  'a slow-burn trip hop track about a phone that never rings',
-  'euphoric drum and bass about the first warm day of the year',
+  { idea: 'a smoky late-night soul ballad about old flames, warm female voice', tag: 'Soul' },
+  { idea: 'stadium synthwave about driving home at 4am with the windows down', tag: 'Synthwave' },
+  { idea: 'a cozy lo-fi hip hop beat for studying, no vocals', tag: 'Lo-fi' },
+  { idea: 'a defiant punk anthem about staying up far too late', tag: 'Punk' },
+  { idea: 'a triumphant orchestral cue for the last five minutes of a heist', tag: 'Cinematic' },
+  { idea: 'a bright afrobeats summer single about calling in sick', tag: 'Afrobeats' },
+  { idea: 'gritty desert blues rock about a car that never starts', tag: 'Blues rock' },
+  { idea: 'euphoric drum and bass about the first warm day of the year', tag: 'Drum & bass' },
+  { idea: 'a hushed acoustic lullaby for a sleepless city', tag: 'Acoustic' },
+  { idea: 'a slow-burn trip hop track about a phone that never rings', tag: 'Trip hop' },
 ];
 
-const DURATION_PRESETS = [30, 60, 120, 180, 300];
-const SLIDER_MIN = 10;
-const SLIDER_MAX = 360;
+const LENGTHS = [30, 60, 120, 180, 300];
+
+const SORTS = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'longest', label: 'Longest' },
+  { value: 'shortest', label: 'Shortest' },
+  { value: 'title', label: 'Title A–Z' },
+];
 
 /* -------------------------------------------------------------------------- *
- * Small helpers
+ * Helpers
  * -------------------------------------------------------------------------- */
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
@@ -54,20 +73,34 @@ function randomSeed() {
   return buf[0] % 2 ** 31;
 }
 
-/** 125 -> "2:05". Sub-minute durations stay in seconds. */
+/** 125 -> "2:05". */
 function clock(seconds) {
   const s = Math.max(0, Math.round(Number(seconds) || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function bytes(n) {
-  const v = Number(n) || 0;
-  if (v >= 1024 * 1024) return `${(v / 1024 / 1024).toFixed(1)} MB`;
-  if (v >= 1024) return `${Math.round(v / 1024)} KB`;
-  return `${v} B`;
+function ago(ts) {
+  const diff = Date.now() - Number(ts || 0);
+  if (!Number.isFinite(diff) || diff < 0) return 'just now';
+  const m = Math.round(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
-/** A display title when Codex did not name the song (instrumental runs). */
+/** Stable small integer from an id — drives the generated artwork motif. */
+function hashOf(str) {
+  let h = 2166136261;
+  for (let i = 0; i < String(str).length; i += 1) {
+    h ^= String(str).charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+
 function titleFromIdea(idea) {
   const clean = String(idea).replace(/\s+/g, ' ').trim();
   if (!clean) return 'Untitled';
@@ -76,10 +109,49 @@ function titleFromIdea(idea) {
 }
 
 /**
+ * The structured caption is written for the model, so its field labels are
+ * stripped before it is ever shown to a person. What is left is the musical
+ * description itself.
+ */
+const CAPTION_LABELS = new RegExp(
+  `\\b(${[
+    'Basic Attributes',
+    'Global Emotional Progression',
+    'Application Scenarios & Imagery',
+    'Sonics & Production Profile',
+    'Vocal Gender & Timbre',
+    'Vocal Style',
+    'Harmony/Backing Vocals',
+    'Vocal FX',
+    'Instrument Lifecycle Description \\(Primary/Secondary Layering\\)',
+    'Groove & Foundation Progression',
+    'Embellishments, Textures & Spatial FX',
+    'Primary',
+    'Secondary',
+  ].join('|')})\\s*:\\s*`,
+  'g',
+);
+
+/** One readable line describing a track, for the row's secondary text. */
+function describe(rec) {
+  const source = String(rec.idea || '').trim() || String(rec.prompt || '').trim();
+  return source
+    .replace(CAPTION_LABELS, '')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([.,;])/g, '$1')
+    // the tempo/key clause is studio data, not a description — lead with the music
+    .replace(/^\s*bpm is [^.]*\.\s*/i, '')
+    .replace(/^\s*key is [^.]*\.\s*/i, '')
+    .replace(/(^|\.\s+)([a-z])/g, (_m, lead, ch) => lead + ch.toUpperCase())
+    .trim();
+}
+
+/**
  * The caption sent as `prompt`. Simple mode has one honest source of musical
- * intent — the user's line — plus the style tags Codex chose while reading it.
- * Nothing is invented: no fabricated bpm, key or gear list. Studio is where the
- * full SPEC §3c three-part caption gets written by hand.
+ * intent — the user's line — plus the style tags chosen while the lyrics were
+ * written. Nothing is invented. Studio is where the full three-part caption
+ * gets written by hand.
  */
 function buildCaption({ idea, styleTags, instrumental }, max) {
   const parts = [];
@@ -96,11 +168,39 @@ function buildCaption({ idea, styleTags, instrumental }, max) {
   return parts.join('\n').slice(0, max);
 }
 
-function pickStarters(n) {
-  const pool = STARTERS.slice();
-  const out = [];
-  while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
-  return out;
+/* ---------------------------------------------------------------- records -- */
+
+function normalise(raw) {
+  const r = raw || {};
+  const track = (r.track && typeof r.track === 'object') ? r.track : r;
+  const url = String(track.url || r.url || '');
+  const filename = String(track.filename || r.filename || url.split('/').pop() || '');
+  const id = String(track.id || r.id || filename.replace(/\.[^.]+$/, '') || '');
+  if (!id && !url) return null;
+
+  const extra = r.extra_info || track.extra_info || {};
+  const ms = Number(extra.music_duration);
+  const duration = Number.isFinite(ms) && ms > 0
+    ? (ms > 400 ? ms / 1000 : ms)
+    : (Number(r.duration) > 0 ? Number(r.duration) : null);
+
+  const prompt = String(r.prompt ?? '');
+  return {
+    id: id || `t${hashOf(url)}`,
+    url,
+    filename,
+    title: String(r.title || '').trim() || titleFromIdea(r.idea || prompt) || 'Untitled take',
+    prompt,
+    idea: String(r.idea || ''),
+    lyrics: String(r.lyrics ?? ''),
+    isInstrumental: Boolean(r.isInstrumental ?? r.is_instrumental),
+    duration,
+    format: String(r.format || (filename.split('.').pop() || '')).toLowerCase().replace('undefined', ''),
+    seed: Number.isFinite(Number(r.seed)) && r.seed !== null && r.seed !== '' ? Number(r.seed) : null,
+    cover: String(r.cover || r.coverUrl || '') || null,
+    takeSlot: String(r.takeSlot || '') || null,
+    createdAt: Number(r.createdAt) || Date.now(),
+  };
 }
 
 /* -------------------------------------------------------------------------- *
@@ -110,188 +210,238 @@ function pickStarters(n) {
 export function mount(root, ctx) {
   const { api, iconMarkup } = ctx;
   const { LIMITS } = api;
-  const saved = ctx.storage.get(STORE_KEY, {}) || {};
+
+  const saved = ctx.storage.get(FORM_KEY, {}) || {};
+  const prefs = { view: 'list', sort: 'newest', liked: false, ...(ctx.storage.get(PREFS_KEY, null) || {}) };
+  if (!SORTS.some((s) => s.value === prefs.sort)) prefs.sort = 'newest';
+  if (prefs.view !== 'grid') prefs.view = 'list';
 
   const state = {
     /* form — every field maps to a SPEC §3a parameter */
     idea: typeof saved.idea === 'string' ? saved.idea : '',
     instrumental: Boolean(saved.instrumental),
     duration: clamp(Number(saved.duration) || LIMITS.DURATION_DEFAULT, LIMITS.DURATION_MIN, LIMITS.DURATION_MAX),
+    customLength: Boolean(saved.customLength),
     seedAuto: saved.seedAuto === undefined ? true : Boolean(saved.seedAuto),
     seed: Number.isInteger(saved.seed) ? saved.seed : randomSeed(),
     format: api.FORMATS.includes(saved.format) ? saved.format : 'flac',
     bitrate: api.BITRATES.includes(saved.bitrate) ? saved.bitrate : LIMITS.BITRATE_DEFAULT,
     dual: Boolean(saved.dual),
     moreVariation: saved.moreVariation === undefined ? true : Boolean(saved.moreVariation),
+    advanced: Boolean(saved.advanced),
 
     /* run */
-    starters: pickStarters(3),
-    song: null,             // { title, styleTags, lyrics, provider, model }
+    song: null,           // { title, styleTags, lyrics }
+    lyricsOpen: true,
     editingLyrics: false,
     running: false,
-    phase: 'idle',          // idle | lyrics | render | done | error
-    steps: { lyrics: 'pending', render: 'pending' },
-    takes: [],              // GenerationResult[]
-    takeErrors: [],         // [{slot, error}] from /api/generate-dual
-    error: null,            // the failure that ended the last run
-    errorStep: null,        // 'lyrics' | 'render'
-    facts: null,            // what was actually sent, for the run summary
+    phase: 'idle',        // idle | lyrics | render | done | error
+    step: 'idle',         // idle | lyrics | render
+    takes: [],
+    takeErrors: [],
+    error: null,
+    errorStep: null,
+    facts: null,
     startedAt: 0,
     finishedAt: 0,
+    sessionIds: new Set(),
+
+    /* workspace */
+    query: '',
+    playingId: null,
+    isPlaying: false,
   };
+
+  let history = ctx.storage.get(HISTORY_KEY, []);
+  history = Array.isArray(history) ? history.map(normalise).filter(Boolean) : [];
+  let liked = new Set(Array.isArray(ctx.storage.get(LIKES_KEY, [])) ? ctx.storage.get(LIKES_KEY, []) : []);
+  const starters = STARTERS.slice();
+  const pickIdeas = (n) => {
+    const pool = STARTERS.slice();
+    const out = [];
+    while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    return out;
+  };
+  let hintIdeas = pickIdeas(3);
 
   let health = ctx.health;
   let controller = null;
   let ticker = null;
 
-  /* ---------------------------------------------------------------- skeleton */
+  /* ------------------------------------------------------------- skeleton -- */
 
   const page = document.createElement('div');
   page.className = 'screen-create';
   page.innerHTML = `
-    <section class="composer" aria-label="Song composer">
-      <div class="composer__edge" data-edge></div>
-      <div class="composer__scroll">
-        <div class="composer__body">
+    <section class="dock compose" aria-label="Song composer">
+      <div class="dock__scroll compose__scroll">
+        <div class="compose__body">
 
-          <div class="field">
-            <label class="label" for="cr-idea">
-              Your idea
-              <span class="label__hint" data-idea-count></span>
-            </label>
-            <textarea id="cr-idea" class="textarea idea" spellcheck="true"
+          <div class="idea">
+            <textarea id="cr-idea" class="textarea idea__input" spellcheck="true"
               maxlength="${LIMITS.PROMPT_MAX}"
-              placeholder="Describe the song in one line — e.g. a smoky late-night soul ballad about old flames, warm female voice"></textarea>
-            <div class="starters" data-starters>
-              <button class="iconbtn starters__dice" type="button" data-shuffle
-                title="Show three other ideas" aria-label="Show three other ideas">${iconMarkup('dice')}</button>
+              aria-label="Describe the song"
+              placeholder="Describe the song in one line — a smoky late-night soul ballad about old flames, warm female voice"></textarea>
+            <div class="idea__foot">
+              <span class="idea__count" data-idea-count></span>
             </div>
           </div>
 
-          <div class="modes" role="group" aria-label="Vocal mode">
-            <button class="mode" type="button" data-mode="vocal" aria-pressed="false">
-              ${iconMarkup('mic', 'icon mode__icon')}
-              <span class="mode__text">
-                <span class="mode__title">With vocals</span>
-                <span class="mode__sub">Codex writes the lyrics first</span>
-              </span>
-            </button>
-            <button class="mode" type="button" data-mode="instrumental" aria-pressed="false">
-              ${iconMarkup('wave', 'icon mode__icon')}
-              <span class="mode__text">
-                <span class="mode__title">Instrumental</span>
-                <span class="mode__sub">No lyrics, no lyrics call</span>
-              </span>
-            </button>
+          <div class="hints" data-hints>
+            <div class="hints__head">
+              <span class="hints__label">Try one of these</span>
+              <button class="actionchip hints__dice" type="button" data-surprise
+                aria-label="Show three other ideas">${iconMarkup('dice')}</button>
+            </div>
+            <div class="hints__list" data-hint-list></div>
           </div>
 
-          <div class="ctl">
-            <div class="ctl__head">
-              <span class="label">Length</span>
-              <div class="lenbox">
-                <input class="input lenbox__num mono" type="number" data-duration-num
-                  min="${LIMITS.DURATION_MIN}" max="${LIMITS.DURATION_MAX}" step="1"
-                  aria-label="Duration in seconds">
-                <span class="lenbox__unit">s</span>
-                <span class="lenbox__clock mono" data-duration-clock></span>
+          <div class="opt">
+            <span class="opt__label" id="cr-voice-label">Voice</span>
+            <div class="segment opt__ctl" role="group" aria-labelledby="cr-voice-label" data-modes>
+              <button class="segment__item" type="button" data-mode="vocal">With vocals</button>
+              <button class="segment__item" type="button" data-mode="instrumental">Instrumental</button>
+            </div>
+          </div>
+
+          <div class="opt opt--stack">
+            <span class="opt__label" id="cr-length-label">Length</span>
+            <div class="lengths" role="group" aria-labelledby="cr-length-label" data-lengths>
+              ${LENGTHS.map((s) => `<button class="chip" type="button" data-length="${s}">${clock(s)}</button>`).join('')}
+              <button class="chip chip--custom" type="button" data-length="custom">Custom</button>
+              <span class="lenfield" data-lenfield hidden>
+                <input class="input lenfield__num" type="number" data-length-num
+                  min="${Math.ceil(LIMITS.DURATION_MIN)}" max="${LIMITS.DURATION_MAX}" step="5"
+                  aria-label="Length in seconds">
+                <span class="lenfield__unit">sec</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="more" data-more>
+            <button class="more__sum" type="button" data-more-toggle aria-expanded="false" aria-controls="cr-more">
+              <span>More options</span>
+              ${iconMarkup('chevron-down', 'icon more__chev')}
+              <span class="more__summary" data-more-summary></span>
+            </button>
+            <div class="more__body" id="cr-more" data-more-body hidden>
+
+              <div class="opt">
+                <span class="opt__label" id="cr-format-label">Audio</span>
+                <div class="segment opt__ctl" role="group" aria-labelledby="cr-format-label" data-formats>
+                  ${api.FORMATS.map((f) => `<button class="segment__item" type="button" data-format="${f}">${f.toUpperCase()}</button>`).join('')}
+                </div>
               </div>
-            </div>
-            <input class="range" type="range" data-duration-range
-              min="${SLIDER_MIN}" max="${SLIDER_MAX}" step="5" aria-label="Duration slider">
-            <div class="presets" data-presets>
-              ${DURATION_PRESETS.map((s) => `<button class="chip" type="button" data-preset="${s}">${clock(s)}</button>`).join('')}
-            </div>
-          </div>
 
-          <div class="ctl">
-            <div class="ctl__head">
-              <span class="label">Seed</span>
-              <button class="chip chip--auto" type="button" data-seed-auto aria-pressed="false">Auto</button>
-            </div>
-            <div class="seedrow">
-              <input class="input mono" type="text" inputmode="numeric" data-seed
-                placeholder="random each run" aria-label="Seed"
-                autocomplete="off" spellcheck="false">
-              <button class="btn btn--icon" type="button" data-seed-roll
-                title="Roll a new seed" aria-label="Roll a new seed">${iconMarkup('dice')}</button>
-            </div>
-            <p class="hint" data-seed-hint></p>
-          </div>
+              <div class="opt" data-bitrate hidden>
+                <label class="opt__label" for="cr-bitrate">Quality</label>
+                <select class="select opt__ctl" id="cr-bitrate" data-bitrate-select>
+                  ${api.BITRATES.map((b) => `<option value="${b}">${b / 1000} kbps</option>`).join('')}
+                </select>
+              </div>
 
-          <div class="ctl">
-            <div class="ctl__head"><span class="label">Format</span></div>
-            <div class="segment" role="group" aria-label="Audio format" data-formats>
-              ${api.FORMATS.map((f) => `<button class="segment__item" type="button" data-format="${f}">${f.toUpperCase()}</button>`).join('')}
-            </div>
-            <div class="bitrate" data-bitrate hidden>
-              <label class="hint" for="cr-bitrate">Bitrate</label>
-              <select class="select" id="cr-bitrate" data-bitrate-select>
-                ${api.BITRATES.map((b) => `<option value="${b}">${b / 1000} kbps</option>`).join('')}
-              </select>
-            </div>
-          </div>
+              <div class="opt">
+                <label class="opt__label" for="cr-seed">Seed</label>
+                <span class="seedrow opt__ctl">
+                  <input class="input seedrow__num" id="cr-seed" type="text" inputmode="numeric"
+                    placeholder="Random" autocomplete="off" spellcheck="false">
+                  <button class="actionchip" type="button" data-seed-roll
+                    title="Roll a new seed" aria-label="Roll a new seed">${iconMarkup('dice')}</button>
+                </span>
+              </div>
+              <p class="opt__hint" data-seed-hint hidden></p>
 
-          <div class="ctl ctl--flat">
-            <label class="switch dualrow">
-              <input type="checkbox" data-dual>
-              <span class="switch__track"></span>
-              <span class="switch__label">
-                Two takes
-                <span class="dualrow__sub">Renders A and B together via <code class="code">/api/generate-dual</code></span>
-              </span>
-            </label>
-            <label class="switch dualrow dualrow--nested" data-variation-row hidden>
-              <input type="checkbox" data-variation>
-              <span class="switch__track"></span>
-              <span class="switch__label">
-                More variation
-                <span class="dualrow__sub">Pushes take B onto an alternate arrangement</span>
-              </span>
-            </label>
+              <label class="switch swrow">
+                <input type="checkbox" data-dual>
+                <span class="switch__track"></span>
+                <span class="switch__label">
+                  Two versions
+                  <span class="swrow__sub">Render the same idea twice and keep the better one.</span>
+                </span>
+              </label>
+              <label class="switch swrow swrow--nested" data-variation-row hidden>
+                <input type="checkbox" data-variation>
+                <span class="switch__track"></span>
+                <span class="switch__label">
+                  Push them apart
+                  <span class="swrow__sub">The second version takes a different arrangement.</span>
+                </span>
+              </label>
+
+            </div>
           </div>
 
         </div>
       </div>
 
-      <footer class="composer__foot">
-        <div data-notices></div>
-        <button class="btn btn--primary btn--lg btn--block cta" type="button" data-go>
-          <span class="cta__icon" data-cta-icon>${iconMarkup('create')}</span>
-          <span class="cta__label">Create song</span>
-        </button>
-        <div class="foot__under">
-          <button class="btn btn--sm btn--ghost cancel" type="button" data-cancel hidden>
-            ${iconMarkup('close')}<span>Cancel</span>
+      <footer class="dock__foot compose__foot">
+        <div class="compose__footinner">
+          <div data-notices></div>
+          <button class="btn btn--primary btn--lg btn--block cta" type="button" data-go>
+            <span class="cta__icon" data-cta-icon>${iconMarkup('create')}</span>
+            <span class="cta__label">Create song</span>
           </button>
-          <p class="hint foot__hint" data-foot-hint></p>
+          <div class="compose__under">
+            <button class="btn btn--sm btn--ghost cancel" type="button" data-cancel hidden>
+              ${iconMarkup('close')}<span>Stop</span>
+            </button>
+            <p class="compose__hint" data-foot-hint></p>
+          </div>
         </div>
       </footer>
     </section>
 
-    <section class="stage" aria-label="Result" data-stage></section>
+    <section class="ws" aria-label="Your songs">
+      <header class="ws__head">
+        <h2 class="ws__title">Your songs</h2>
+        <span class="ws__count" data-count></span>
+      </header>
+      <div class="wsbar" data-bar>
+        <span class="wsfind">
+          ${iconMarkup('search', 'icon wsfind__icon')}
+          <input class="input wsfind__input" type="search" data-search
+            placeholder="Search your songs" aria-label="Search your songs" autocomplete="off">
+        </span>
+        <button class="btn btn--sm wsbar__sort" type="button" data-sort>
+          <span data-sort-label>Newest first</span>${iconMarkup('chevron-down', 'icon wsbar__chev')}
+        </button>
+        <button class="chip wsbar__liked" type="button" data-liked aria-pressed="false">
+          ${iconMarkup('heart', 'icon')}<span>Liked</span>
+        </button>
+        <span class="actionbar wsbar__view">
+          <button class="actionchip actionchip--onground" type="button" data-view="list"
+            aria-label="List view" aria-pressed="true">${iconMarkup('menu')}</button>
+          <button class="actionchip actionchip--onground" type="button" data-view="grid"
+            aria-label="Grid view" aria-pressed="false">${iconMarkup('panel')}</button>
+        </span>
+      </div>
+      <div class="wsscroll" data-scroll>
+        <div class="wsbody" data-body></div>
+      </div>
+    </section>
   `;
-
-  /* ------------------------------------------------------------------ refs */
 
   const $ = (sel) => page.querySelector(sel);
   const el = {
-    edge: $('[data-edge]'),
     idea: $('#cr-idea'),
     ideaCount: $('[data-idea-count]'),
-    starters: $('[data-starters]'),
-    shuffle: $('[data-shuffle]'),
-    modes: page.querySelectorAll('[data-mode]'),
-    durNum: $('[data-duration-num]'),
-    durRange: $('[data-duration-range]'),
-    durClock: $('[data-duration-clock]'),
-    presets: $('[data-presets]'),
-    seed: $('[data-seed]'),
-    seedAuto: $('[data-seed-auto]'),
-    seedRoll: $('[data-seed-roll]'),
-    seedHint: $('[data-seed-hint]'),
+    hints: $('[data-hints]'),
+    hintList: $('[data-hint-list]'),
+    surprise: $('[data-surprise]'),
+    modes: $('[data-modes]'),
+    lengths: $('[data-lengths]'),
+    lenField: $('[data-lenfield]'),
+    lenNum: $('[data-length-num]'),
+    more: $('[data-more]'),
+    moreToggle: $('[data-more-toggle]'),
+    moreBody: $('[data-more-body]'),
+    moreSummary: $('[data-more-summary]'),
     formats: $('[data-formats]'),
     bitrate: $('[data-bitrate]'),
     bitrateSelect: $('[data-bitrate-select]'),
+    seed: $('#cr-seed'),
+    seedRoll: $('[data-seed-roll]'),
+    seedHint: $('[data-seed-hint]'),
     dual: $('[data-dual]'),
     variationRow: $('[data-variation-row]'),
     variation: $('[data-variation]'),
@@ -301,10 +451,20 @@ export function mount(root, ctx) {
     ctaIcon: $('[data-cta-icon]'),
     cancel: $('[data-cancel]'),
     footHint: $('[data-foot-hint]'),
-    stage: $('[data-stage]'),
+    ws: $('.ws'),
+    wsHead: $('.ws__head'),
+    count: $('[data-count]'),
+    bar: $('[data-bar]'),
+    search: $('[data-search]'),
+    sortBtn: $('[data-sort]'),
+    sortLabel: $('[data-sort-label]'),
+    likedBtn: $('[data-liked]'),
+    viewBtns: page.querySelectorAll('[data-view]'),
+    scroll: $('[data-scroll]'),
+    body: $('[data-body]'),
   };
 
-  /* ------------------------------------------------------- topbar mode tabs */
+  /* --------------------------------------------------- topbar mode switch -- */
 
   const tabs = document.createElement('div');
   tabs.className = 'segment create-tabs';
@@ -319,42 +479,85 @@ export function mount(root, ctx) {
   });
   ctx.headerSlot.append(tabs);
 
-  /* -------------------------------------------------------------- gating */
+  /* ---------------------------------------------------------------- store -- */
+
+  function persistForm() {
+    ctx.storage.set(FORM_KEY, {
+      idea: state.idea,
+      instrumental: state.instrumental,
+      duration: state.duration,
+      customLength: state.customLength,
+      seedAuto: state.seedAuto,
+      seed: state.seed,
+      format: state.format,
+      bitrate: state.bitrate,
+      dual: state.dual,
+      moreVariation: state.moreVariation,
+      advanced: state.advanced,
+    });
+  }
+
+  const persistPrefs = () => ctx.storage.set(PREFS_KEY, prefs);
+  const persistLikes = () => ctx.storage.set(LIKES_KEY, [...liked]);
+
+  function persistHistory() {
+    ctx.storage.set(HISTORY_KEY, history.slice(0, HISTORY_MAX));
+  }
+
+  /** Everything this workspace knows about: what was made here, plus the library. */
+  function allRecords() {
+    const fromLibrary = ctx.storage.get(LIBRARY_KEY, []);
+    const merged = new Map();
+    for (const raw of history) {
+      const r = normalise(raw);
+      if (r) merged.set(r.id, r);
+    }
+    if (Array.isArray(fromLibrary)) {
+      for (const raw of fromLibrary) {
+        const r = normalise(raw);
+        if (r && !merged.has(r.id)) merged.set(r.id, r);
+      }
+    }
+    return [...merged.values()];
+  }
+
+  function remember(rec) {
+    history = [rec, ...history.filter((r) => r.id !== rec.id)].slice(0, HISTORY_MAX);
+    persistHistory();
+  }
+
+  /* -------------------------------------------------------------- gating -- */
 
   /**
-   * Why the Create button cannot run right now, in the backend's own words.
-   * `null` means go. Health is only allowed to block on a *known* bad state.
+   * Why Create cannot run right now, in customer language. `null` means go.
+   * The technical reason belongs in Settings, never here.
    */
   function blocker() {
     if (state.running) return null;
     if (health) {
-      if (health.status === 'offline') {
-        return { title: 'Backend offline', text: health.message, kind: 'error', retry: true };
-      }
-      if (!health.comfyReachable) {
+      if (health.status === 'offline' || !health.comfyReachable) {
         return {
-          title: 'Generator not ready',
-          text: health.comfyError || `ComfyUI at ${health.comfyUrl || 'the configured host'} is not reachable.`,
+          title: 'Your studio is offline',
+          text: health.message || 'MaxMusic can’t reach your studio right now.',
           kind: 'error',
           retry: true,
         };
       }
       if (!state.instrumental && !health.lyricsEnabled && !state.song?.lyrics) {
         return {
-          title: 'Lyrics provider is off',
-          text: `/api/health reports lyrics: "${health.lyricsProvider}". Vocal generation needs lyrics and the music backend will not write them. Switch to Instrumental, or configure the local Codex runtime.`,
+          title: 'Lyric writing is unavailable',
+          text: 'Songs with vocals need lyrics before they can render. Switch to Instrumental, or turn lyric writing back on in Settings.',
           kind: 'warn',
           instrumental: true,
         };
       }
     }
     if (!state.idea.trim()) {
-      return { title: 'Describe the song first', text: 'One line is enough — genre, mood, and what it is about.', kind: 'info', quiet: true };
+      return { title: '', text: '', kind: 'info', quiet: true };
     }
     return null;
   }
 
-  /** The §3a payload for the current form + the lyrics we hold. */
   function buildInput(seedForRun) {
     const input = {
       prompt: buildCaption({
@@ -374,87 +577,68 @@ export function mount(root, ctx) {
     return input;
   }
 
-  /* ------------------------------------------------------------ form paint */
+  /* ----------------------------------------------------------- form paint -- */
 
-  function persist() {
-    ctx.storage.set(STORE_KEY, {
-      idea: state.idea,
-      instrumental: state.instrumental,
-      duration: state.duration,
-      seedAuto: state.seedAuto,
-      seed: state.seed,
-      format: state.format,
-      bitrate: state.bitrate,
-      dual: state.dual,
-      moreVariation: state.moreVariation,
-    });
+  function useIdea(idea) {
+    state.idea = idea;
+    persistForm();
+    paintForm();
+    el.idea.focus();
+    el.idea.setSelectionRange(idea.length, idea.length);
   }
 
-  function paintStarters() {
-    for (const node of el.starters.querySelectorAll('.starter')) node.remove();
-    const frag = document.createDocumentFragment();
-    for (const idea of state.starters) {
+  function paintHints() {
+    el.hintList.replaceChildren();
+    for (const s of hintIdeas) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'chip starter';
-      b.textContent = idea;
-      b.title = 'Use this idea';
-      b.addEventListener('click', () => {
-        state.idea = idea;
-        el.idea.value = idea;
-        el.idea.focus();
-        persist();
-        paintForm();
-        paintStage();
-      });
-      frag.append(b);
+      b.className = 'chip hint-chip';
+      b.textContent = s.idea;
+      b.addEventListener('click', () => useIdea(s.idea));
+      el.hintList.append(b);
     }
-    el.starters.insertBefore(frag, el.shuffle);
   }
 
   function paintForm() {
-    el.idea.value = state.idea;
-    el.ideaCount.textContent = `${state.idea.length} / ${LIMITS.PROMPT_MAX}`;
-    el.starters.hidden = state.idea.trim().length > 0;
+    if (document.activeElement !== el.idea) el.idea.value = state.idea;
+    const len = state.idea.length;
+    el.ideaCount.textContent = len > LIMITS.PROMPT_MAX * 0.7 ? `${len} / ${LIMITS.PROMPT_MAX}` : '';
+    el.hints.hidden = state.idea.trim().length > 0;
 
-    for (const b of el.modes) {
-      const on = (b.dataset.mode === 'instrumental') === state.instrumental;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('is-active', on);
+    for (const b of el.modes.querySelectorAll('[data-mode]')) {
+      b.classList.toggle('is-active', (b.dataset.mode === 'instrumental') === state.instrumental);
     }
 
-    const d = state.duration;
-    if (document.activeElement !== el.durNum) el.durNum.value = String(d);
-    el.durRange.value = String(clamp(d, SLIDER_MIN, SLIDER_MAX));
-    el.durRange.style.setProperty('--range-fill', `${((clamp(d, SLIDER_MIN, SLIDER_MAX) - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * 100}%`);
-    el.durClock.textContent = clock(d);
-    for (const b of el.presets.querySelectorAll('[data-preset]')) {
-      b.classList.toggle('is-active', Number(b.dataset.preset) === d);
+    const preset = LENGTHS.includes(state.duration) && !state.customLength;
+    for (const b of el.lengths.querySelectorAll('[data-length]')) {
+      const v = b.dataset.length;
+      b.classList.toggle('is-active', v === 'custom' ? !preset : (preset && Number(v) === state.duration));
+      if (v === 'custom') b.textContent = preset ? 'Custom' : clock(state.duration);
     }
+    el.lenField.hidden = preset;
+    if (!preset && document.activeElement !== el.lenNum) el.lenNum.value = String(Math.round(state.duration));
 
-    el.seedAuto.setAttribute('aria-pressed', String(state.seedAuto));
-    if (document.activeElement !== el.seed) el.seed.value = state.seedAuto ? '' : String(state.seed);
-    el.seedRoll.disabled = false;
-
-    if (state.dual && state.seedAuto) {
-      el.seedHint.textContent = 'Each take gets its own server-side seed.';
-      el.seedHint.className = 'hint';
-    } else if (state.dual && !state.moreVariation) {
-      el.seedHint.textContent = `Both takes share seed ${state.seed} — turn on More variation or they will render the same song twice.`;
-      el.seedHint.className = 'hint hint--warn';
-    } else if (state.seedAuto) {
-      el.seedHint.textContent = 'A fresh seed is rolled for each run and reported with the result.';
-      el.seedHint.className = 'hint';
-    } else {
-      el.seedHint.textContent = 'Pinned — the same seed and prompt render the same song.';
-      el.seedHint.className = 'hint';
-    }
+    el.moreToggle.setAttribute('aria-expanded', String(state.advanced));
+    el.moreBody.hidden = !state.advanced;
+    el.more.classList.toggle('is-open', state.advanced);
+    el.moreSummary.textContent = state.advanced ? '' : [
+      state.format.toUpperCase(),
+      state.seedAuto ? 'random seed' : `seed ${state.seed}`,
+      state.dual ? 'two versions' : 'one version',
+    ].join(' · ');
 
     for (const b of el.formats.querySelectorAll('[data-format]')) {
       b.classList.toggle('is-active', b.dataset.format === state.format);
     }
     el.bitrate.hidden = state.format !== 'mp3';
     el.bitrateSelect.value = String(state.bitrate);
+
+    if (document.activeElement !== el.seed) el.seed.value = state.seedAuto ? '' : String(state.seed);
+    const warnSameSeed = state.dual && !state.seedAuto && !state.moreVariation;
+    el.seedHint.hidden = !warnSameSeed;
+    el.seedHint.textContent = warnSameSeed
+      ? 'Both versions share this seed, so they will come out the same. Turn on “Push them apart”.'
+      : '';
 
     el.dual.checked = state.dual;
     el.variationRow.hidden = !state.dual;
@@ -469,8 +653,8 @@ export function mount(root, ctx) {
 
     if (block && !block.quiet) {
       const n = document.createElement('div');
-      n.className = `notice notice--${block.kind === 'error' ? 'error' : block.kind === 'warn' ? 'warn' : 'info'}`;
-      n.innerHTML = `<span class="notice__icon">${iconMarkup(block.kind === 'info' ? 'info' : 'alert')}</span><div class="notice__body"></div>`;
+      n.className = `notice notice--${block.kind === 'error' ? 'error' : 'warn'}`;
+      n.innerHTML = `<span class="notice__icon">${iconMarkup('alert')}</span><div class="notice__body"></div>`;
       const body = n.querySelector('.notice__body');
       const title = document.createElement('p');
       title.className = 'notice__title';
@@ -484,15 +668,18 @@ export function mount(root, ctx) {
         const b = document.createElement('button');
         b.className = 'btn btn--sm';
         b.type = 'button';
-        b.append(ctx.icon('refresh'), document.createTextNode('Re-check backend'));
-        b.addEventListener('click', () => { b.disabled = true; ctx.refreshHealth().finally(() => { b.disabled = false; }); });
+        b.append(ctx.icon('refresh'), document.createTextNode('Try again'));
+        b.addEventListener('click', () => {
+          b.disabled = true;
+          ctx.refreshHealth().finally(() => { b.disabled = false; });
+        });
         body.append(b);
       }
       if (block.instrumental) {
         const b = document.createElement('button');
         b.className = 'btn btn--sm';
         b.type = 'button';
-        b.textContent = 'Switch to Instrumental';
+        b.textContent = 'Make it instrumental';
         b.addEventListener('click', () => setInstrumental(true));
         body.append(b);
       }
@@ -501,288 +688,301 @@ export function mount(root, ctx) {
 
     el.cta.disabled = state.running || Boolean(block);
     el.cancel.hidden = !state.running;
-    el.footHint.hidden = state.running;
     el.ctaIcon.innerHTML = state.running ? iconMarkup('spinner', 'icon spinner') : iconMarkup('create');
 
     if (state.running) {
-      el.ctaLabel.textContent = state.phase === 'lyrics' ? 'Writing lyrics…' : 'Rendering audio…';
+      el.ctaLabel.textContent = state.step === 'lyrics' ? 'Writing lyrics…' : 'Rendering…';
+      el.footHint.textContent = '';
     } else {
       el.ctaLabel.textContent = state.instrumental ? 'Create instrumental' : 'Create song';
+      el.footHint.textContent = state.instrumental
+        ? 'Renders straight to audio.'
+        : 'Writes the lyrics first, then renders the audio.';
+    }
+  }
+
+  /* ------------------------------------------------------------- artwork -- */
+
+  /**
+   * Real cover art when a track has it; otherwise a deterministic monochrome
+   * motif so every row has a distinct, designed tile. No hue — §7f.
+   */
+  function artTile(rec, cls = '') {
+    const tile = document.createElement('span');
+    tile.className = `art${cls ? ` ${cls}` : ''}`;
+
+    if (rec.cover) {
+      const img = document.createElement('img');
+      img.className = 'art__img';
+      img.src = api.mediaUrl(rec.cover);
+      img.alt = '';
+      img.loading = 'lazy';
+      tile.append(img);
+    } else {
+      const h = hashOf(rec.id || rec.title);
+      tile.dataset.motif = String(h % 3);
+      tile.style.setProperty('--lift', `${3 + (h % 4) * 3}%`);
+      tile.style.setProperty('--ang', `${20 + (h % 7) * 22}deg`);
+      tile.style.setProperty('--fx', `${18 + (h % 5) * 16}%`);
+      tile.style.setProperty('--fy', `${14 + ((h >> 3) % 5) * 17}%`);
     }
 
-    el.footHint.textContent = state.instrumental
-      ? `One call — POST /api/generate${state.dual ? '-dual' : ''}.`
-      : `Two calls — POST /api/lyrics, then POST /api/generate${state.dual ? '-dual' : ''}.`;
+    if (Number.isFinite(rec.duration) && rec.duration > 0) {
+      const pill = document.createElement('span');
+      pill.className = 'art__pill';
+      pill.textContent = clock(rec.duration);
+      tile.append(pill);
+    }
+    return tile;
   }
 
-  /* ---------------------------------------------------------- stage paint */
+  /* ---------------------------------------------------------------- rows -- */
 
-  function factRow(label, value) {
-    const li = document.createElement('li');
-    li.className = 'facts__item';
-    const k = document.createElement('span');
-    k.className = 'facts__k';
-    k.textContent = label;
-    const v = document.createElement('span');
-    v.className = 'facts__v mono';
-    v.textContent = value;
-    li.append(k, v);
-    return li;
-  }
-
-  function renderLyricLines(box, text, animate) {
-    box.replaceChildren();
-    const lines = String(text).split('\n');
-    lines.forEach((line, i) => {
-      const div = document.createElement('div');
-      const isTag = /^\s*\[[a-z][a-z-]*\]\s*$/.test(line);
-      div.className = `lyricline${isTag ? ' is-tag' : ''}${line.trim() ? '' : ' is-blank'}`;
-      div.textContent = line.trim() ? line : ' ';
-      if (animate) div.style.animationDelay = `${Math.min(i * 28, 1200)}ms`;
-      else div.style.animation = 'none';
-      box.append(div);
+  function playRecord(rec) {
+    ctx.bus.emit('player:play', {
+      track: { id: rec.id, filename: rec.filename, url: rec.url },
+      title: rec.title,
+      cover: rec.cover || undefined,
+      meta: {
+        title: rec.title,
+        prompt: rec.prompt,
+        lyrics: rec.lyrics,
+        duration: rec.duration,
+        format: rec.format,
+        isInstrumental: rec.isInstrumental,
+        seed: rec.seed,
+        createdAt: rec.createdAt,
+      },
     });
   }
 
-  /** Empty stage — teaches the two-step flow with facts from /api/health. */
-  function stageIdle() {
-    const wrap = document.createElement('div');
-    wrap.className = 'stage-empty';
-    wrap.innerHTML = `
-      <span class="brandmark stage-empty__mark" style="--mark-size: 180px"><img src="/logo.png" alt=""></span>
-      <h2 class="stage-empty__title">Nothing rendered yet</h2>
-      <p class="stage-empty__text">One line of intent is enough. MaxMusic writes the lyrics, then renders the audio, and both steps show their work here.</p>
-      <ol class="pipeline"></ol>`;
-
-    const pipe = wrap.querySelector('.pipeline');
-    const lyricsProvider = health?.lyricsProvider || 'checking…';
-    const modelLabel = health?.modelKeys?.length
-      ? (health.musicModels[health.modelKeys[0]] || health.modelKeys[0])
-      : 'checking…';
-    const host = health?.comfyUrl ? health.comfyUrl.replace(/^https?:\/\//, '') : (health?.backend || 'checking…');
-
-    const renderCall = `POST /api/generate${state.dual ? '-dual' : ''}`;
-    const rows = state.instrumental
-      ? [['1', 'Render audio', `${renderCall} · ${host}`]]
-      : [['1', 'Write lyrics', `POST /api/lyrics · ${lyricsProvider}`],
-         ['2', 'Render audio', `${renderCall} · ${host}`]];
-
-    for (const [n, title, meta] of rows) {
-      const li = document.createElement('li');
-      li.className = 'pipeline__item';
-      const num = document.createElement('span');
-      num.className = 'pipeline__n';
-      num.textContent = n;
-      const body = document.createElement('span');
-      body.className = 'pipeline__body';
-      const t = document.createElement('span');
-      t.className = 'pipeline__title';
-      t.textContent = title;
-      const m = document.createElement('span');
-      m.className = 'pipeline__meta mono';
-      m.textContent = meta;
-      body.append(t, m);
-      li.append(num, body);
-      pipe.append(li);
-    }
-
-    const foot = document.createElement('p');
-    foot.className = 'stage-empty__foot mono';
-    foot.textContent = `${modelLabel} · ${state.dual ? 'two takes in parallel' : 'one take'}`;
-    wrap.append(foot);
-    return wrap;
-  }
-
-  function stepNode(key, index, title) {
-    const li = document.createElement('li');
-    li.className = 'step';
-    li.dataset.state = state.steps[key];
-    li.innerHTML = `
-      <span class="step__node"><span class="step__num">${index}</span></span>
-      <div class="step__body">
-        <div class="step__head">
-          <span class="step__title"></span>
-          <span class="step__meta mono"></span>
-        </div>
-      </div>`;
-    li.querySelector('.step__title').textContent = title;
-    if (state.steps[key] === 'done') {
-      li.querySelector('.step__num').replaceWith(ctx.icon('check', 'icon step__tick'));
-    } else if (state.steps[key] === 'error') {
-      li.querySelector('.step__num').replaceWith(ctx.icon('alert', 'icon step__tick'));
-    }
-    return li;
-  }
-
-  function lyricsStep() {
-    const step = stepNode('lyrics', 1, state.steps.lyrics === 'active' ? 'Writing lyrics' : 'Lyrics');
-    const body = step.querySelector('.step__body');
-    const meta = step.querySelector('.step__meta');
-
-    if (state.steps.lyrics === 'active') {
-      meta.textContent = health?.lyricsProvider || 'local codex';
-      const wait = document.createElement('div');
-      wait.className = 'waiting';
-      wait.innerHTML = `<span class="skeleton" style="width:82%"></span><span class="skeleton" style="width:64%"></span><span class="skeleton" style="width:74%"></span><span class="skeleton" style="width:48%"></span>`;
-      body.append(wait);
-      return step;
-    }
-
-    if (state.steps.lyrics === 'error') {
-      meta.textContent = '';
-      body.append(errorBlock(state.error, [
-        { label: 'Retry lyrics', run: () => start({ lyricsOnly: true }) },
-        { label: 'Switch to Instrumental', run: () => setInstrumental(true) },
-      ]));
-      return step;
-    }
-
-    if (!state.song) return null;
-
-    meta.textContent = [state.song.provider, state.song.model].filter(Boolean).join(' · ');
-
-    const head = document.createElement('div');
-    head.className = 'songhead';
-    const t = document.createElement('p');
-    t.className = 'songhead__title';
-    t.textContent = state.song.title || titleFromIdea(state.idea);
-    head.append(t);
-    if (state.song.styleTags) {
-      const tags = document.createElement('div');
-      tags.className = 'tags';
-      for (const tag of state.song.styleTags.split(/[,;]/).map((s) => s.trim()).filter(Boolean).slice(0, 8)) {
-        const c = document.createElement('span');
-        c.className = 'tag';
-        c.textContent = tag;
-        tags.append(c);
+  async function shareRecord(rec) {
+    const url = new URL(api.mediaUrl(rec.url || rec.filename), window.location.href).href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: rec.title, url });
+        return;
       }
-      head.append(tags);
+      await navigator.clipboard.writeText(url);
+      ctx.toast('Link copied to your clipboard.', { kind: 'success', key: 'share' });
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      ctx.toast(api.errorText(err), { kind: 'error', title: 'Could not share', key: 'share' });
     }
-    body.append(head);
+  }
 
-    if (state.editingLyrics) {
-      const ta = document.createElement('textarea');
-      ta.className = 'textarea textarea--mono lyricsedit';
-      ta.value = state.song.lyrics;
-      ta.setAttribute('maxlength', String(LIMITS.LYRICS_MAX));
-      ta.addEventListener('input', () => { state.song.lyrics = ta.value; });
-      body.append(ta);
-    } else {
-      const box = document.createElement('div');
-      box.className = 'lyricsbox';
-      renderLyricLines(box, state.song.lyrics, state.steps.render !== 'done' && state.phase !== 'idle');
-      body.append(box);
+  function reuse(rec) {
+    state.idea = describe(rec) || state.idea;
+    state.instrumental = rec.isInstrumental;
+    if (Number.isFinite(rec.duration) && rec.duration > 0) {
+      state.duration = clamp(Math.round(rec.duration), LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
+      state.customLength = !LENGTHS.includes(state.duration);
     }
+    persistForm();
+    paintForm();
+    el.idea.focus();
+    el.idea.setSelectionRange(state.idea.length, state.idea.length);
+    ctx.toast('Loaded into the composer.', { kind: 'info', key: 'reuse', timeout: 2600 });
+  }
 
-    const actions = document.createElement('div');
-    actions.className = 'step__actions';
-    actions.append(
-      miniBtn(state.editingLyrics ? 'Done editing' : 'Edit', 'wand', () => {
-        state.editingLyrics = !state.editingLyrics;
-        paintStage();
-      }),
-      miniBtn('Rewrite', 'refresh', () => start({ lyricsOnly: true }), state.running),
-      miniBtn('Copy', 'copy', async () => {
-        try {
-          await navigator.clipboard.writeText(state.song.lyrics);
-          ctx.toast('Lyrics copied.', { kind: 'success' });
-        } catch (err) {
-          ctx.toast(api.errorText(err), { kind: 'error', title: 'Copy failed' });
+  function rowMenu(rec) {
+    return ctx.menu({
+      label: `More actions for ${rec.title}`,
+      items: () => {
+        const items = [
+          { label: 'Play', icon: 'play', onSelect: () => playRecord(rec) },
+          {
+            label: 'Download',
+            icon: 'download',
+            note: (rec.format || '').toUpperCase() || undefined,
+            href: api.mediaUrl(rec.url || rec.filename),
+          },
+          { label: 'Start a new song from this', icon: 'wand', onSelect: () => reuse(rec) },
+          { separator: true },
+          {
+            label: 'Copy description',
+            icon: 'copy',
+            onSelect: () => copy(describe(rec), 'Description copied.'),
+          },
+        ];
+        if (rec.lyrics) {
+          items.push({ label: 'Copy lyrics', icon: 'copy', onSelect: () => copy(rec.lyrics, 'Lyrics copied.') });
         }
-      }),
-    );
-    const count = document.createElement('span');
-    count.className = 'step__count mono';
-    count.textContent = `${state.song.lyrics.length} / ${LIMITS.LYRICS_MAX}`;
-    actions.append(count);
-    body.append(actions);
-    return step;
+        items.push({ separator: true });
+        items.push({
+          label: 'Open in Library',
+          icon: 'library',
+          onSelect: () => ctx.navigate('library', { query: { track: rec.id } }),
+        });
+        return items;
+      },
+    });
   }
 
-  /** The run panel describes the run that happened, not the form's current state. */
-  function ranInstrumental() {
-    return state.facts ? state.facts.instrumental : state.instrumental;
+  async function copy(text, done) {
+    try {
+      await navigator.clipboard.writeText(String(text || ''));
+      ctx.toast(done, { kind: 'success', key: 'copy', timeout: 2400 });
+    } catch (err) {
+      ctx.toast(api.errorText(err), { kind: 'error', title: 'Copy failed', key: 'copy' });
+    }
   }
 
-  function renderStep() {
-    const index = ranInstrumental() ? 1 : 2;
-    const active = state.steps.render === 'active';
-    const step = stepNode('render', index, active ? 'Rendering audio' : 'Audio');
-    const body = step.querySelector('.step__body');
-    const meta = step.querySelector('.step__meta');
-    const f = state.facts;
+  function trackRow(rec, { fresh = false } = {}) {
+    const row = document.createElement('article');
+    row.className = 'trk';
+    if (fresh) row.classList.add('is-fresh');
+    if (state.playingId && state.playingId === rec.id) row.classList.add('is-playing');
+    row.dataset.id = rec.id;
 
-    if (active) {
-      meta.textContent = elapsedText();
-      meta.dataset.elapsed = '1';
+    /* artwork doubles as the play control — one obvious affordance per row */
+    const art = document.createElement('button');
+    art.type = 'button';
+    art.className = 'trk__art';
+    art.setAttribute('aria-label', `Play ${rec.title}`);
+    art.append(artTile(rec));
+    const veil = document.createElement('span');
+    veil.className = 'trk__veil';
+    veil.append(ctx.icon(state.playingId === rec.id && state.isPlaying ? 'pause' : 'play', 'icon trk__veilicon'));
+    art.append(veil);
+    art.addEventListener('click', () => playRecord(rec));
 
-      const eq = document.createElement('div');
-      eq.className = 'eq';
-      eq.setAttribute('aria-hidden', 'true');
-      for (let i = 0; i < 36; i += 1) {
-        const bar = document.createElement('span');
-        bar.style.setProperty('--i', String(i));
-        // Scattered phase + tempo so it reads as a level meter, not a staircase.
-        bar.style.animationDelay = `${-Math.round(Math.random() * 1400)}ms`;
-        bar.style.animationDuration = `${820 + Math.round(Math.random() * 620)}ms`;
-        bar.style.setProperty('--peak', (0.42 + Math.random() * 0.58).toFixed(2));
-        eq.append(bar);
-      }
-      body.append(eq);
+    const main = document.createElement('div');
+    main.className = 'trk__main';
 
-      const line = document.createElement('p');
-      line.className = 'render__line';
-      line.textContent = f?.dual
-        ? 'Two renders are running in parallel on ComfyUI.'
-        : 'ComfyUI is running the MiniMax Music 3 workflow.';
-      body.append(line);
+    const line = document.createElement('div');
+    line.className = 'trk__line';
+    const title = document.createElement('h3');
+    title.className = 'trk__title';
+    title.textContent = rec.title;
+    line.append(title);
+
+    if (rec.takeSlot) {
+      const slot = document.createElement('span');
+      slot.className = 'trk__badge';
+      slot.textContent = `Take ${rec.takeSlot}`;
+      line.append(slot);
+    }
+    if (rec.format) {
+      const fmt = document.createElement('span');
+      fmt.className = 'trk__badge';
+      fmt.textContent = rec.format.toUpperCase();
+      line.append(fmt);
+    }
+    if (rec.isInstrumental) {
+      const inst = document.createElement('span');
+      inst.className = 'trk__badge trk__badge--soft';
+      inst.textContent = 'Instrumental';
+      line.append(inst);
     }
 
-    if (state.steps.render === 'error') {
-      body.append(errorBlock(state.error, [
-        { label: 'Try again', run: () => start({ skipLyrics: Boolean(state.song) || state.instrumental }) },
-      ]));
-    }
+    const desc = document.createElement('p');
+    desc.className = 'trk__desc';
+    desc.textContent = describe(rec);
 
-    if (f) {
-      const facts = document.createElement('ul');
-      facts.className = 'facts';
-      facts.append(
-        factRow('length', `${f.duration}s · ${clock(f.duration)}`),
-        factRow('seed', f.seed === null ? 'server-assigned per take' : String(f.seed)),
-        factRow('format', f.format === 'mp3' ? `mp3 · ${f.bitrate / 1000} kbps` : f.format),
-        factRow('takes', f.dual ? (f.moreVariation ? 'A + B · more variation' : 'A + B') : 'one'),
-        factRow('mode', f.instrumental ? 'instrumental' : 'vocal'),
-      );
-      if (f.model) {
-        const row = factRow('model', f.model);
-        row.classList.add('facts__item--wide');
-        facts.append(row);
-      }
-      body.append(facts);
+    const when = document.createElement('p');
+    when.className = 'trk__when';
+    when.textContent = ago(rec.createdAt);
 
-      const cap = document.createElement('details');
-      cap.className = 'caption';
-      cap.innerHTML = '<summary class="caption__sum">Caption sent to the model</summary>';
-      const pre = document.createElement('pre');
-      pre.className = 'caption__pre mono';
-      pre.textContent = f.prompt;
-      cap.append(pre);
-      body.append(cap);
-    }
+    main.append(line, desc, when);
 
-    return step;
+    const acts = document.createElement('div');
+    acts.className = 'actionbar actionbar--end trk__acts';
+
+    const like = document.createElement('button');
+    like.type = 'button';
+    like.className = 'actionchip';
+    like.setAttribute('aria-label', `Like ${rec.title}`);
+    like.setAttribute('aria-pressed', String(liked.has(rec.id)));
+    like.append(ctx.icon('heart'));
+    like.addEventListener('click', () => {
+      if (liked.has(rec.id)) liked.delete(rec.id); else liked.add(rec.id);
+      persistLikes();
+      paintWorkspace();
+    });
+
+    const share = document.createElement('button');
+    share.type = 'button';
+    share.className = 'actionchip';
+    share.setAttribute('aria-label', `Share ${rec.title}`);
+    share.append(ctx.icon('share'));
+    share.addEventListener('click', () => shareRecord(rec));
+
+    acts.append(like, share, rowMenu(rec));
+    row.append(art, main, acts);
+    return row;
   }
 
-  function miniBtn(label, iconName, onClick, disabled = false) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'btn btn--sm btn--ghost';
-    b.disabled = Boolean(disabled);
-    if (iconName) b.append(ctx.icon(iconName));
-    b.append(document.createTextNode(label));
-    b.addEventListener('click', onClick);
-    return b;
+  function gridCard(rec) {
+    const card = document.createElement('article');
+    card.className = 'gcard';
+    if (state.playingId === rec.id) card.classList.add('is-playing');
+
+    const art = document.createElement('button');
+    art.type = 'button';
+    art.className = 'gcard__art';
+    art.setAttribute('aria-label', `Play ${rec.title}`);
+    art.append(artTile(rec, 'art--big'));
+    const veil = document.createElement('span');
+    veil.className = 'trk__veil';
+    veil.append(ctx.icon(state.playingId === rec.id && state.isPlaying ? 'pause' : 'play', 'icon trk__veilicon'));
+    art.append(veil);
+    art.addEventListener('click', () => playRecord(rec));
+
+    const body = document.createElement('div');
+    body.className = 'gcard__body';
+    const title = document.createElement('h3');
+    title.className = 'trk__title';
+    title.textContent = rec.title;
+    const desc = document.createElement('p');
+    desc.className = 'trk__desc';
+    desc.textContent = describe(rec);
+    body.append(title, desc);
+
+    const foot = document.createElement('div');
+    foot.className = 'gcard__foot';
+    const when = document.createElement('span');
+    when.className = 'trk__when';
+    when.textContent = ago(rec.createdAt);
+
+    const acts = document.createElement('div');
+    acts.className = 'actionbar actionbar--end';
+    const like = document.createElement('button');
+    like.type = 'button';
+    like.className = 'actionchip';
+    like.setAttribute('aria-label', `Like ${rec.title}`);
+    like.setAttribute('aria-pressed', String(liked.has(rec.id)));
+    like.append(ctx.icon('heart'));
+    like.addEventListener('click', () => {
+      if (liked.has(rec.id)) liked.delete(rec.id); else liked.add(rec.id);
+      persistLikes();
+      paintWorkspace();
+    });
+    acts.append(like, rowMenu(rec));
+
+    foot.append(when, acts);
+    card.append(art, body, foot);
+    return card;
+  }
+
+  /* ----------------------------------------------------------- the session -- */
+
+  function renderLyricLines(box, text, animate) {
+    box.replaceChildren();
+    for (const [i, raw] of String(text).split('\n').entries()) {
+      const div = document.createElement('div');
+      const isTag = /^\s*\[[a-z][a-z-]*\]\s*$/.test(raw);
+      div.className = `lyricline${isTag ? ' is-tag' : ''}${raw.trim() ? '' : ' is-blank'}`;
+      div.textContent = raw.trim() ? raw : ' ';
+      if (animate) div.style.animationDelay = `${Math.min(i * 26, 1100)}ms`;
+      else div.style.animation = 'none';
+      box.append(div);
+    }
+  }
+
+  function elapsedText() {
+    const end = state.finishedAt || Date.now();
+    return clock((end - state.startedAt) / 1000);
   }
 
   function errorBlock(err, actions = []) {
@@ -793,22 +993,13 @@ export function mount(root, ctx) {
 
     const title = document.createElement('p');
     title.className = 'notice__title';
-    title.textContent =
-      err?.name === 'ValidationError' ? 'This request cannot be sent'
-        : !err?.status ? 'Could not reach the server'
-          : err.status === 501 ? 'Not supported by this backend · HTTP 501'
-            : `The backend refused · HTTP ${err.status}`;
+    title.textContent = err?.name === 'ValidationError'
+      ? 'This request cannot be sent'
+      : state.errorStep === 'lyrics' ? 'The lyrics could not be written' : 'The render stopped';
     const text = document.createElement('p');
     text.className = 'notice__text';
     text.textContent = api.errorText(err);
     body.append(title, text);
-
-    if (err?.status === 501) {
-      const p = document.createElement('p');
-      p.className = 'notice__text notice__text--muted';
-      p.textContent = 'This capability is not provided by the current backend. Settings shows what /api/health reports.';
-      body.append(p);
-    }
 
     const row = document.createElement('div');
     row.className = 'row row--wrap notice__actions';
@@ -824,165 +1015,220 @@ export function mount(root, ctx) {
     return n;
   }
 
-  function takeCard(result, slot) {
-    const card = document.createElement('article');
-    card.className = 'take';
+  function liveRow() {
+    const row = document.createElement('article');
+    row.className = 'trk trk--live';
 
-    const art = document.createElement('button');
-    art.type = 'button';
-    art.className = 'take__art';
-    art.title = ctx.player ? 'Play' : `Player unavailable — ${ctx.playerUnavailableReason}`;
-    art.setAttribute('aria-label', `Play ${slot ? `take ${slot}` : 'track'}`);
-    art.append(ctx.icon('play', 'icon take__play'));
-    if (slot) {
-      const badge = document.createElement('span');
-      badge.className = 'take__slot';
-      badge.textContent = slot;
-      art.append(badge);
+    const art = document.createElement('span');
+    art.className = 'trk__art trk__art--live';
+    const eq = document.createElement('span');
+    eq.className = 'eq';
+    eq.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 12; i += 1) {
+      const bar = document.createElement('span');
+      bar.style.setProperty('--i', String(i));
+      bar.style.animationDelay = `${-Math.round(Math.random() * 1200)}ms`;
+      bar.style.animationDuration = `${760 + Math.round(Math.random() * 560)}ms`;
+      bar.style.setProperty('--peak', (0.42 + Math.random() * 0.58).toFixed(2));
+      eq.append(bar);
     }
+    art.append(eq);
 
-    const body = document.createElement('div');
-    body.className = 'take__body';
-
-    const title = document.createElement('p');
-    title.className = 'take__title';
+    const main = document.createElement('div');
+    main.className = 'trk__main';
+    const line = document.createElement('div');
+    line.className = 'trk__line';
+    const title = document.createElement('h3');
+    title.className = 'trk__title';
     title.textContent = state.song?.title || titleFromIdea(state.idea);
+    const badge = document.createElement('span');
+    badge.className = 'trk__badge trk__badge--live';
+    badge.textContent = state.step === 'lyrics' ? 'Writing lyrics' : 'Rendering';
+    line.append(title, badge);
 
-    const secs = Number(result?.extra_info?.music_duration) ? Number(result.extra_info.music_duration) / 1000 : state.facts?.duration;
-    const meta = document.createElement('p');
-    meta.className = 'take__meta mono';
-    meta.textContent = [
-      clock(secs),
-      (state.facts?.format || 'flac').toUpperCase(),
-      bytes(result?.track?.size),
-      state.facts && state.facts.seed !== null ? `seed ${state.facts.seed}` : null,
-    ].filter(Boolean).join('  ·  ');
+    const desc = document.createElement('p');
+    desc.className = 'trk__desc';
+    desc.textContent = state.step === 'lyrics'
+      ? 'Finding the words for your idea.'
+      : (state.facts?.dual
+        ? 'Two versions are rendering. This usually takes a couple of minutes.'
+        : 'Rendering the audio. This usually takes a couple of minutes.');
 
-    const actions = document.createElement('div');
-    actions.className = 'take__actions';
+    const meter = document.createElement('div');
+    meter.className = 'live__meter';
+    const bar = document.createElement('span');
+    bar.className = 'live__bar';
+    const t = document.createElement('span');
+    t.className = 'live__time';
+    t.dataset.elapsed = '1';
+    t.textContent = elapsedText();
+    meter.append(bar, t);
 
-    const play = document.createElement('button');
-    play.className = 'btn btn--sm';
-    play.type = 'button';
-    play.append(ctx.icon('play'), document.createTextNode('Play'));
-    if (!ctx.player) play.title = `Player unavailable — ${ctx.playerUnavailableReason}`;
-
-    const dl = document.createElement('a');
-    dl.className = 'btn btn--sm';
-    dl.href = api.mediaUrl(result.track);
-    dl.setAttribute('download', result.track?.filename || 'maxmusic');
-    dl.append(ctx.icon('download'), document.createTextNode('Download'));
-
-    actions.append(play, dl);
-
-    if (state.facts && state.facts.seed !== null) {
-      actions.append(miniBtn('Use this seed', 'dice', () => {
-        state.seedAuto = false;
-        state.seed = state.facts.seed;
-        persist();
-        paintForm();
-        ctx.toast(`Seed pinned to ${state.facts.seed}.`, { kind: 'success' });
-      }));
-    }
-
-    const playIt = () => {
-      ctx.bus.emit('player:play', {
-        track: result.track,
-        title: title.textContent,
-        meta: trackMeta(result),
-      });
-    };
-    art.addEventListener('click', playIt);
-    play.addEventListener('click', playIt);
-
-    body.append(title, meta, actions);
-    card.append(art, body);
-    return card;
+    main.append(line, desc, meter);
+    row.append(art, main);
+    return row;
   }
 
-  function trackMeta(result) {
-    const meta = {
+  function resultRow(result, slot) {
+    const rec = normalise({
+      ...result,
       title: state.song?.title || titleFromIdea(state.idea),
       prompt: state.facts?.prompt || '',
-      lyrics: ranInstrumental() ? '' : (state.song?.lyrics || ''),
-      duration: state.facts?.duration ?? state.duration,
-      format: state.facts?.format ?? state.format,
-      isInstrumental: ranInstrumental(),
-      extra_info: result?.extra_info || null,
+      idea: state.idea,
+      lyrics: state.facts?.instrumental ? '' : (state.song?.lyrics || ''),
+      isInstrumental: state.facts?.instrumental,
+      duration: state.facts?.duration,
+      format: state.facts?.format,
+      seed: state.facts?.seed,
+      takeSlot: slot || null,
       createdAt: Date.now(),
-    };
-    // Only claim a seed when we chose it. Dual + auto lets the backend roll one
-    // per take and it does not report them back.
-    if (state.facts && state.facts.seed !== null) meta.seed = state.facts.seed;
-    return meta;
+    });
+    return trackRow(rec, { fresh: true });
   }
 
-  function elapsedText() {
-    const end = state.finishedAt || Date.now();
-    return clock((end - state.startedAt) / 1000);
-  }
-
-  function paintStage() {
-    el.stage.replaceChildren();
-
-    if (state.phase === 'idle' && !state.song && !state.takes.length && !state.error) {
-      el.stage.append(stageIdle());
-      return;
-    }
-
-    const run = document.createElement('article');
-    run.className = 'run';
-    run.dataset.phase = state.phase;
+  function lyricsDrawer() {
+    const box = document.createElement('section');
+    box.className = 'drawer';
 
     const head = document.createElement('header');
-    head.className = 'run__head';
+    head.className = 'drawer__head';
+    const h = document.createElement('h3');
+    h.className = 'drawer__title';
+    h.textContent = 'Lyrics';
+    const sub = document.createElement('span');
+    sub.className = 'drawer__sub';
+    sub.textContent = `${state.song.lyrics.length} of ${LIMITS.LYRICS_MAX} characters`;
 
-    const badge = document.createElement('span');
-    const label = {
-      lyrics: ['Writing', 'badge--brand'],
-      render: [state.facts?.dual ? 'Rendering ×2' : 'Rendering', 'badge--brand'],
-      done: [state.takes.length > 1 ? 'Two takes' : 'Ready', 'badge--ok'],
-      error: ['Stopped', 'badge--danger'],
-      idle: ['Draft', ''],
-    }[state.phase] || ['Draft', ''];
-    badge.className = `badge run__badge ${label[1]}`.trim();
-    badge.textContent = label[0];
-    if (state.running) badge.prepend(Object.assign(document.createElement('span'), { className: 'run__live' }));
+    const acts = document.createElement('div');
+    acts.className = 'actionbar actionbar--end';
 
-    const status = document.createElement('span');
-    status.className = 'run__status truncate';
-    status.textContent = state.song?.title || titleFromIdea(state.idea);
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'actionchip';
+    editBtn.setAttribute('aria-label', state.editingLyrics ? 'Stop editing lyrics' : 'Edit lyrics');
+    editBtn.setAttribute('aria-pressed', String(state.editingLyrics));
+    editBtn.append(ctx.icon(state.editingLyrics ? 'check' : 'pencil'));
+    editBtn.addEventListener('click', () => {
+      state.editingLyrics = !state.editingLyrics;
+      paintWorkspace();
+    });
 
-    const timeEl = document.createElement('span');
-    timeEl.className = 'run__time mono';
-    timeEl.textContent = state.startedAt ? elapsedText() : '';
-    timeEl.dataset.elapsed = '1';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'actionchip';
+    copyBtn.setAttribute('aria-label', 'Copy lyrics');
+    copyBtn.append(ctx.icon('copy'));
+    copyBtn.addEventListener('click', () => copy(state.song.lyrics, 'Lyrics copied.'));
 
-    head.append(badge, status, timeEl);
-    run.append(head);
+    const rewrite = document.createElement('button');
+    rewrite.type = 'button';
+    rewrite.className = 'actionchip';
+    rewrite.disabled = state.running;
+    rewrite.setAttribute('aria-label', 'Write different lyrics');
+    rewrite.append(ctx.icon('refresh'));
+    rewrite.addEventListener('click', () => start({ lyricsOnly: true }));
+
+    const hide = document.createElement('button');
+    hide.type = 'button';
+    hide.className = 'actionchip';
+    hide.setAttribute('aria-label', 'Hide lyrics');
+    hide.append(ctx.icon('chevron-up'));
+    hide.addEventListener('click', () => {
+      state.lyricsOpen = false;
+      paintWorkspace();
+    });
+
+    acts.append(editBtn, copyBtn, rewrite, hide);
+    head.append(h, sub, acts);
+    box.append(head);
+
+    if (state.editingLyrics) {
+      const ta = document.createElement('textarea');
+      ta.className = 'textarea textarea--mono drawer__edit';
+      ta.value = state.song.lyrics;
+      ta.setAttribute('maxlength', String(LIMITS.LYRICS_MAX));
+      ta.addEventListener('input', () => { state.song.lyrics = ta.value; });
+      box.append(ta);
+    } else {
+      const lines = document.createElement('div');
+      lines.className = 'drawer__lines';
+      renderLyricLines(lines, state.song.lyrics, state.running);
+      box.append(lines);
+    }
+    return box;
+  }
+
+  function sessionBlock() {
+    if (state.phase === 'idle' && !state.takes.length && !state.error && !state.song) return null;
+
+    const wrap = document.createElement('section');
+    wrap.className = 'session';
+    wrap.dataset.phase = state.phase;
+
+    const head = document.createElement('header');
+    head.className = 'session__head';
+    const kicker = document.createElement('span');
+    kicker.className = 'session__kicker';
+    kicker.textContent = state.running
+      ? 'In progress'
+      : state.phase === 'error' ? 'Stopped'
+        : state.takes.length > 1 ? 'Two new versions' : 'Just made';
+    head.append(kicker);
+
+    if (!state.running && state.takes.length) {
+      const time = document.createElement('span');
+      time.className = 'session__meta';
+      time.textContent = `Rendered in ${elapsedText()}`;
+      head.append(time);
+    }
+
+    const acts = document.createElement('div');
+    acts.className = 'row row--end session__acts';
+    if (!state.running && (state.takes.length || state.song || state.phase === 'error')) {
+      const again = document.createElement('button');
+      again.className = 'btn btn--sm';
+      again.type = 'button';
+      again.append(ctx.icon('refresh'), document.createTextNode(
+        state.instrumental ? 'Render again' : 'Render again with these lyrics',
+      ));
+      again.addEventListener('click', () => start({ skipLyrics: true }));
+      acts.append(again);
+    }
+    if (!state.running && state.song && !state.lyricsOpen) {
+      const show = document.createElement('button');
+      show.className = 'btn btn--sm btn--ghost';
+      show.type = 'button';
+      show.append(ctx.icon('lyrics'), document.createTextNode('Show lyrics'));
+      show.addEventListener('click', () => {
+        state.lyricsOpen = true;
+        paintWorkspace();
+      });
+      acts.append(show);
+    }
+    if (acts.children.length) head.append(acts);
+    wrap.append(head);
+
     if (state.running) {
       const bl = document.createElement('div');
-      bl.className = 'brandline run__line';
-      run.append(bl);
+      bl.className = 'brandline session__line';
+      wrap.append(bl);
     }
 
-    const steps = document.createElement('ol');
-    steps.className = 'steps';
-    if (!ranInstrumental()) {
-      const ls = lyricsStep();
-      if (ls) steps.append(ls);
-    }
-    if (state.steps.render !== 'pending' || state.takes.length) steps.append(renderStep());
-    run.append(steps);
+    const rows = document.createElement('div');
+    rows.className = 'session__rows';
+    if (state.running) rows.append(liveRow());
+    state.takes.forEach((t, i) => {
+      if (t?.track) rows.append(resultRow(t, state.takes.length > 1 ? 'AB'[i] : ''));
+    });
+    if (rows.children.length) wrap.append(rows);
 
-    // Once a track exists it is the hero; the run panel below it is provenance.
-    if (state.takes.length) {
-      const grid = document.createElement('div');
-      grid.className = `takes${state.takes.length > 1 ? ' takes--dual' : ''}`;
-      state.takes.forEach((t, i) => {
-        if (t?.track) grid.append(takeCard(t, state.takes.length > 1 ? 'AB'[i] : ''));
-      });
-      el.stage.append(grid);
+    if (state.error) {
+      wrap.append(errorBlock(state.error, state.errorStep === 'lyrics'
+        ? [
+          { label: 'Try again', run: () => start({ lyricsOnly: true }) },
+          { label: 'Make it instrumental', run: () => setInstrumental(true) },
+        ]
+        : [{ label: 'Try again', run: () => start({ skipLyrics: Boolean(state.song) || state.instrumental }) }]));
     }
 
     for (const e of state.takeErrors) {
@@ -991,65 +1237,169 @@ export function mount(root, ctx) {
       n.innerHTML = `<span class="notice__icon">${iconMarkup('alert')}</span><div class="notice__body"></div>`;
       const t = document.createElement('p');
       t.className = 'notice__title';
-      t.textContent = `Take ${e.slot} failed`;
+      t.textContent = `Version ${e.slot} did not finish`;
       const p = document.createElement('p');
       p.className = 'notice__text';
       p.textContent = [e.error, e.details].filter(Boolean).join(' — ');
       n.querySelector('.notice__body').append(t, p);
-      el.stage.append(n);
+      wrap.append(n);
     }
 
-    const canRerender = !state.running
-      && (state.instrumental ? state.phase !== 'idle' : state.steps.lyrics === 'done' && state.song);
-    if (canRerender) {
-      const again = document.createElement('div');
-      again.className = 'row row--wrap stage__again';
-      const b = document.createElement('button');
-      b.className = 'btn';
-      b.type = 'button';
-      b.append(ctx.icon('refresh'), document.createTextNode(
-        state.instrumental ? 'Render again'
-          : state.takes.length ? 'Render again with these lyrics'
-            : 'Render with these lyrics',
-      ));
-      b.addEventListener('click', () => start({ skipLyrics: true }));
-      again.append(b);
+    if (state.song?.lyrics && state.lyricsOpen && !state.instrumental) wrap.append(lyricsDrawer());
+    return wrap;
+  }
 
-      if (state.takes.length) {
-        const lib = document.createElement('button');
-        lib.className = 'btn btn--ghost';
-        lib.type = 'button';
-        lib.append(ctx.icon('library'), document.createTextNode('Open Library'));
-        lib.addEventListener('click', () => ctx.navigate('library'));
-        again.append(lib);
+  /* ------------------------------------------------------------ workspace -- */
+
+  function visibleRecords() {
+    let list = allRecords().filter((r) => !state.sessionIds.has(r.id));
+    const q = state.query.trim().toLowerCase();
+    if (q) {
+      list = list.filter((r) => `${r.title} ${describe(r)}`.toLowerCase().includes(q));
+    }
+    if (prefs.liked) list = list.filter((r) => liked.has(r.id));
+
+    const by = {
+      newest: (a, b) => b.createdAt - a.createdAt,
+      oldest: (a, b) => a.createdAt - b.createdAt,
+      longest: (a, b) => (b.duration || 0) - (a.duration || 0),
+      shortest: (a, b) => (a.duration || 0) - (b.duration || 0),
+      title: (a, b) => a.title.localeCompare(b.title),
+    }[prefs.sort];
+    return list.sort(by);
+  }
+
+  function emptyPanel(total) {
+    const wrap = document.createElement('div');
+    wrap.className = 'wsempty';
+
+    const line = document.createElement('p');
+    line.className = 'wsempty__line';
+    line.textContent = total === 0
+      ? 'Songs you create land here, newest first.'
+      : 'No songs match that.';
+    wrap.append(line);
+
+    if (total === 0) {
+      const kicker = document.createElement('h3');
+      kicker.className = 'wsempty__kicker';
+      kicker.textContent = 'Start from an idea';
+      wrap.append(kicker);
+
+      const grid = document.createElement('div');
+      grid.className = 'ideas';
+      for (const s of starters) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ideacard';
+        const tag = document.createElement('span');
+        tag.className = 'ideacard__tag';
+        tag.textContent = s.tag;
+        const text = document.createElement('span');
+        text.className = 'ideacard__text';
+        text.textContent = s.idea;
+        b.append(tag, text);
+        b.addEventListener('click', () => useIdea(s.idea));
+        grid.append(b);
       }
-      // With a track on screen the action belongs under it; without one it is a
-      // follow-up to the run record, so it goes after.
-      if (state.takes.length) el.stage.append(again, run);
-      else el.stage.append(run, again);
+      wrap.append(grid);
     } else {
-      el.stage.append(run);
+      const b = document.createElement('button');
+      b.className = 'btn btn--sm';
+      b.type = 'button';
+      b.textContent = 'Clear filters';
+      b.addEventListener('click', () => {
+        state.query = '';
+        el.search.value = '';
+        prefs.liked = false;
+        persistPrefs();
+        paintWorkspace();
+      });
+      wrap.append(b);
     }
+    return wrap;
   }
 
-  /** Form choices only affect the stage while it is showing the empty state. */
-  function paintIdleStage() {
-    if (!state.running && state.phase === 'idle' && !state.song && !state.takes.length && !state.error) paintStage();
+  function terminalRow(count) {
+    const row = document.createElement('article');
+    row.className = 'trk trk--end';
+    const art = document.createElement('span');
+    art.className = 'trk__art';
+    const tile = document.createElement('span');
+    tile.className = 'art art--ghost';
+    tile.append(ctx.icon('wave', 'icon art__ghosticon'));
+    art.append(tile);
+
+    const main = document.createElement('div');
+    main.className = 'trk__main';
+    const title = document.createElement('h3');
+    title.className = 'trk__title trk__title--muted';
+    title.textContent = count === 1 ? 'That’s your only song so far' : 'That’s all of them';
+    const desc = document.createElement('p');
+    desc.className = 'trk__desc';
+    desc.textContent = `${count} ${count === 1 ? 'song' : 'songs'} in this workspace. The next one appears at the top.`;
+    main.append(title, desc);
+
+    const acts = document.createElement('div');
+    acts.className = 'row row--end trk__acts';
+    const b = document.createElement('button');
+    b.className = 'btn btn--sm btn--ghost';
+    b.type = 'button';
+    b.append(ctx.icon('library'), document.createTextNode('Open Library'));
+    b.addEventListener('click', () => ctx.navigate('library'));
+    acts.append(b);
+
+    row.append(art, main, acts);
+    return row;
   }
 
-  /** Cheap 1 Hz repaint of just the clocks while a run is live. */
+  function paintWorkspace() {
+    const total = allRecords().filter((r) => !state.sessionIds.has(r.id)).length;
+    const list = visibleRecords();
+    const session = sessionBlock();
+    const grand = total + state.sessionIds.size;
+
+    el.count.textContent = grand
+      ? `${grand} ${grand === 1 ? 'song' : 'songs'}`
+      : '';
+    el.bar.hidden = grand < 2;
+    el.sortLabel.textContent = SORTS.find((s) => s.value === prefs.sort)?.label || 'Newest first';
+    el.likedBtn.setAttribute('aria-pressed', String(prefs.liked));
+    el.likedBtn.classList.toggle('is-active', prefs.liked);
+    for (const b of el.viewBtns) {
+      const on = b.dataset.view === prefs.view;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('is-active', on);
+    }
+
+    el.body.replaceChildren();
+    el.body.dataset.view = prefs.view;
+    if (session) el.body.append(session);
+
+    if (!list.length) {
+      if (total > 0) el.body.append(emptyPanel(total));       // filtered to nothing
+      else if (!session) el.body.append(emptyPanel(0));       // genuine first run
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = prefs.view === 'grid' ? 'grid' : 'rows';
+    for (const rec of list) container.append(prefs.view === 'grid' ? gridCard(rec) : trackRow(rec));
+    el.body.append(container);
+
+    if (prefs.view === 'list' && !state.query && !prefs.liked) el.body.append(terminalRow(grand));
+  }
+
   function tick() {
-    const text = elapsedText();
-    for (const node of el.stage.querySelectorAll('[data-elapsed]')) node.textContent = text;
+    for (const node of el.body.querySelectorAll('[data-elapsed]')) node.textContent = elapsedText();
   }
 
-  /* --------------------------------------------------------------- the run */
+  /* --------------------------------------------------------------- the run -- */
 
   function setInstrumental(on) {
     state.instrumental = Boolean(on);
-    persist();
+    persistForm();
     paintForm();
-    if (!state.running) paintStage();
   }
 
   /**
@@ -1063,7 +1413,7 @@ export function mount(root, ctx) {
     const idea = state.idea.trim();
     if (!idea) {
       el.idea.focus();
-      ctx.toast('Describe the song first — one line is enough.', { kind: 'warn' });
+      ctx.toast('Describe the song first — one line is enough.', { kind: 'warn', key: 'need-idea' });
       return;
     }
 
@@ -1075,11 +1425,11 @@ export function mount(root, ctx) {
     state.errorStep = null;
     state.takeErrors = [];
     state.editingLyrics = false;
+    state.lyricsOpen = true;
     state.startedAt = Date.now();
     state.finishedAt = 0;
-    // A new run — including a lyrics rewrite — invalidates the previous render.
-    // Showing an old take beside new lyrics would be a lie; the track is safe in
-    // the library and the player either way.
+    // A new run invalidates the previous result: showing an old take beside new
+    // lyrics would be a lie. The track stays in the list below either way.
     state.takes = [];
     state.facts = null;
 
@@ -1087,23 +1437,22 @@ export function mount(root, ctx) {
     ticker = setInterval(tick, 1000);
 
     const needLyrics = !state.instrumental && !(skipLyrics && state.song?.lyrics);
-    state.steps.lyrics = state.instrumental ? 'skipped' : (needLyrics ? 'active' : 'done');
-    state.steps.render = 'pending';
+    state.step = needLyrics ? 'lyrics' : 'render';
     state.phase = needLyrics ? 'lyrics' : 'render';
     if (needLyrics) state.song = null;
 
-    el.edge.classList.add('is-live');
     paintFooter();
-    paintStage();
+    paintWorkspace();
+    el.scroll.scrollTo({ top: 0 });
 
     try {
-      /* ---- step 1 — local Codex writes the lyrics -------------------- */
+      /* ---- step 1 — the lyrics, written and shown ---------------------- */
       if (needLyrics) {
         const res = await api.lyrics({ mode: 'write_full_song', prompt: idea, title: '' }, { signal });
         const written = String(res?.lyrics || '').trim();
         if (!written) {
           throw new api.ApiError(
-            'The lyrics service returned no lyrics. Vocal generation cannot start without them.',
+            'No lyrics came back, and a song with vocals cannot render without them.',
             { status: 0, endpoint: '/api/lyrics' },
           );
         }
@@ -1111,11 +1460,8 @@ export function mount(root, ctx) {
           title: String(res.song_title || '').trim() || titleFromIdea(idea),
           styleTags: String(res.style_tags || '').trim(),
           lyrics: written,
-          provider: res.provider || health?.lyricsProvider || '',
-          model: res.model || '',
         };
-        state.steps.lyrics = 'done';
-        paintStage();
+        paintWorkspace();
       }
 
       if (lyricsOnly) {
@@ -1123,15 +1469,15 @@ export function mount(root, ctx) {
         return;
       }
 
-      /* ---- step 2 — render ------------------------------------------ */
+      /* ---- step 2 — the render ---------------------------------------- */
       const seedForRun = state.dual && state.seedAuto
-        ? null                                   // let the backend roll one per take
+        ? null                                  // the backend rolls one per version
         : (state.seedAuto ? randomSeed() : state.seed);
 
       const input = buildInput(seedForRun);
       const check = api.validateGeneration(input);
       if (!check.valid) throw new api.ValidationError(check.errors);
-      for (const w of check.warnings) ctx.toast(w, { kind: 'warn' });
+      for (const w of check.warnings) ctx.toast(w, { kind: 'warn', key: 'clamp' });
 
       state.facts = {
         duration: check.payload.duration ?? state.duration,
@@ -1139,22 +1485,20 @@ export function mount(root, ctx) {
         format: state.format,
         bitrate: state.bitrate,
         dual: state.dual,
-        moreVariation: state.dual && state.moreVariation,
         instrumental: state.instrumental,
         prompt: input.prompt,
-        model: health?.modelKeys?.length ? (health.musicModels[health.modelKeys[0]] || health.modelKeys[0]) : '',
       };
-      state.steps.render = 'active';
+      state.step = 'render';
       state.phase = 'render';
       paintFooter();
-      paintStage();
+      paintWorkspace();
 
       if (state.dual) {
         const res = await api.generateDual(input, { signal });
         const takes = [res?.takes?.A, res?.takes?.B].filter((t) => t && t.track);
         state.takeErrors = Array.isArray(res?.errors) ? res.errors : [];
         if (!takes.length) {
-          throw new api.ApiError('Both takes failed.', {
+          throw new api.ApiError('Neither version finished.', {
             status: 500,
             details: state.takeErrors.map((e) => `${e.slot}: ${e.error}`).join('\n') || null,
             endpoint: '/api/generate-dual',
@@ -1164,37 +1508,53 @@ export function mount(root, ctx) {
       } else {
         const res = await api.generate(input, { signal });
         if (!res?.track) {
-          throw new api.ApiError('The backend returned no track.', { status: 500, endpoint: '/api/generate' });
+          throw new api.ApiError('The render finished without producing audio.', { status: 500, endpoint: '/api/generate' });
         }
         state.takes = [res];
       }
 
-      state.steps.render = 'done';
+      state.step = 'idle';
       state.phase = 'done';
 
-      for (const t of state.takes) {
-        ctx.bus.emit('track:new', { track: t.track, meta: trackMeta(t) });
-      }
+      state.takes.forEach((t, i) => {
+        const slot = state.takes.length > 1 ? 'AB'[i] : '';
+        const rec = normalise({
+          ...t,
+          title: state.song?.title || titleFromIdea(idea),
+          prompt: state.facts.prompt,
+          idea,
+          lyrics: state.facts.instrumental ? '' : (state.song?.lyrics || ''),
+          isInstrumental: state.facts.instrumental,
+          duration: state.facts.duration,
+          format: state.facts.format,
+          seed: state.facts.seed,
+          takeSlot: slot || null,
+          createdAt: Date.now(),
+        });
+        state.sessionIds.add(rec.id);
+        remember(rec);
+        ctx.bus.emit('track:new', { track: t.track, meta: { ...rec, extra_info: t.extra_info || null } });
+      });
+
       ctx.toast(
-        state.takes.length > 1 ? 'Two takes rendered.' : 'Track rendered.',
-        { kind: 'success', title: state.song?.title || titleFromIdea(idea) },
+        state.takes.length > 1 ? 'Two versions are ready.' : 'Your song is ready.',
+        { kind: 'success', title: state.song?.title || titleFromIdea(idea), key: 'done' },
       );
     } catch (err) {
       if (err?.name === 'AbortError') {
         state.phase = state.takes.length ? 'done' : 'idle';
-        if (state.steps.lyrics === 'active') state.steps.lyrics = 'pending';
-        if (state.steps.render === 'active') state.steps.render = 'pending';
+        state.step = 'idle';
         state.facts = null;
-        ctx.toast('Stopped waiting. A ComfyUI job that already started will still finish on the server.', { kind: 'info', title: 'Cancelled' });
+        ctx.toast('Stopped. A render that already started will still finish.', { kind: 'info', title: 'Cancelled', key: 'cancel' });
       } else {
         state.error = err;
-        state.errorStep = state.steps.lyrics === 'active' ? 'lyrics' : 'render';
-        if (state.steps.lyrics === 'active') state.steps.lyrics = 'error';
-        else state.steps.render = 'error';
+        state.errorStep = state.step === 'lyrics' ? 'lyrics' : 'render';
+        state.step = 'idle';
         state.phase = 'error';
         ctx.toast(api.errorText(err), {
           kind: 'error',
-          title: state.errorStep === 'lyrics' ? 'Lyrics failed' : 'Generation failed',
+          title: state.errorStep === 'lyrics' ? 'Lyrics failed' : 'Render failed',
+          key: 'run-error',
         });
       }
     } finally {
@@ -1203,24 +1563,25 @@ export function mount(root, ctx) {
       controller = null;
       clearInterval(ticker);
       ticker = null;
-      el.edge.classList.remove('is-live');
       paintFooter();
-      paintStage();
-      if (state.takes.length) {
-        const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        el.stage.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
-      }
+      paintWorkspace();
     }
   }
 
-  /* ------------------------------------------------------------- wiring */
+  /* ---------------------------------------------------------------- wiring -- */
 
   el.idea.addEventListener('input', () => {
     state.idea = el.idea.value;
-    el.ideaCount.textContent = `${state.idea.length} / ${LIMITS.PROMPT_MAX}`;
-    el.starters.hidden = state.idea.trim().length > 0;
-    persist();
+    const len = state.idea.length;
+    el.ideaCount.textContent = len > LIMITS.PROMPT_MAX * 0.7 ? `${len} / ${LIMITS.PROMPT_MAX}` : '';
+    el.hints.hidden = state.idea.trim().length > 0;
+    persistForm();
     paintFooter();
+  });
+
+  el.surprise.addEventListener('click', () => {
+    hintIdeas = pickIdeas(3);
+    paintHints();
   });
 
   page.addEventListener('keydown', (e) => {
@@ -1230,33 +1591,57 @@ export function mount(root, ctx) {
     }
   });
 
-  el.shuffle.addEventListener('click', () => {
-    state.starters = pickStarters(3);
-    paintStarters();
+  el.modes.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mode]');
+    if (b) setInstrumental(b.dataset.mode === 'instrumental');
   });
 
-  for (const b of el.modes) {
-    b.addEventListener('click', () => setInstrumental(b.dataset.mode === 'instrumental'));
-  }
-
-  el.durRange.addEventListener('input', () => {
-    state.duration = Number(el.durRange.value);
-    persist();
+  el.lengths.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-length]');
+    if (!b) return;
+    if (b.dataset.length === 'custom') {
+      state.customLength = true;
+      persistForm();
+      paintForm();
+      el.lenNum.focus();
+      el.lenNum.select();
+      return;
+    }
+    state.customLength = false;
+    state.duration = Number(b.dataset.length);
+    persistForm();
     paintForm();
   });
-  el.durNum.addEventListener('input', () => {
-    const v = Number(el.durNum.value);
-    if (!Number.isFinite(v)) return;
+  el.lenNum.addEventListener('input', () => {
+    const v = Number(el.lenNum.value);
+    if (!Number.isFinite(v) || !el.lenNum.value) return;
     state.duration = clamp(v, LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
-    persist();
+    persistForm();
+    paintFooter();
+  });
+  el.lenNum.addEventListener('blur', () => {
+    el.lenNum.value = String(Math.round(state.duration));
+    state.customLength = !LENGTHS.includes(state.duration);
+    persistForm();
     paintForm();
   });
-  el.durNum.addEventListener('blur', () => { el.durNum.value = String(state.duration); });
-  el.presets.addEventListener('click', (e) => {
-    const p = e.target.closest('[data-preset]');
-    if (!p) return;
-    state.duration = Number(p.dataset.preset);
-    persist();
+
+  el.moreToggle.addEventListener('click', () => {
+    state.advanced = !state.advanced;
+    persistForm();
+    paintForm();
+  });
+
+  el.formats.addEventListener('click', (e) => {
+    const f = e.target.closest('[data-format]');
+    if (!f) return;
+    state.format = f.dataset.format;
+    persistForm();
+    paintForm();
+  });
+  el.bitrateSelect.addEventListener('change', () => {
+    state.bitrate = Number(el.bitrateSelect.value) || LIMITS.BITRATE_DEFAULT;
+    persistForm();
     paintForm();
   });
 
@@ -1269,68 +1654,97 @@ export function mount(root, ctx) {
       state.seedAuto = false;
       state.seed = clamp(Number(digits), LIMITS.SEED_MIN, LIMITS.SEED_MAX);
     }
-    persist();
-    paintForm();
+    persistForm();
+    paintFooter();
   });
-  el.seed.addEventListener('blur', () => { el.seed.value = state.seedAuto ? '' : String(state.seed); });
-  el.seedAuto.addEventListener('click', () => {
-    state.seedAuto = !state.seedAuto;
-    if (!state.seedAuto) state.seed = randomSeed();
-    persist();
-    paintForm();
-  });
+  el.seed.addEventListener('blur', () => paintForm());
   el.seedRoll.addEventListener('click', () => {
     state.seedAuto = false;
     state.seed = randomSeed();
-    persist();
-    paintForm();
-  });
-
-  el.formats.addEventListener('click', (e) => {
-    const f = e.target.closest('[data-format]');
-    if (!f) return;
-    state.format = f.dataset.format;
-    persist();
-    paintForm();
-  });
-  el.bitrateSelect.addEventListener('change', () => {
-    state.bitrate = Number(el.bitrateSelect.value) || LIMITS.BITRATE_DEFAULT;
-    persist();
+    persistForm();
     paintForm();
   });
 
   el.dual.addEventListener('change', () => {
     state.dual = el.dual.checked;
-    persist();
+    persistForm();
     paintForm();
-    paintIdleStage();
   });
   el.variation.addEventListener('change', () => {
     state.moreVariation = el.variation.checked;
-    persist();
+    persistForm();
     paintForm();
   });
 
   el.cta.addEventListener('click', () => start());
   el.cancel.addEventListener('click', () => controller?.abort());
 
+  /* workspace controls */
+
+  let searchTimer = null;
+  el.search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.query = el.search.value;
+      paintWorkspace();
+    }, 130);
+  });
+
+  ctx.attachMenu(el.sortBtn, {
+    label: 'Sort songs',
+    align: 'start',
+    items: () => SORTS.map((s) => ({
+      label: s.label,
+      icon: prefs.sort === s.value ? 'check' : undefined,
+      onSelect: () => {
+        prefs.sort = s.value;
+        persistPrefs();
+        paintWorkspace();
+      },
+    })),
+  });
+
+  el.likedBtn.addEventListener('click', () => {
+    prefs.liked = !prefs.liked;
+    persistPrefs();
+    paintWorkspace();
+  });
+
+  for (const b of el.viewBtns) {
+    b.addEventListener('click', () => {
+      prefs.view = b.dataset.view;
+      persistPrefs();
+      paintWorkspace();
+    });
+  }
+
+  ctx.bus.on('player:state', (p) => {
+    const id = p?.track?.id || null;
+    if (id === state.playingId && Boolean(p?.playing) === state.isPlaying) return;
+    state.playingId = id;
+    state.isPlaying = Boolean(p?.playing);
+    paintWorkspace();
+  });
+
+  ctx.bus.on('library:changed', () => paintWorkspace());
+
   ctx.onHealth((snapshot) => {
     health = snapshot;
     paintFooter();
-    paintIdleStage();
   });
 
-  /* ---------------------------------------------------------------- boot */
+  /* ------------------------------------------------------------------ boot -- */
 
   root.append(page);
-  paintStarters();
+  paintHints();
   paintForm();
-  paintStage();
+  paintWorkspace();
   if (!state.idea) el.idea.focus();
 
   return () => {
     controller?.abort();
     clearInterval(ticker);
+    clearTimeout(searchTimer);
     tabs.remove();
   };
 }

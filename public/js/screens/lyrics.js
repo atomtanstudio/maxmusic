@@ -1,19 +1,26 @@
 /**
  * Lyrics — the writing workspace.
  *
- * Owned by the lyrics lane (SPEC §6). Everything here is wired to
- * `POST /api/lyrics`, which runs the local Codex CLI. The music backend will
- * *not* write lyrics (SPEC §3e), so this screen is the first half of the
- * "one idea → song" flow: write here, then hand the result to Create or Studio.
+ * Owned by the lyrics lane (SPEC §6). The music model will not write lyrics for
+ * itself (SPEC §3e), so this screen is the first half of "one idea → one song":
+ * write the words here, then hand them to Create or Studio.
  *
- * SPEC §3d is enforced in the editor itself:
- *   - the only nine section tags are `ctx.api.SECTION_TAGS`
- *   - a tag sits alone on its line; words after it are dropped by the model,
- *     so they are struck through in the editor and flagged in Rule check
- *   - ~12–16 sung words per 10 s drives the length estimate
- *   - structure is checked against the target duration
+ * House rule 0 (CONTRACT §9.0) is load-bearing in this file: nothing a customer
+ * sees while the app is working prints a host, a port, an endpoint, a provider
+ * name, a model string or a spec reference. Diagnostics live in Settings and in
+ * transient error toasts carrying the backend's own words.
  *
- * Cross-lane handoff (new, documented here for the create/studio lanes):
+ * Layout — both vertical boundaries are shell `.dock`s (CONTRACT §6b), so a
+ * pinned footer can never slice the content above it:
+ *
+ *   editor card                     right rail
+ *   ├ title + character count       ├ dock__scroll
+ *   ├ section tag palette           │   ├ assistant (write / refine)
+ *   └ dock                          │   ├ structure
+ *     ├ dock__scroll → document     │   └ checks
+ *     └ dock__foot   → stats, exit  └ dock__foot → the one primary action
+ *
+ * Cross-lane handoff (documented here for the create/studio lanes):
  *   `ctx.storage.set('handoff', { to, source, at, title, lyrics, styleTags,
  *                                 targetDuration, isInstrumental:false })`
  *   plus a `lyrics:handoff` bus event carrying the same object, then
@@ -24,7 +31,7 @@
 
 export const meta = {
   title: 'Lyrics',
-  subtitle: 'Written by the local Codex CLI, checked against the MiniMax tag rules',
+  subtitle: 'Write the words, then send them to a song',
   css: '/css/screens/lyrics.css',
 };
 
@@ -57,22 +64,25 @@ function clock(seconds) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
 /* ========================================================================== *
- * §3d — document model
+ * Document model — the writing rules, expressed as a parser
  * ========================================================================== */
 
 const TAG_LINE = /^([ \t]*)(\[[^\]\n]*\])[ \t]*(.*)$/;
 const WORD = /[\p{L}\p{N}'’\-]+/gu;
 
-/** 12–16 sung words per 10 s → 1.2–1.6 words per second. */
+/** Roughly 12–16 sung words per 10 s → 1.2–1.6 words a second. */
 const WORDS_PER_SEC = { fast: 1.6, slow: 1.2 };
+
+const LYRICS_MAX = 3500;
 
 const countWords = (line) => (line.match(WORD) || []).length;
 
 /**
  * Split the document into sections at every tag line.
- * @returns {{tag: ?string, valid: boolean, label: string, line: number,
- *            lines: string[], words: number}[]}
+ * @returns {{tag: ?string, valid: boolean, line: number, lines: string[], words: number}[]}
  */
 function parseSections(text, allowed) {
   const lines = text.split('\n');
@@ -85,7 +95,6 @@ function parseSections(text, allowed) {
     current = {
       tag,
       valid: tag === null ? true : allowed.includes(tag),
-      label: tag === null ? 'before the first tag' : tag,
       line: index,
       lines: [],
       words: 0,
@@ -111,32 +120,45 @@ function parseSections(text, allowed) {
 }
 
 /**
- * Sung words. Words that share a line with a tag are dropped by the model, so
- * they do not count towards the length estimate — they are flagged instead.
+ * Sung words. Words sharing a line with a tag are never sung, so they do not
+ * count towards the length estimate — they are flagged instead.
  */
 function sungWords(text) {
   return text.split('\n').reduce((total, raw) => (TAG_LINE.test(raw) ? total : total + countWords(raw)), 0);
 }
 
+/**
+ * The shape a song of this length usually takes: what the Checks panel wants to
+ * see, the sentence that describes it, and the sections themselves — used for
+ * the starter buttons and for the plan the Structure panel previews.
+ */
 function structureTarget(seconds) {
   if (seconds <= 30) {
-    return { need: ['[verse]', '[chorus]'], shape: 'one verse and one chorus', band: '≤ 30 s' };
+    return {
+      name: 'Verse + chorus',
+      need: ['[verse]', '[chorus]'],
+      shape: 'one verse and one chorus',
+      tags: ['[verse]', '[chorus]'],
+    };
   }
   if (seconds < 120) {
     return {
+      name: 'Verse · pre-chorus · chorus',
       need: ['[verse]', '[pre-chorus]', '[chorus]'],
       shape: 'verse / pre-chorus / chorus / verse / chorus',
-      band: '~ 60 s',
+      tags: ['[intro]', '[verse]', '[pre-chorus]', '[chorus]', '[verse]', '[chorus]'],
     };
   }
   return {
+    name: 'Full song with a bridge',
     need: ['[verse]', '[chorus]', '[bridge]', '[outro]'],
     shape: 'a full structure with a bridge and an outro',
-    band: '≥ 120 s',
+    tags: ['[intro]', '[verse]', '[pre-chorus]', '[chorus]', '[verse]', '[pre-chorus]',
+      '[chorus]', '[bridge]', '[chorus]', '[outro]'],
   };
 }
 
-/** Words that describe the production, which SPEC §3d puts in Arrangement. */
+/** Words that describe the production, which belongs in the song's style. */
 const DIRECTION_WORDS = [
   'bpm', 'tempo', 'crescendo', 'reverb', 'delay pedal', 'arpeggio', 'sub-bass',
   '808', 'synth', 'synths', 'guitar solo', 'drum machine', 'fade out', 'fade in',
@@ -144,14 +166,15 @@ const DIRECTION_WORDS = [
 ];
 
 /**
- * Every §3d rule, as a list the inspector can render.
- * @returns {{id, level: 'error'|'warn', title, detail, line: ?number, fix: ?string}[]}
+ * Every writing rule, as a list the Checks panel can render. Customer language
+ * throughout — no rule numbers, no model names.
+ *
+ * @returns {{id, level: 'error'|'warn', title, detail, line: ?number, fix: ?object}[]}
  */
 function checkRules(text, allowed, targetSeconds) {
   const issues = [];
   const lines = text.split('\n');
-  const trimmed = text.trim();
-  if (!trimmed) return issues;
+  if (!text.trim()) return issues;
 
   const seen = new Set();
 
@@ -167,10 +190,10 @@ function checkRules(text, allowed, targetSeconds) {
       issues.push({
         id: `tag:${index}`,
         level: 'error',
-        title: `${match[2]} is not one of the nine tags`,
+        title: `${match[2]} is not a section`,
         detail: guess
-          ? `MiniMax Music 3 only understands ${allowed.join(' ')}. Closest match: ${guess}.`
-          : `MiniMax Music 3 only understands ${allowed.join(' ')}.`,
+          ? `Sections are marked with one of the nine tags. Closest match: ${guess}.`
+          : `Sections are marked with one of the nine tags in the row above the editor.`,
         line: index,
         fix: guess ? { label: `Use ${guess}`, kind: 'retag', line: index, tag: guess } : null,
       });
@@ -179,7 +202,7 @@ function checkRules(text, allowed, targetSeconds) {
         id: `case:${index}`,
         level: 'warn',
         title: `${match[2]} should be lowercase`,
-        detail: 'Tags are matched literally — write them exactly as [verse], [chorus] and so on.',
+        detail: 'Tags are read exactly as written — [verse], [chorus], and so on.',
         line: index,
         fix: { label: 'Lowercase it', kind: 'retag', line: index, tag },
       });
@@ -190,7 +213,7 @@ function checkRules(text, allowed, targetSeconds) {
         id: `trailing:${index}`,
         level: 'error',
         title: `Words share a line with ${match[2]}`,
-        detail: `“${trailing}” is dropped: a section tag must sit alone on its own line.`,
+        detail: `“${trailing}” will not be sung — a section tag needs a line to itself.`,
         line: index,
         fix: { label: 'Move to next line', kind: 'split', line: index },
       });
@@ -202,8 +225,8 @@ function checkRules(text, allowed, targetSeconds) {
     issues.push({
       id: 'untagged',
       level: 'warn',
-      title: 'The song starts before any section tag',
-      detail: 'Lines above the first tag have no section. Open with [intro] or [verse].',
+      title: 'The song starts before any section',
+      detail: 'Open with [intro] or [verse] so the first lines belong somewhere.',
       line: firstContent,
       fix: { label: 'Add [verse] above', kind: 'prepend', line: firstContent, tag: '[verse]' },
     });
@@ -214,26 +237,36 @@ function checkRules(text, allowed, targetSeconds) {
       issues.push({
         id: `instrumental:${section.line}`,
         level: 'error',
-        title: `${section.tag} contains ${section.words} word${section.words === 1 ? '' : 's'}`,
-        detail: 'Instrumental and solo passages carry no lyrics — move the words into a sung section.',
+        title: `${section.tag} has ${plural(section.words, 'word')} in it`,
+        detail: 'Instrumental and solo passages carry no words — move them into a sung section.',
         line: section.line,
         fix: null,
       });
     }
   }
 
-  if (text.length > 3500) {
+  if (text.length > LYRICS_MAX) {
     issues.push({
       id: 'length',
       level: 'error',
-      title: `${text.length.toLocaleString()} characters — the backend keeps the first 3,500`,
-      detail: 'Everything past 3,500 characters is cut before it reaches the model.',
+      title: `${text.length.toLocaleString()} characters — only the first 3,500 are sung`,
+      detail: 'Trim the draft so nothing is lost part way through.',
       line: null,
       fix: { label: 'Trim to 3,500', kind: 'trim' },
     });
   }
 
   const words = sungWords(text);
+  if (!words && seen.size) {
+    issues.push({
+      id: 'nowords',
+      level: 'warn',
+      title: 'The sections are laid out, but nothing is written yet',
+      detail: 'Write lines under each section, or say what the song is about and have them written for you.',
+      line: null,
+      fix: null,
+    });
+  }
   if (words) {
     const fast = words / WORDS_PER_SEC.fast;
     const slow = words / WORDS_PER_SEC.slow;
@@ -241,8 +274,8 @@ function checkRules(text, allowed, targetSeconds) {
       issues.push({
         id: 'short',
         level: 'warn',
-        title: `≈ ${clock(fast)}–${clock(slow)} of sung words against a ${clock(targetSeconds)} target`,
-        detail: 'At 12–16 words per 10 seconds that is well short. Add sections, or aim the generation at a shorter duration.',
+        title: `About ${clock(fast)}–${clock(slow)} of singing for a ${clock(targetSeconds)} song`,
+        detail: 'That leaves long stretches with nothing sung. Add a section, or aim for a shorter song.',
         line: null,
         fix: null,
       });
@@ -250,8 +283,8 @@ function checkRules(text, allowed, targetSeconds) {
       issues.push({
         id: 'long',
         level: 'warn',
-        title: `≈ ${clock(fast)}–${clock(slow)} of sung words against a ${clock(targetSeconds)} target`,
-        detail: 'More words than the target comfortably carries at 12–16 words per 10 seconds. Cut lines or raise the duration.',
+        title: `About ${clock(fast)}–${clock(slow)} of singing for a ${clock(targetSeconds)} song`,
+        detail: 'More words than the song has room for. Cut a few lines, or aim longer.',
         line: null,
         fix: null,
       });
@@ -264,8 +297,8 @@ function checkRules(text, allowed, targetSeconds) {
     issues.push({
       id: 'structure',
       level: 'warn',
-      title: `A ${target.band} song wants ${missing.join(', ')}`,
-      detail: `At this length MiniMax Music 3 expects ${target.shape}.`,
+      title: `A ${clock(targetSeconds)} song has room for ${missing.join(', ')}`,
+      detail: `At this length the usual shape is ${target.shape}.`,
       line: null,
       fix: null,
     });
@@ -277,8 +310,8 @@ function checkRules(text, allowed, targetSeconds) {
     issues.push({
       id: 'direction',
       level: 'warn',
-      title: `Possible musical direction in the lyrics — ${found.slice(0, 3).join(', ')}`,
-      detail: 'Tempo, instruments and dynamics belong in the Arrangement caption, never in sung lines.',
+      title: `“${found.slice(0, 3).join('”, “')}” reads as a production note`,
+      detail: 'Tempo, instruments and dynamics belong in the song’s style, not in the sung lines.',
       line: null,
       fix: null,
     });
@@ -292,13 +325,16 @@ function nearestTag(tag, allowed) {
   const bare = tag.replace(/[^a-z]/g, '');
   const direct = allowed.find((t) => t.replace(/[^a-z]/g, '') === bare);
   if (direct) return direct;
-  const alias = { prechorus: '[pre-chorus]', postchorus: '[post-chorus]', refrain: '[chorus]', hook: '[chorus]', intro: '[intro]', ending: '[outro]', break: '[instrumental]' };
+  const alias = {
+    prechorus: '[pre-chorus]', postchorus: '[post-chorus]', refrain: '[chorus]',
+    hook: '[chorus]', intro: '[intro]', ending: '[outro]', break: '[instrumental]',
+  };
   if (alias[bare]) return alias[bare];
   return allowed.find((t) => bare && t.replace(/[^a-z]/g, '').startsWith(bare.slice(0, 4))) || null;
 }
 
 /* ========================================================================== *
- * Editor highlighting — tags in brand colour, dropped words struck through
+ * Editor highlighting — tags in the accent, unsung words struck through
  * ========================================================================== */
 
 function highlight(text, allowed) {
@@ -314,21 +350,44 @@ function highlight(text, allowed) {
 }
 
 /* ========================================================================== *
- * Mount
+ * Constants
  * ========================================================================== */
 
 const DRAFT_KEY = 'lyrics.draft';
 const HANDOFF_KEY = 'handoff';
 
-const DURATIONS = [30, 60, 90, 120, 180, 240, 300];
+const TARGETS = [30, 60, 120, 180, 300];
+
+/** First-move suggestions, offered only while the idea box is empty. */
+const IDEA_SEEDS = [
+  {
+    label: 'Late-night drive',
+    idea: 'Driving home at 2am after a fight I started. Regret, headlights, one honest line in the chorus.',
+  },
+  {
+    label: 'Small-town summer',
+    idea: 'The last summer before everyone leaves town. Warm, restless, a little defiant.',
+  },
+  {
+    label: 'A letter never sent',
+    idea: 'Everything I wanted to say to someone I have not spoken to in ten years.',
+  },
+];
 
 const REWRITE_PRESETS = [
-  'Tighter — fewer words, same meaning',
-  'Swap the abstractions for concrete images',
-  'Make the chorus bigger and easier to sing',
-  'Darker, more restrained',
-  'Add a bridge that turns the story',
+  { chip: 'Tighter', text: 'Tighter — fewer words, same meaning' },
+  { chip: 'Concrete images', text: 'Swap the abstractions for concrete images' },
+  { chip: 'Bigger chorus', text: 'Make the chorus bigger and easier to sing' },
+  { chip: 'Darker', text: 'Darker, more restrained' },
+  { chip: 'Add a bridge', text: 'Add a bridge that turns the story' },
 ];
+
+/** Real, deterministic starting shapes — each inserts sections and sets the length. */
+const STARTERS = [30, 60, 180].map((target) => ({ target, ...structureTarget(target) }));
+
+/* ========================================================================== *
+ * Mount
+ * ========================================================================== */
 
 export async function mount(root, ctx) {
   const { api } = ctx;
@@ -339,61 +398,25 @@ export async function mount(root, ctx) {
     title: String(ctx.route.query.title || saved.title || ''),
     text: String(saved.text || ''),
     idea: String(ctx.route.query.idea || saved.idea || ''),
-    target: Number(saved.target) || 120,
+    target: TARGETS.includes(Number(saved.target)) ? Number(saved.target) : 120,
     styleTags: String(saved.styleTags || ''),
-    provider: saved.provider || '',
-    model: saved.model || '',
+    mode: saved.mode === 'refine' ? 'refine' : 'write',
     busy: null,        // 'write' | 'rewrite'
-    undo: null,        // one-level undo of the last Codex rewrite
+    undo: null,        // one level of undo for the last generated draft
     health: null,
   };
-
-  /* ---------------------------------------------------------------- shell */
 
   const page = el('div', { class: 'screen-lyrics' });
 
   /* ------------------------------------------------------------- topbar -- */
 
-  const providerBadge = el('span', { class: 'badge lyr-provider', title: 'POST /api/lyrics' }, [
-    el('span', { class: 'lyr-provider__dot' }),
-    el('span', { class: 'lyr-provider__text', text: 'checking…' }),
-  ]);
   const newDraftBtn = el('button', {
-    class: 'btn btn--sm btn--ghost',
-    type: 'button',
-    onclick: () => {
-      const previous = {
-        title: state.title, text: doc.value, idea: ideaInput.value, styleTags: state.styleTags,
-      };
-      const restore = () => {
-        state.title = previous.title;
-        state.idea = previous.idea;
-        state.styleTags = previous.styleTags;
-        titleInput.value = previous.title;
-        ideaInput.value = previous.idea;
-        doc.value = previous.text;
-        renderAll(); renderStyleTags(null); persist();
-      };
-
-      state.title = ''; state.idea = ''; state.styleTags = ''; state.undo = null;
-      titleInput.value = ''; ideaInput.value = ''; doc.value = '';
-      undoBtn.hidden = true;
-      renderAll();
-      renderStyleTags(null);
-      persist();
-      ideaInput.focus();
-
-      if (previous.text.trim() || previous.title.trim() || previous.idea.trim()) {
-        ctx.toast('Title, idea and lyrics cleared.', {
-          kind: 'info', title: 'New draft', timeout: 12000,
-          action: { label: 'Undo', onClick: restore },
-        });
-      }
-    },
+    class: 'btn btn--sm btn--ghost', type: 'button',
+    onclick: () => newDraft(),
   }, [ctx.icon('plus'), 'New draft']);
-  ctx.headerSlot.append(providerBadge, newDraftBtn);
+  ctx.headerSlot.append(newDraftBtn);
 
-  /* -------------------------------------------------------------- editor -- */
+  /* ======================================================= EDITOR COLUMN == */
 
   const titleInput = el('input', {
     class: 'lyr-title', type: 'text', placeholder: 'Untitled song',
@@ -403,7 +426,7 @@ export async function mount(root, ctx) {
 
   const charCount = el('span', { class: 'lyr-count mono' });
 
-  const tagbar = el('div', { class: 'lyr-tagbar', role: 'group', 'aria-label': 'Insert a section tag' },
+  const tagbar = el('div', { class: 'lyr-tagbar', role: 'group', 'aria-label': 'Insert a section' },
     TAGS.map((tag) => el('button', {
       class: 'chip chip--mono lyr-tagchip', type: 'button', text: tag,
       title: `Insert ${tag} on its own line`,
@@ -411,22 +434,46 @@ export async function mount(root, ctx) {
     })));
 
   const highlightLayer = el('pre', { class: 'lyr-doc__hl', 'aria-hidden': 'true' });
+  const DOC_PLACEHOLDER = '[verse]\nThe first line goes here\n\n[chorus]\nOne tag to a line — anything typed beside a tag is never sung';
   const doc = el('textarea', {
     class: 'lyr-doc__ta',
     spellcheck: 'true',
-    placeholder: '[verse]\nWrite here, or let Codex start it for you.\n\n[chorus]\nOne tag to a line — words on a tag line are dropped.',
     'aria-label': 'Lyrics',
   });
   doc.value = state.text;
 
-  const docWrap = el('div', { class: 'lyr-doc' }, [highlightLayer, doc]);
+  /* The blank sheet is a designed state, not a void: it names what to do and
+     offers three real starting shapes. It sits over the (empty) document and
+     steps out of the way the moment the writer takes the surface. */
+  const blank = el('div', { class: 'lyr-blank' }, [
+    el('span', { class: 'empty__icon lyr-blank__icon', html: ctx.iconMarkup('lyrics') }),
+    el('p', { class: 'lyr-blank__title', text: 'A blank sheet' }),
+    el('p', { class: 'lyr-blank__text', text: 'Say what the song is about on the right and it gets written for you — or lay out the sections and fill them in yourself.' }),
+    el('div', { class: 'lyr-starters' }, [
+      el('span', { class: 'lyr-starters__label', text: 'Start from a structure' }),
+      el('div', { class: 'lyr-starters__row' }, STARTERS.map((starter) => el('button', {
+        class: 'lyr-starter', type: 'button',
+        onclick: () => applyStarter(starter),
+      }, [
+        el('span', { class: 'lyr-starter__name', text: starter.name }),
+        el('span', {
+          class: 'lyr-starter__meta mono',
+          text: `${starter.tags.length} sections · ${clock(starter.target)}`,
+        }),
+      ]))),
+    ]),
+  ]);
+
+  const docWrap = el('div', { class: 'lyr-doc' }, [highlightLayer, doc, blank]);
+
+  const docScroll = el('div', { class: 'dock__scroll lyr-docscroll' }, [docWrap]);
 
   const statWords = el('span', { class: 'lyr-stat' });
   const statLength = el('span', { class: 'lyr-stat' });
   const statSections = el('span', { class: 'lyr-stat' });
   const statCheck = el('button', {
     class: 'badge lyr-statcheck', type: 'button', hidden: true,
-    title: 'Show the rule check',
+    title: 'Show the checks',
     onclick: () => {
       checkPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       checkPanel.classList.remove('is-flash');
@@ -435,169 +482,197 @@ export async function mount(root, ctx) {
     },
   });
 
-  const copyBtn = el('button', {
-    class: 'btn btn--sm', type: 'button',
-    onclick: () => copy(state.text, 'Lyrics copied.'),
-  }, [ctx.icon('copy'), 'Copy']);
+  const copyChip = el('button', {
+    class: 'actionchip', type: 'button', 'aria-label': 'Copy lyrics', title: 'Copy lyrics',
+    onclick: () => copy(doc.value, 'Lyrics copied.'),
+  }, [ctx.icon('copy')]);
 
-  const toStudioBtn = el('button', {
-    class: 'btn btn--sm', type: 'button',
-    onclick: () => handoff('studio', 'Studio'),
-  }, [ctx.icon('studio'), 'Send to Studio']);
+  const docMenu = ctx.menu({
+    label: 'More actions',
+    items: () => {
+      const has = doc.value.trim().length > 0;
+      return [
+        { label: 'Send to Studio', icon: 'studio', disabled: !has, onSelect: () => handoff('studio', 'Studio') },
+        { label: 'Copy lyrics', icon: 'copy', disabled: !has, onSelect: () => copy(doc.value, 'Lyrics copied.') },
+        { separator: true },
+        { label: 'Clear draft', icon: 'trash', danger: true, disabled: !has && !state.title.trim() && !state.idea.trim(), onSelect: () => newDraft() },
+      ];
+    },
+  });
 
-  const toCreateBtn = el('button', {
-    class: 'btn btn--sm btn--primary', type: 'button',
+  const sendBtn = el('button', {
+    class: 'btn btn--strong', type: 'button',
     onclick: () => handoff('create', 'Create'),
   }, [ctx.icon('create'), 'Send to Create']);
 
-  const editor = el('section', { class: 'lyr-editor' }, [
-    el('header', { class: 'lyr-editor__head' }, [
-      titleInput,
-      el('span', { class: 'spacer' }),
-      charCount,
-    ]),
-    tagbar,
-    docWrap,
-    el('footer', { class: 'lyr-editor__foot' }, [
-      el('div', { class: 'lyr-stats' }, [statWords, statLength, statSections, statCheck]),
-      el('span', { class: 'spacer' }),
-      copyBtn, toStudioBtn, toCreateBtn,
-    ]),
+  const editorFoot = el('div', { class: 'dock__foot dock__foot--fade lyr-foot' }, [
+    el('div', { class: 'lyr-stats' }, [statWords, statLength, statSections, statCheck]),
+    el('span', { class: 'spacer' }),
+    el('div', { class: 'actionbar' }, [copyChip, docMenu]),
+    sendBtn,
   ]);
 
-  /* ----------------------------------------------------------- inspector -- */
+  const editor = el('section', { class: 'lyr-editor' }, [
+    el('header', { class: 'lyr-editor__head' }, [titleInput, charCount]),
+    tagbar,
+    el('div', { class: 'dock lyr-dock lyr-editor__dock' }, [docScroll, editorFoot]),
+  ]);
 
-  /* 1. Write with Codex ---------------------------------------------------- */
+  /* ========================================================= RIGHT RAIL == */
+
+  /* 1 — assistant --------------------------------------------------------- */
+
+  const modeButtons = [
+    el('button', { class: 'segment__item is-active', type: 'button', text: 'Write', 'aria-pressed': 'true', onclick: () => setMode('write') }),
+    el('button', { class: 'segment__item', type: 'button', text: 'Refine', 'aria-pressed': 'false', onclick: () => setMode('refine') }),
+  ];
+  const segment = el('div', { class: 'segment lyr-modes', role: 'group', 'aria-label': 'Assistant mode' }, modeButtons);
+
+  const offlineNotice = el('div', { class: 'notice notice--warn lyr-offline', hidden: true }, [
+    el('span', { class: 'notice__icon', html: ctx.iconMarkup('alert') }),
+    el('div', {}, [
+      el('p', { class: 'notice__title', text: 'Writing help is offline' }),
+      el('p', { text: 'You can still write and check lyrics by hand. Settings has the details.' }),
+      el('button', {
+        class: 'btn btn--sm lyr-offline__btn', type: 'button', text: 'Open Settings',
+        onclick: () => ctx.navigate('settings'),
+      }),
+    ]),
+  ]);
 
   const ideaInput = el('textarea', {
     class: 'textarea lyr-idea',
     rows: '3',
-    placeholder: 'A late-night drive home after saying the wrong thing. Regret, headlights, one honest line in the chorus.',
+    placeholder: 'Two lines about the song — who it is for, what happened, how it should feel.',
     'aria-label': 'What the song is about',
   });
   ideaInput.value = state.idea;
-  ideaInput.addEventListener('input', () => { state.idea = ideaInput.value; persist(); syncWriteButton(); });
+  ideaInput.addEventListener('input', () => { state.idea = ideaInput.value; persist(); syncAction(); });
   ideaInput.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); write(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); run(); }
   });
 
-  const targetSelect = el('select', { class: 'select', 'aria-label': 'Target length' },
-    DURATIONS.map((sec) => el('option', { value: String(sec), text: `${clock(sec)} target`, selected: sec === state.target })));
-  targetSelect.value = String(state.target);
-  targetSelect.addEventListener('change', () => {
-    state.target = Number(targetSelect.value) || 120;
-    persist();
-    renderInspector();
-  });
+  const ideaSeeds = el('div', { class: 'lyr-seeds' }, IDEA_SEEDS.map((seed) => el('button', {
+    class: 'chip lyr-seed', type: 'button', text: seed.label, title: seed.idea,
+    onclick: () => {
+      ideaInput.value = seed.idea;
+      state.idea = seed.idea;
+      persist();
+      syncAction();
+      ideaInput.focus();
+    },
+  })));
 
-  const writeBtn = el('button', { class: 'btn btn--primary btn--block', type: 'button', onclick: () => write() }, [
-    ctx.icon('wand'),
-    el('span', { class: 'lyr-btn__label', text: 'Write the lyrics' }),
-  ]);
+  const targetChips = TARGETS.map((sec) => el('button', {
+    class: 'chip lyr-target', type: 'button', text: clock(sec),
+    'aria-pressed': sec === state.target ? 'true' : 'false',
+    onclick: () => setTarget(sec),
+  }));
+  const targetRow = el('div', { class: 'lyr-targets', role: 'group', 'aria-label': 'Song length' }, targetChips);
+
   const writeHint = el('p', { class: 'hint' });
-  const writeStatus = el('div', { class: 'lyr-run', hidden: true });
-  const styleOut = el('div', { class: 'lyr-style', hidden: true });
+  const writeRun = el('div', { class: 'lyr-run', hidden: true });
 
-  const writePanel = el('section', { class: 'panel lyr-panel' }, [
-    el('div', { class: 'panel__head' }, [
-      el('span', { class: 'panel__title', text: 'Write with Codex' }),
-      el('span', { class: 'spacer' }),
-      el('span', { class: 'lyr-kbd mono', text: '⌘↵' }),
+  const writePane = el('div', { class: 'lyr-pane' }, [
+    offlineNotice,
+    el('div', { class: 'field' }, [
+      el('label', { class: 'label', text: 'What is the song about?' }),
+      ideaInput,
+      ideaSeeds,
     ]),
-    el('div', { class: 'panel__body stack' }, [
-      el('div', { class: 'field' }, [
-        el('label', { class: 'label', text: 'The idea' }),
-        ideaInput,
-      ]),
-      el('div', { class: 'lyr-writerow' }, [targetSelect, writeBtn]),
-      writeHint,
-      writeStatus,
-      styleOut,
+    el('div', { class: 'field' }, [
+      el('label', { class: 'label', text: 'How long is the song?' }),
+      targetRow,
     ]),
+    writeHint,
+    writeRun,
   ]);
 
-  /* 2. Rewrite ------------------------------------------------------------- */
-
-  const selectionLabel = el('span', { class: 'lyr-selection mono', text: 'whole song' });
+  const scopeHint = el('span', { class: 'label__hint', text: 'whole song' });
   const instructionInput = el('input', {
     class: 'input', type: 'text',
-    placeholder: 'What should change?',
-    'aria-label': 'Rewrite instruction',
-    oninput: () => syncRewriteButton(),
+    placeholder: 'Make the chorus land harder',
+    'aria-label': 'What should change',
+    oninput: () => syncAction(),
   });
   instructionInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); rewrite(); }
+    if (e.key === 'Enter') { e.preventDefault(); run(); }
   });
 
   const presetRow = el('div', { class: 'lyr-presets' }, REWRITE_PRESETS.map((preset) => el('button', {
-    class: 'chip', type: 'button', text: preset.split(' — ')[0],
-    title: preset,
-    onclick: () => { instructionInput.value = preset; syncRewriteButton(); instructionInput.focus(); },
+    class: 'chip', type: 'button', text: preset.chip, title: preset.text,
+    onclick: () => { instructionInput.value = preset.text; syncAction(); instructionInput.focus(); },
   })));
 
-  const rewriteBtn = el('button', { class: 'btn btn--block', type: 'button', onclick: () => rewrite() }, [
-    ctx.icon('refresh'),
-    el('span', { class: 'lyr-btn__label', text: 'Rewrite selection' }),
-  ]);
   const undoBtn = el('button', {
-    class: 'btn btn--sm lyr-undo', type: 'button', hidden: true,
-    onclick: () => {
-      if (state.undo === null) return;
-      setDocValue(state.undo);
-      state.undo = null;
-      undoBtn.hidden = true;
-      ctx.toast('Reverted to the text before the rewrite.', { kind: 'info' });
-    },
-  }, 'Undo rewrite');
-  const rewriteStatus = el('div', { class: 'lyr-run', hidden: true });
+    class: 'btn btn--sm btn--ghost lyr-undo', type: 'button', hidden: true,
+    onclick: () => revert(),
+  }, [ctx.icon('refresh'), 'Undo']);
 
-  const rewritePanel = el('section', { class: 'panel lyr-panel' }, [
-    el('div', { class: 'panel__head' }, [
-      el('span', { class: 'panel__title', text: 'Rewrite' }),
-      el('span', { class: 'spacer' }),
-      selectionLabel,
-    ]),
-    el('div', { class: 'panel__body stack' }, [
-      el('p', { class: 'hint', text: 'Select lines in the editor to rewrite just those. With nothing selected the whole song is sent.' }),
+  const rewriteRun = el('div', { class: 'lyr-run', hidden: true });
+
+  const refinePane = el('div', { class: 'lyr-pane', hidden: true }, [
+    el('div', { class: 'field' }, [
+      el('label', { class: 'label' }, ['What should change?', scopeHint]),
       instructionInput,
-      presetRow,
-      rewriteBtn,
-      undoBtn,
-      rewriteStatus,
     ]),
+    presetRow,
+    el('p', { class: 'hint', text: 'Select lines in the editor to rewrite only those.' }),
+    rewriteRun,
   ]);
 
-  /* 3. Structure ----------------------------------------------------------- */
+  const assistantPanel = el('section', { class: 'panel lyr-panel lyr-assistant' }, [
+    el('div', { class: 'panel__head lyr-modehead' }, [segment, el('span', { class: 'spacer' }), undoBtn]),
+    el('div', { class: 'panel__body' }, [writePane, refinePane]),
+  ]);
+
+  /* 2 — structure --------------------------------------------------------- */
 
   const outline = el('div', { class: 'lyr-outline' });
+  const estimateOut = el('span', { class: 'lyr-estimate mono' });
   const structurePanel = el('section', { class: 'panel lyr-panel' }, [
     el('div', { class: 'panel__head' }, [
       el('span', { class: 'panel__title', text: 'Structure' }),
       el('span', { class: 'spacer' }),
-      el('span', { class: 'lyr-estimate mono' }),
+      estimateOut,
     ]),
     el('div', { class: 'panel__body' }, [outline]),
   ]);
-  const estimateOut = structurePanel.querySelector('.lyr-estimate');
 
-  /* 4. Rule check ---------------------------------------------------------- */
+  /* 3 — checks ------------------------------------------------------------ */
 
   const checkBody = el('div', { class: 'lyr-checks' });
   const checkBadge = el('span', { class: 'badge' });
   const checkPanel = el('section', { class: 'panel lyr-panel' }, [
     el('div', { class: 'panel__head' }, [
-      el('span', { class: 'panel__title', text: 'Rule check' }),
+      el('span', { class: 'panel__title', text: 'Checks' }),
       el('span', { class: 'spacer' }),
       checkBadge,
     ]),
     el('div', { class: 'panel__body' }, [checkBody]),
   ]);
 
-  const inspector = el('aside', { class: 'lyr-inspector' }, [
-    writePanel, rewritePanel, structurePanel, checkPanel,
-  ]);
+  /* the rail's one pinned action ------------------------------------------ */
 
-  page.append(editor, inspector);
+  const actionIcon = el('span', { class: 'lyr-action__icon' });
+  const actionLabel = el('span', { class: 'lyr-action__label' });
+  const actionBtn = el('button', {
+    class: 'btn btn--primary btn--lg btn--block lyr-action', type: 'button',
+    onclick: () => run(),
+  }, [actionIcon, actionLabel]);
+
+  const cancelBtn = el('button', {
+    class: 'btn btn--lg btn--outline lyr-cancel', type: 'button', text: 'Cancel', hidden: true,
+    onclick: () => inFlight?.abort(new DOMException('Cancelled', 'AbortError')),
+  });
+
+  // Checks sits above Structure: it is short and actionable, while the outline
+  // is the long list that should be the one to scroll.
+  const railScroll = el('div', { class: 'dock__scroll lyr-rail__scroll' }, [assistantPanel, checkPanel, structurePanel]);
+  const railFoot = el('div', { class: 'dock__foot dock__foot--fade lyr-rail__foot' }, [actionBtn, cancelBtn]);
+  const rail = el('aside', { class: 'lyr-rail dock lyr-dock' }, [railScroll, railFoot]);
+
+  page.append(editor, rail);
   root.append(page);
 
   /* ========================================================================
@@ -607,17 +682,19 @@ export async function mount(root, ctx) {
   let saveTimer = null;
   function persist() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      ctx.storage.set(DRAFT_KEY, {
-        title: state.title, text: state.text, idea: state.idea,
-        target: state.target, styleTags: state.styleTags,
-        provider: state.provider, model: state.model, updatedAt: Date.now(),
-      });
-    }, 400);
+    saveTimer = setTimeout(() => ctx.storage.set(DRAFT_KEY, snapshot()), 400);
+  }
+
+  function snapshot() {
+    return {
+      title: state.title, text: doc.value, idea: ideaInput.value,
+      target: state.target, styleTags: state.styleTags, mode: state.mode,
+      updatedAt: Date.now(),
+    };
   }
 
   async function copy(text, message) {
-    if (!text) return;
+    if (!text.trim()) return;
     try {
       await navigator.clipboard.writeText(text);
       ctx.toast(message, { kind: 'success' });
@@ -626,15 +703,15 @@ export async function mount(root, ctx) {
     }
   }
 
+  /* ------------------------------------------------------------- editing */
+
   /** Write through execCommand so the browser's own undo stack keeps working. */
   function insertAtCursor(textToInsert) {
     doc.focus();
     let ok = false;
     try { ok = document.execCommand('insertText', false, textToInsert); } catch { ok = false; }
     if (!ok) {
-      const start = doc.selectionStart;
-      const end = doc.selectionEnd;
-      doc.setRangeText(textToInsert, start, end, 'end');
+      doc.setRangeText(textToInsert, doc.selectionStart, doc.selectionEnd, 'end');
     }
     onDocInput();
   }
@@ -646,10 +723,70 @@ export async function mount(root, ctx) {
 
   function insertTag(tag) {
     const before = doc.value.slice(0, doc.selectionStart);
-    const after = doc.value.slice(doc.selectionEnd);
     const lead = before && !before.endsWith('\n') ? '\n' : '';
-    const trail = after.startsWith('\n') || after === '' ? '\n' : '\n';
-    insertAtCursor(`${lead}${tag}${trail}`);
+    insertAtCursor(`${lead}${tag}\n`);
+  }
+
+  function applyStarter(starter) {
+    setTarget(starter.target);
+    setDocValue(`${starter.tags.join('\n\n')}\n`);
+    doc.focus();
+    doc.setSelectionRange(starter.tags[0].length + 1, starter.tags[0].length + 1);
+    syncScrollPosition(0);
+  }
+
+  function setTarget(seconds) {
+    state.target = seconds;
+    for (const chip of targetChips) {
+      chip.setAttribute('aria-pressed', chip.textContent === clock(seconds) ? 'true' : 'false');
+    }
+    persist();
+    renderRail();
+  }
+
+  function setMode(mode, { focus = true } = {}) {
+    state.mode = mode;
+    modeButtons.forEach((btn, index) => {
+      const on = index === (mode === 'write' ? 0 : 1);
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+    writePane.hidden = mode !== 'write';
+    refinePane.hidden = mode !== 'refine';
+    persist();
+    syncAction();
+    autosize();
+    if (focus) (mode === 'write' ? ideaInput : instructionInput).focus({ preventScroll: true });
+  }
+
+  function newDraft() {
+    const previous = snapshot();
+    const hadSomething = previous.text.trim() || previous.title.trim() || previous.idea.trim();
+
+    state.title = ''; state.idea = ''; state.styleTags = ''; state.undo = null;
+    titleInput.value = ''; ideaInput.value = ''; doc.value = '';
+    undoBtn.hidden = true;
+    renderAll();
+    persist();
+    ideaInput.focus();
+
+    if (!hadSomething) return;
+    ctx.toast('Title, idea and lyrics cleared.', {
+      kind: 'info', title: 'New draft', timeout: 12000, key: 'lyrics-new-draft',
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          state.title = previous.title;
+          state.idea = previous.idea;
+          state.styleTags = previous.styleTags;
+          titleInput.value = previous.title;
+          ideaInput.value = previous.idea;
+          doc.value = previous.text;
+          renderAll();
+          persist();
+        },
+      },
+    });
   }
 
   function lineOffsets(index) {
@@ -659,15 +796,20 @@ export async function mount(root, ctx) {
     return { start, end: start + (lines[index] ?? '').length };
   }
 
+  function syncScrollPosition(top) {
+    docScroll.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+
   function focusLine(index) {
     const { start, end } = lineOffsets(index);
     doc.focus();
     doc.setSelectionRange(start, end);
-    // Put the line roughly in the middle of the viewport.
-    const lineHeight = parseFloat(getComputedStyle(doc).lineHeight) || 22;
-    doc.scrollTop = Math.max(0, (index * lineHeight) - (doc.clientHeight / 2));
-    syncScroll();
-    updateSelectionLabel();
+    const styles = getComputedStyle(doc);
+    const lineHeight = parseFloat(styles.lineHeight) || 22;
+    const padTop = parseFloat(styles.paddingTop) || 0;
+    const y = doc.offsetTop + padTop + index * lineHeight;
+    syncScrollPosition(y - docScroll.clientHeight / 2);
+    updateSelection();
   }
 
   function applyFix(fix) {
@@ -686,15 +828,15 @@ export async function mount(root, ctx) {
       lines.splice(fix.line, 0, fix.tag);
       setDocValue(lines.join('\n'));
     } else if (fix.kind === 'trim') {
-      const cut = doc.value.slice(0, 3500);
+      const cut = doc.value.slice(0, LYRICS_MAX);
       const lastBreak = cut.lastIndexOf('\n');
-      setDocValue(lastBreak > 3000 ? cut.slice(0, lastBreak) : cut);
+      setDocValue(lastBreak > LYRICS_MAX - 500 ? cut.slice(0, lastBreak) : cut);
     }
     persist();
   }
 
   function handoff(to, label) {
-    const lyrics = state.text.trim();
+    const lyrics = doc.value.trim();
     if (!lyrics) return;
     const payload = {
       to,
@@ -708,35 +850,61 @@ export async function mount(root, ctx) {
     };
     ctx.storage.set(HANDOFF_KEY, payload);
     ctx.bus.emit('lyrics:handoff', payload);
+
+    const sections = parseSections(lyrics, TAGS).filter((s) => s.tag).length;
+    const words = sungWords(lyrics);
     ctx.toast(
-      `${lyrics.length.toLocaleString()} characters of lyrics${payload.title ? ` for “${payload.title}”` : ''} are stored under maxmusic:handoff for ${label} to pick up.`,
-      { kind: 'success', title: `Sent to ${label}` },
+      `${payload.title || 'Untitled song'} — ${plural(sections, 'section')}, about ${clock(words / WORDS_PER_SEC.slow)} of singing.`,
+      { kind: 'success', title: `Sent to ${label}`, key: 'lyrics-handoff' },
     );
     ctx.navigate(to);
   }
 
-  /* ------------------------------------------------------------ rendering */
+  /* ----------------------------------------------------------- rendering */
+
+  /**
+   * The document has no scroller of its own — the dock scrolls, and the
+   * textarea grows to fit. That is what keeps a section heading from ever being
+   * guillotined by the footer.
+   */
+  /** Keep the pinned bar on the same right edge as the cards above it. */
+  function alignRail() {
+    const gutter = Math.max(0, railScroll.offsetWidth - railScroll.clientWidth);
+    railFoot.style.paddingRight = `${gutter}px`;
+  }
+
+  function autosize() {
+    alignRail();
+    const styles = getComputedStyle(docScroll);
+    const avail = docScroll.clientHeight
+      - (parseFloat(styles.paddingTop) || 0)
+      - (parseFloat(styles.paddingBottom) || 0);
+    doc.style.height = 'auto';
+    doc.style.height = `${Math.max(doc.scrollHeight, Math.max(240, avail))}px`;
+  }
 
   function renderEditor() {
     highlightLayer.innerHTML = highlight(doc.value, TAGS);
-    syncScroll();
 
     const chars = doc.value.length;
     charCount.textContent = `${chars.toLocaleString()} / 3,500`;
-    charCount.classList.toggle('is-over', chars > 3500);
+    charCount.classList.toggle('is-over', chars > LYRICS_MAX);
 
     const words = sungWords(doc.value);
     const sections = parseSections(doc.value, TAGS).filter((s) => s.tag);
-    statWords.textContent = `${words.toLocaleString()} sung word${words === 1 ? '' : 's'}`;
-    statLength.textContent = words
-      ? `≈ ${clock(words / WORDS_PER_SEC.fast)}–${clock(words / WORDS_PER_SEC.slow)}`
-      : '≈ 0:00';
-    statSections.textContent = `${sections.length} section${sections.length === 1 ? '' : 's'}`;
+    statWords.textContent = plural(words, 'sung word');
+    statLength.textContent = words ? `about ${clock(words / WORDS_PER_SEC.slow)}` : '0:00';
+    statSections.textContent = plural(sections.length, 'section');
 
     const empty = !doc.value.trim();
-    copyBtn.disabled = empty;
-    toStudioBtn.disabled = empty;
-    toCreateBtn.disabled = empty;
+    // The blank sheet gives way to the format hint the moment the writer is in
+    // the document, so the two never talk over each other.
+    const writing = document.activeElement === doc;
+    blank.hidden = !empty || writing;
+    doc.placeholder = empty && writing ? DOC_PLACEHOLDER : '';
+    copyChip.disabled = empty;
+    sendBtn.disabled = empty;
+    autosize();
   }
 
   function renderOutline() {
@@ -744,18 +912,29 @@ export async function mount(root, ctx) {
     outline.replaceChildren();
 
     const words = sungWords(doc.value);
-    estimateOut.textContent = words
-      ? `${clock(words / WORDS_PER_SEC.fast)}–${clock(words / WORDS_PER_SEC.slow)} of ${clock(state.target)}`
-      : `0:00 of ${clock(state.target)}`;
+    estimateOut.textContent = `${clock(words / WORDS_PER_SEC.slow)} of ${clock(state.target)}`;
 
+    // Nothing written yet: preview the shape a song of this length usually
+    // takes, so the panel plans the song instead of reporting an empty one.
     if (!sections.length) {
-      outline.append(el('p', { class: 'hint', text: 'No sections yet. Insert a tag from the row above the editor, or let Codex write the first draft.' }));
+      const plan = structureTarget(state.target);
+      outline.append(el('p', {
+        class: 'hint lyr-outline__lead',
+        text: `A ${clock(state.target)} song usually runs like this:`,
+      }));
+      for (const tag of plan.tags) {
+        outline.append(el('div', { class: 'lyr-outline__row is-ghost' }, [
+          el('span', { class: 'lyr-outline__tag mono', text: tag }),
+          el('span', { class: 'lyr-outline__bar' }),
+          el('span', { class: 'lyr-outline__meta mono', text: '—' }),
+        ]));
+      }
       return;
     }
 
     for (const section of sections) {
       const seconds = section.words / WORDS_PER_SEC.slow;
-      const row = el('button', {
+      outline.append(el('button', {
         class: `lyr-outline__row${section.valid ? '' : ' is-bad'}`,
         type: 'button',
         onclick: () => focusLine(section.line),
@@ -767,15 +946,13 @@ export async function mount(root, ctx) {
             style: `width:${Math.min(100, Math.round((seconds / Math.max(state.target, 1)) * 100))}%`,
           }),
         ]),
-        el('span', { class: 'lyr-outline__meta mono', text: section.words ? `${section.words} w` : '—' }),
-      ]);
-      outline.append(row);
+        el('span', { class: 'lyr-outline__meta mono', text: section.words ? `${section.words}w` : '—' }),
+      ]));
     }
 
-    const target = structureTarget(state.target);
     outline.append(el('p', {
       class: 'hint lyr-outline__hint',
-      text: `${target.band}: ${target.shape}.`,
+      text: `A ${clock(state.target)} song usually runs ${structureTarget(state.target).shape}.`,
     }));
   }
 
@@ -785,22 +962,25 @@ export async function mount(root, ctx) {
 
     const errors = issues.filter((i) => i.level === 'error').length;
     const warnings = issues.length - errors;
-
     const tone = errors ? 'badge--danger' : warnings ? 'badge--warn' : 'badge--ok';
-    const summary = errors
-      ? `${errors} to fix`
-      : warnings ? `${warnings} to look at` : 'clean';
+    const summary = errors ? `${errors} to fix` : warnings ? `${warnings} to look at` : 'Ready';
+
     checkBadge.className = `badge ${tone}`;
     checkBadge.textContent = summary;
+    checkBadge.hidden = false;
     statCheck.hidden = false;
     statCheck.className = `badge lyr-statcheck ${tone}`;
     statCheck.textContent = summary;
 
     if (!doc.value.trim()) {
       checkBadge.className = 'badge';
-      checkBadge.textContent = 'empty';
+      checkBadge.textContent = '';
+      checkBadge.hidden = true;
       statCheck.hidden = true;
-      checkBody.append(el('p', { class: 'hint', text: 'The nine tags, one per line, no production notes, 12–16 sung words per 10 seconds. Checked live as you type.' }));
+      checkBody.append(el('p', {
+        class: 'hint',
+        text: 'Sections tagged one to a line, roughly 12–16 sung words every 10 seconds. Checked as you type.',
+      }));
       return;
     }
 
@@ -808,8 +988,8 @@ export async function mount(root, ctx) {
       checkBody.append(el('div', { class: 'lyr-clean' }, [
         el('span', { class: 'lyr-clean__icon', html: ctx.iconMarkup('check') }),
         el('div', {}, [
-          el('p', { class: 'lyr-clean__title', text: 'Ready for MiniMax Music 3' }),
-          el('p', { class: 'hint', text: 'Tags, structure and length all match SPEC §3d.' }),
+          el('p', { class: 'lyr-clean__title', text: 'Ready to sing' }),
+          el('p', { class: 'hint', text: `Sections, structure and length all fit the ${clock(state.target)} target.` }),
         ]),
       ]));
       return;
@@ -841,34 +1021,16 @@ export async function mount(root, ctx) {
     }
   }
 
-  function renderInspector() {
+  function renderRail() {
     renderOutline();
     renderChecks();
-    syncWriteButton();
-    syncRewriteButton();
+    syncAction();
   }
 
   function renderAll() {
     state.text = doc.value;
     renderEditor();
-    renderInspector();
-  }
-
-  function syncScroll() {
-    highlightLayer.scrollTop = doc.scrollTop;
-    highlightLayer.scrollLeft = doc.scrollLeft;
-  }
-
-  function updateSelectionLabel() {
-    const start = doc.selectionStart;
-    const end = doc.selectionEnd;
-    if (start === end) {
-      selectionLabel.textContent = 'whole song';
-      return;
-    }
-    const slice = doc.value.slice(start, end);
-    const lines = slice.split('\n').length;
-    selectionLabel.textContent = `${lines} line${lines === 1 ? '' : 's'} · ${sungWords(slice)} words`;
+    renderRail();
   }
 
   function onDocInput() {
@@ -876,61 +1038,83 @@ export async function mount(root, ctx) {
     persist();
   }
 
-  doc.addEventListener('input', onDocInput);
-  doc.addEventListener('scroll', syncScroll);
-  doc.addEventListener('select', updateSelectionLabel);
-  doc.addEventListener('keyup', updateSelectionLabel);
-  doc.addEventListener('mouseup', updateSelectionLabel);
-  doc.addEventListener('blur', updateSelectionLabel);
-
-  /* --------------------------------------------------------- availability */
-
-  function lyricsAvailable() {
-    return Boolean(state.health && state.health.lyricsEnabled);
-  }
-
-  function unavailableReason() {
-    const h = state.health;
-    if (!h) return 'Checking /api/health…';
-    if (h.status === 'offline') return h.message;
-    return `/api/health reports lyrics: "${h.lyricsProvider}". The backend cannot write lyrics — set LOCAL_CODEX_BIN and LOCAL_CODEX_HOME to a signed-in local Codex runtime and restart it. You can still type and check lyrics here.`;
-  }
-
-  function syncWriteButton() {
-    const available = lyricsAvailable();
-    const hasIdea = ideaInput.value.trim().length > 0;
-    writeBtn.disabled = Boolean(state.busy) || !available || !hasIdea;
-    if (!available) {
-      writeHint.className = 'hint hint--warn';
-      writeHint.textContent = unavailableReason();
-      writeBtn.title = unavailableReason();
-    } else if (!hasIdea) {
-      writeHint.className = 'hint';
-      writeHint.textContent = 'Describe the song in a line or two. Codex returns a title, style tags and a full tagged lyric.';
-      writeBtn.title = 'Describe the song first';
+  function updateSelection() {
+    const start = doc.selectionStart;
+    const end = doc.selectionEnd;
+    if (start === end) {
+      scopeHint.textContent = 'whole song';
     } else {
-      writeHint.className = 'hint';
-      writeHint.textContent = doc.value.trim()
-        ? 'This replaces the lyrics in the editor. The previous text stays one undo away.'
-        : `POST /api/lyrics · mode write_full_song · ${state.provider || state.health?.lyricsProvider || 'local codex'}`;
-      writeBtn.removeAttribute('title');
+      const lines = doc.value.slice(start, end).split('\n').length;
+      scopeHint.textContent = `${plural(lines, 'line')} selected`;
     }
+    if (state.mode === 'refine') syncAction();
   }
 
-  function syncRewriteButton() {
-    const available = lyricsAvailable();
+  doc.addEventListener('input', onDocInput);
+  doc.addEventListener('select', updateSelection);
+  doc.addEventListener('keyup', updateSelection);
+  doc.addEventListener('mouseup', updateSelection);
+  doc.addEventListener('focus', renderEditor);
+  doc.addEventListener('blur', () => { renderEditor(); updateSelection(); });
+
+  const onResize = () => autosize();
+  window.addEventListener('resize', onResize);
+
+  /* -------------------------------------------------------- availability */
+
+  const writingAvailable = () => Boolean(state.health && state.health.lyricsEnabled);
+
+  function selectionLength() {
+    return Math.max(0, doc.selectionEnd - doc.selectionStart);
+  }
+
+  function syncAction() {
+    const available = writingAvailable();
+    const busy = Boolean(state.busy);
     const hasText = doc.value.trim().length > 0;
-    const hasInstruction = instructionInput.value.trim().length > 0;
-    instructionInput.disabled = !available;
-    for (const chip of presetRow.children) chip.disabled = !available;
-    rewriteBtn.disabled = Boolean(state.busy) || !available || !hasText || !hasInstruction;
-    rewriteBtn.title = !available
-      ? unavailableReason()
-      : !hasText ? 'Write or paste some lyrics first'
-        : !hasInstruction ? 'Say what should change' : 'POST /api/lyrics · mode edit';
+
+    offlineNotice.hidden = available || !state.health;
+    ideaInput.disabled = !available && Boolean(state.health);
+    instructionInput.disabled = !available && Boolean(state.health);
+    for (const chip of presetRow.children) chip.disabled = !available && Boolean(state.health);
+
+    let label;
+    let reason = '';
+    if (state.mode === 'write') {
+      const hasIdea = ideaInput.value.trim().length > 0;
+      ideaSeeds.hidden = hasIdea;
+      for (const chip of ideaSeeds.children) chip.disabled = !available && Boolean(state.health);
+      label = busy ? 'Writing…' : 'Write the lyrics';
+      if (!available) reason = 'Writing help is offline right now.';
+      else if (!hasIdea) reason = 'Say what the song is about first.';
+      actionBtn.disabled = busy || !available || !hasIdea;
+
+      writeHint.className = 'hint';
+      writeHint.textContent = hasText
+        ? 'Replaces the current draft. One undo brings it back.'
+        : 'A title, a set of style words and a full tagged lyric come back.';
+    } else {
+      const hasInstruction = instructionInput.value.trim().length > 0;
+      const selected = selectionLength() > 0;
+      const lines = selected ? doc.value.slice(doc.selectionStart, doc.selectionEnd).split('\n').length : 0;
+      label = busy
+        ? 'Rewriting…'
+        : selected ? `Rewrite ${plural(lines, 'line')}` : 'Rewrite the song';
+      if (!available) reason = 'Writing help is offline right now.';
+      else if (!hasText) reason = 'Write or paste some lyrics first.';
+      else if (!hasInstruction) reason = 'Say what should change.';
+      actionBtn.disabled = busy || !available || !hasText || !hasInstruction;
+    }
+
+    actionLabel.textContent = label;
+    actionIcon.replaceChildren(busy
+      ? ctx.icon('spinner', 'icon spinner')
+      : ctx.icon(state.mode === 'write' ? 'wand' : 'refresh'));
+    if (reason) actionBtn.title = reason; else actionBtn.removeAttribute('title');
+    cancelBtn.hidden = !busy;
   }
 
-  /* ------------------------------------------------------------- requests */
+  /* ------------------------------------------------------------ requests */
 
   let inFlight = null;
   let tick = null;
@@ -941,14 +1125,9 @@ export async function mount(root, ctx) {
     node.replaceChildren(
       el('span', { class: 'brandline lyr-run__line' }),
       el('div', { class: 'lyr-run__row' }, [
-        ctx.icon('spinner', 'icon spinner'),
         el('span', { class: 'lyr-run__label', text: label }),
         el('span', { class: 'spacer' }),
         el('span', { class: 'lyr-run__time mono', text: '0:00' }),
-        el('button', {
-          class: 'btn btn--sm btn--ghost', type: 'button', text: 'Cancel',
-          onclick: () => inFlight?.abort(new DOMException('Cancelled', 'AbortError')),
-        }),
       ]),
     );
     const time = node.querySelector('.lyr-run__time');
@@ -963,11 +1142,27 @@ export async function mount(root, ctx) {
     node.replaceChildren();
   }
 
+  function remember(previous) {
+    state.undo = previous;
+    undoBtn.hidden = false;
+  }
+
+  function revert() {
+    if (state.undo === null) return;
+    setDocValue(state.undo);
+    state.undo = null;
+    undoBtn.hidden = true;
+    ctx.toast('Back to the previous draft.', { kind: 'info', key: 'lyrics-undo' });
+  }
+
+  const run = () => (state.mode === 'write' ? write() : rewrite());
+
   async function write() {
-    if (state.busy || !lyricsAvailable() || !ideaInput.value.trim()) return;
+    if (state.busy || !writingAvailable() || !ideaInput.value.trim()) return;
     state.busy = 'write';
-    syncWriteButton(); syncRewriteButton();
-    startRun(writeStatus, 'Codex is writing…');
+    syncAction();
+    startRun(writeRun, 'Writing the song…');
+    autosize();
     inFlight = new AbortController();
 
     const prompt = [
@@ -980,36 +1175,35 @@ export async function mount(root, ctx) {
         { mode: 'write_full_song', prompt, title: state.title.trim(), lyrics: '' },
         { signal: inFlight.signal },
       );
-      state.undo = doc.value;
-      undoBtn.hidden = false;
+      remember(doc.value);
       setDocValue(String(result.lyrics || ''));
       if (result.song_title && !state.title.trim()) {
         state.title = result.song_title;
         titleInput.value = result.song_title;
       }
       state.styleTags = String(result.style_tags || '');
-      state.provider = result.provider || state.health?.lyricsProvider || '';
-      state.model = result.model || '';
-      renderStyleTags(result);
       persist();
+
+      const words = sungWords(doc.value);
       ctx.toast(
-        `${result.song_title || 'Lyrics'} — ${String(result.lyrics || '').length.toLocaleString()} characters from ${result.provider || 'the local provider'}.`,
-        { kind: 'success', title: 'Lyrics written' },
+        `${state.title || 'Untitled song'} — about ${clock(words / WORDS_PER_SEC.slow)} of singing.`,
+        { kind: 'success', title: 'Lyrics written', key: 'lyrics-written', action: { label: 'Undo', onClick: revert } },
       );
     } catch (err) {
       if (err?.name !== 'AbortError') {
-        ctx.toast(api.errorText(err), { kind: 'error', title: 'POST /api/lyrics failed' });
+        ctx.toast(api.errorText(err), { kind: 'error', title: 'Could not write the lyrics', key: 'lyrics-error' });
       }
     } finally {
       inFlight = null;
       state.busy = null;
-      endRun(writeStatus);
-      syncWriteButton(); syncRewriteButton();
+      endRun(writeRun);
+      syncAction();
+      autosize();
     }
   }
 
   async function rewrite() {
-    if (state.busy || !lyricsAvailable()) return;
+    if (state.busy || !writingAvailable()) return;
     const instruction = instructionInput.value.trim();
     if (!instruction || !doc.value.trim()) return;
 
@@ -1019,8 +1213,8 @@ export async function mount(root, ctx) {
     const source = partial ? doc.value.slice(start, end) : doc.value;
 
     state.busy = 'rewrite';
-    syncWriteButton(); syncRewriteButton();
-    startRun(rewriteStatus, partial ? 'Rewriting the selection…' : 'Rewriting the song…');
+    syncAction();
+    startRun(rewriteRun, partial ? 'Rewriting the selection…' : 'Rewriting the song…');
     inFlight = new AbortController();
 
     try {
@@ -1036,10 +1230,9 @@ export async function mount(root, ctx) {
         { signal: inFlight.signal },
       );
       const next = String(result.lyrics || '').trim();
-      if (!next) throw new api.ApiError('The local provider returned no lyrics.', { endpoint: '/api/lyrics' });
+      if (!next) throw new api.ApiError('No lyrics came back. Try again, or reword the instruction.');
 
-      state.undo = doc.value;
-      undoBtn.hidden = false;
+      remember(doc.value);
       if (partial) {
         doc.focus();
         doc.setSelectionRange(start, end);
@@ -1048,75 +1241,41 @@ export async function mount(root, ctx) {
         setDocValue(next);
       }
       if (result.style_tags) state.styleTags = String(result.style_tags);
-      renderStyleTags(result);
       persist();
-      ctx.toast(partial ? 'Selection rewritten.' : 'Song rewritten.', { kind: 'success' });
+      ctx.toast(partial ? 'Selection rewritten.' : 'Song rewritten.', {
+        kind: 'success', key: 'lyrics-rewritten', action: { label: 'Undo', onClick: revert },
+      });
     } catch (err) {
       if (err?.name !== 'AbortError') {
-        ctx.toast(api.errorText(err), { kind: 'error', title: 'POST /api/lyrics failed' });
+        ctx.toast(api.errorText(err), { kind: 'error', title: 'Could not rewrite the lyrics', key: 'lyrics-error' });
       }
     } finally {
       inFlight = null;
       state.busy = null;
-      endRun(rewriteStatus);
-      syncWriteButton(); syncRewriteButton();
+      endRun(rewriteRun);
+      syncAction();
     }
   }
 
-  function renderStyleTags(result) {
-    const tags = String(result?.style_tags || state.styleTags || '').trim();
-    if (!tags) { styleOut.hidden = true; return; }
-    styleOut.hidden = false;
-    styleOut.replaceChildren(
-      el('div', { class: 'lyr-style__head' }, [
-        el('span', { class: 'label', text: 'Style tags from Codex' }),
-        el('span', { class: 'spacer' }),
-        el('button', {
-          class: 'iconbtn', type: 'button', title: 'Copy style tags',
-          'aria-label': 'Copy style tags',
-          onclick: () => copy(tags, 'Style tags copied.'),
-          html: ctx.iconMarkup('copy'),
-        }),
-      ]),
-      el('p', { class: 'lyr-style__text', text: tags }),
-      el('p', {
-        class: 'hint',
-        text: `${state.provider || 'local provider'}${state.model ? ` · ${state.model}` : ''} — these travel with “Send to Studio” but are not a generation parameter on their own.`,
-      }),
-    );
-  }
-
-  /* ---------------------------------------------------------------- health */
+  /* --------------------------------------------------------------- health */
 
   ctx.onHealth((h) => {
     state.health = h;
-    const dot = providerBadge.querySelector('.lyr-provider__dot');
-    const text = providerBadge.querySelector('.lyr-provider__text');
-    providerBadge.className = `badge lyr-provider ${h.lyricsEnabled ? 'badge--ok' : 'badge--warn'}`;
-    text.textContent = h.lyricsEnabled ? h.lyricsProvider : `lyrics: ${h.lyricsProvider}`;
-    providerBadge.title = h.lyricsEnabled
-      ? `POST /api/lyrics → ${h.lyricsProvider}${state.model ? ` · ${state.model}` : ''}`
-      : unavailableReason();
-    dot.classList.toggle('is-off', !h.lyricsEnabled);
-    syncWriteButton();
-    syncRewriteButton();
+    syncAction();
   });
 
-  /* ------------------------------------------------------------ first paint */
+  /* ---------------------------------------------------------- first paint */
 
+  setMode(state.mode, { focus: false });
   renderAll();
-  renderStyleTags(null);
-  updateSelectionLabel();
-  if (!state.text.trim() && !state.idea.trim()) ideaInput.focus();
+  updateSelection();
+  requestAnimationFrame(() => autosize());
 
   return () => {
     clearTimeout(saveTimer);
     clearInterval(tick);
+    window.removeEventListener('resize', onResize);
     inFlight?.abort(new DOMException('Screen left', 'AbortError'));
-    ctx.storage.set(DRAFT_KEY, {
-      title: state.title, text: doc.value, idea: ideaInput.value,
-      target: state.target, styleTags: state.styleTags,
-      provider: state.provider, model: state.model, updatedAt: Date.now(),
-    });
+    ctx.storage.set(DRAFT_KEY, snapshot());
   };
 }

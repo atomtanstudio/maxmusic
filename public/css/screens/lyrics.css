@@ -1,7 +1,9 @@
 /* ============================================================================
-   Lyrics — writing workspace. Owned by the lyrics lane.
-   Every rule is scoped under .screen-lyrics (or .lyr-* nodes the screen puts in
-   the topbar slot). Tokens only — no hard-coded colour.
+   Lyrics — the writing workspace. Owned by the lyrics lane.
+
+   Two columns, both of them shell `.dock`s, so the pinned footers are flex
+   siblings of their scrollers and cannot overlap the content above them.
+   One left rail per column, one accent (the section tag), tokens only.
    ========================================================================= */
 
 /* Scoped rules below set `display` on class selectors, which outranks the UA
@@ -14,27 +16,19 @@
   margin-inline: auto;
   padding: var(--gutter);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 396px;
+  grid-template-columns: minmax(0, 1fr) 384px;
   gap: var(--gutter);
   overflow: hidden;
+
+  /* one left rail for everything inside the editor card */
+  --rail-x: var(--gutter);
 }
 
-/* ------------------------------------------------------- topbar fragment -- */
-
-.lyr-provider {
-  gap: var(--space-4);
-  height: 22px;
-  text-transform: none;
-  letter-spacing: var(--tracking-wide);
-  font-family: var(--font-mono);
-  font-size: var(--fs-3xs);
-}
-.lyr-provider__dot {
-  width: 5px;
-  height: 5px;
-  border-radius: var(--r-circle);
-  background: currentColor;
-  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 20%, transparent);
+/* A `.dock` placed inside our own flex/grid column needs to claim the height;
+   nothing else about the primitive is touched. */
+.screen-lyrics .lyr-dock {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* ====================================================== EDITOR COLUMN ==== */
@@ -56,7 +50,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-5);
-  padding: var(--space-5) var(--space-7);
+  padding: var(--space-6) var(--rail-x) var(--space-5);
 }
 
 .screen-lyrics .lyr-title {
@@ -73,60 +67,53 @@
 }
 .screen-lyrics .lyr-title::placeholder { color: var(--text-faint); font-weight: var(--fw-medium); }
 .screen-lyrics .lyr-title:focus-visible { outline: none; }
-.screen-lyrics .lyr-title:focus { color: var(--text-hi); }
 
 .screen-lyrics .lyr-count {
   flex: none;
   font-size: var(--fs-2xs);
   color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 .screen-lyrics .lyr-count.is-over { color: var(--danger); }
 
-/* section-tag palette ------------------------------------------------------ */
+/* section palette ---------------------------------------------------------- */
 
 .screen-lyrics .lyr-tagbar {
   flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding: 0 var(--space-7) var(--space-5);
+  padding: 0 var(--rail-x) var(--space-6);
 }
-.screen-lyrics .lyr-tagchip {
-  background: var(--surface-inset);
-  color: var(--text-mid);
-}
-.screen-lyrics .lyr-tagchip:hover {
-  color: var(--brand-cyan);
-  border-color: var(--border-brand);
-  background: var(--surface-selected);
-}
+.screen-lyrics .lyr-tagchip { background: var(--surface-inset); }
 
 /* the document ------------------------------------------------------------- */
 
+.screen-lyrics .lyr-editor__dock {
+  border-top: 1px solid var(--border-faint);
+  --dock-fade: var(--surface-inset);
+}
+
+.screen-lyrics .lyr-docscroll {
+  background: var(--surface-inset);
+  scrollbar-gutter: stable;
+}
+
 .screen-lyrics .lyr-doc {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  background: var(--surface-inset);
-  border-top: 1px solid var(--border-faint);
-  border-bottom: 1px solid var(--border-faint);
-
   --doc-pad-y: var(--space-7);
-  --doc-pad-x: var(--space-8);
   --doc-size: var(--fs-sm);
   --doc-leading: 1.75;
 }
 
 .screen-lyrics .lyr-doc__hl,
 .screen-lyrics .lyr-doc__ta {
-  position: absolute;
-  inset: 0;
+  display: block;
   width: 100%;
-  height: 100%;
   margin: 0;
   border: 0;
   outline: 0;
-  padding: var(--doc-pad-y) var(--doc-pad-x);
+  padding: var(--doc-pad-y) var(--rail-x);
   background: transparent;
   font-family: var(--font-mono);
   font-size: var(--doc-size);
@@ -136,10 +123,11 @@
   overflow-wrap: break-word;
   word-break: normal;
   tab-size: 2;
-  scrollbar-gutter: stable;
 }
 
 .screen-lyrics .lyr-doc__hl {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   color: var(--text);
   pointer-events: none;
@@ -147,26 +135,27 @@
 }
 
 .screen-lyrics .lyr-doc__ta {
-  overflow-y: auto;
+  position: relative;
+  min-height: 240px;
+  overflow: hidden;
   resize: none;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  caret-color: var(--brand-cyan);
+  caret-color: var(--accent);
 }
 .screen-lyrics .lyr-doc__ta::placeholder {
   color: var(--text-faint);
   -webkit-text-fill-color: var(--text-faint);
 }
 .screen-lyrics .lyr-doc__ta::selection {
-  background: rgba(53, 200, 245, 0.24);
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
-.screen-lyrics .lyr-doc:focus-within { background: color-mix(in srgb, var(--surface-inset) 60%, var(--surface-0)); }
 
-/* syntax colours — the tags are the only loud thing in the document */
+/* The section tag is the one accent in the document. */
 .screen-lyrics .hl-tag {
-  color: var(--brand-cyan);
+  color: var(--accent);
   font-weight: var(--fw-semibold);
 }
 .screen-lyrics .hl-tag--bad {
@@ -180,16 +169,83 @@
   text-decoration: line-through;
 }
 
-/* footer ------------------------------------------------------------------- */
+/* the designed empty state — real starting shapes, not a void -------------- */
 
-.screen-lyrics .lyr-editor__foot {
-  flex: none;
-  display: flex;
-  align-items: center;
+.screen-lyrics .lyr-blank {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: start;
   gap: var(--space-5);
-  padding: var(--space-5) var(--space-7);
-  flex-wrap: wrap;
+  padding: var(--space-9) var(--rail-x);
+  pointer-events: none;
 }
+.screen-lyrics .lyr-blank__icon { background: var(--surface-2); }
+.screen-lyrics .lyr-blank__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  letter-spacing: var(--tracking-tight);
+}
+.screen-lyrics .lyr-blank__text {
+  max-width: 52ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-lo);
+}
+
+.screen-lyrics .lyr-starters {
+  justify-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+  padding-top: var(--space-6);
+  border-top: 1px dashed var(--border);
+}
+.screen-lyrics .lyr-starters__label {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.screen-lyrics .lyr-starters__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+}
+.screen-lyrics .lyr-starter {
+  pointer-events: auto;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 180px;
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  text-align: left;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.screen-lyrics .lyr-starter:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.screen-lyrics .lyr-starter__name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-hi);
+}
+.screen-lyrics .lyr-starter__meta {
+  font-size: var(--fs-2xs);
+  color: var(--text-faint);
+}
+
+/* editor footer — a dock foot, so it can never bisect the document --------- */
+
+.screen-lyrics .lyr-foot { padding-inline: var(--rail-x); }
+
 .screen-lyrics .lyr-stats {
   display: flex;
   align-items: center;
@@ -202,63 +258,107 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.screen-lyrics .lyr-stat + .lyr-stat { padding-left: var(--space-5); border-left: 1px solid var(--border-faint); }
+.screen-lyrics .lyr-stat + .lyr-stat {
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--border-faint);
+}
 
 .screen-lyrics .lyr-statcheck {
-  height: 20px;
+  height: 22px;
+  margin-left: var(--space-2);
   cursor: pointer;
   text-transform: none;
   letter-spacing: var(--tracking-wide);
-  font-size: var(--fs-3xs);
   transition: filter var(--t-fast);
 }
-.screen-lyrics .lyr-statcheck:hover { filter: brightness(1.25); }
+.screen-lyrics .lyr-statcheck:hover { filter: brightness(1.3); }
+
+.screen-lyrics .lyr-foot .actionbar { flex: none; }
+.screen-lyrics .lyr-foot .btn { flex: none; }
+
+/* ==================================================== RIGHT RAIL ========= */
+
+.screen-lyrics .lyr-rail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen-lyrics .lyr-rail__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  scrollbar-gutter: stable;
+}
+
+/* The rail has no gutter of its own, so the pinned bar shares the panels'
+   left rail rather than inheriting the dock's page padding. Its right padding
+   is set at runtime to the scrollbar gutter, so both edges line up exactly. */
+.screen-lyrics .lyr-rail__foot {
+  padding: var(--space-6) 0 0;
+  background: transparent;
+  border-top: 1px solid var(--border-faint);
+  --dock-fade: var(--surface-0);
+}
+
+.screen-lyrics .lyr-panel { flex: none; }
+/* The last card takes up any slack so the rail never ends in bare ground. */
+.screen-lyrics .lyr-rail__scroll > .lyr-panel:last-child { flex: 1 0 auto; }
+.screen-lyrics .lyr-panel .panel__body {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
 
 .screen-lyrics .lyr-panel.is-flash { animation: lyr-flash var(--dur-slower) var(--ease-out) 2; }
 @keyframes lyr-flash {
   0%, 100% { box-shadow: none; }
-  45% { box-shadow: 0 0 0 1px var(--border-brand), var(--shadow-glow-cyan); }
+  45% { box-shadow: 0 0 0 1px var(--border-brand); }
 }
 
-/* ==================================================== INSPECTOR COLUMN ==== */
+/* 1 — assistant ------------------------------------------------------------ */
 
-.screen-lyrics .lyr-inspector {
-  min-height: 0;
-  min-width: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+.screen-lyrics .lyr-modehead {
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-4) var(--space-4);
+}
+.screen-lyrics .lyr-modes { display: flex; }
+.screen-lyrics .lyr-modes .segment__item { flex: 1; padding-inline: var(--space-7); }
+
+
+.screen-lyrics .lyr-pane {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  padding-right: var(--space-2);
 }
 
-.screen-lyrics .lyr-panel { flex: none; }
-.screen-lyrics .lyr-panel .panel__body { padding: var(--space-6); }
-.screen-lyrics .lyr-panel .stack { gap: var(--space-5); }
+.screen-lyrics .lyr-idea { min-height: 86px; font-size: var(--fs-sm); }
 
-.screen-lyrics .lyr-kbd {
-  font-size: var(--fs-3xs);
-  color: var(--text-faint);
-  border: 1px solid var(--border-faint);
-  border-radius: var(--r-xs);
-  padding: 1px 5px;
+.screen-lyrics .lyr-seeds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.screen-lyrics .lyr-seed { font-size: var(--fs-2xs); }
+
+.screen-lyrics .lyr-targets { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.screen-lyrics .lyr-target {
+  flex: 1 1 auto;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
 }
 
-/* 1 — write ---------------------------------------------------------------- */
+.screen-lyrics .lyr-presets { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.screen-lyrics .lyr-presets .chip { font-size: var(--fs-2xs); }
 
-.screen-lyrics .lyr-idea { min-height: 84px; font-size: var(--fs-sm); }
+.screen-lyrics .lyr-offline { flex-direction: row; }
+.screen-lyrics .lyr-offline__btn { margin-top: var(--space-5); }
 
-.screen-lyrics .lyr-writerow {
-  display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
-  gap: var(--space-5);
-  align-items: center;
-}
-.screen-lyrics .lyr-writerow .btn { height: var(--control-h); }
+.screen-lyrics .lyr-undo { flex: none; }
 
-.screen-lyrics .lyr-btn__label { min-width: 0; }
-
+/* the live run readout — the only place a brand gesture belongs here */
 .screen-lyrics .lyr-run {
   display: flex;
   flex-direction: column;
@@ -272,57 +372,36 @@
 .screen-lyrics .lyr-run__row { display: flex; align-items: center; gap: var(--space-5); }
 .screen-lyrics .lyr-run__label { font-size: var(--fs-xs); color: var(--text); }
 .screen-lyrics .lyr-run__time { font-size: var(--fs-xs); color: var(--text-mid); }
-.screen-lyrics .lyr-run .spinner { color: var(--brand-violet); }
 
-.screen-lyrics .lyr-style {
-  border-top: 1px solid var(--border-faint);
-  padding-top: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.screen-lyrics .lyr-style__head { display: flex; align-items: center; gap: var(--space-4); }
-.screen-lyrics .lyr-style__text {
-  font-size: var(--fs-xs);
-  line-height: var(--lh-snug);
-  color: var(--text);
-  background: var(--surface-inset);
-  border: 1px solid var(--border-faint);
-  border-radius: var(--r-sm);
-  padding: var(--space-5);
-}
+/* 2 — structure ------------------------------------------------------------ */
 
-/* 2 — rewrite -------------------------------------------------------------- */
-
-.screen-lyrics .lyr-selection {
-  font-size: var(--fs-3xs);
+.screen-lyrics .lyr-estimate {
+  font-size: var(--fs-2xs);
   color: var(--text-faint);
-  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-.screen-lyrics .lyr-presets { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.screen-lyrics .lyr-presets .chip { font-size: var(--fs-2xs); }
-.screen-lyrics .lyr-panel .btn--block { align-self: stretch; }
-.screen-lyrics .lyr-undo { align-self: flex-start; }
 
-/* 3 — structure ------------------------------------------------------------ */
-
-.screen-lyrics .lyr-estimate { font-size: var(--fs-3xs); color: var(--text-faint); }
-
-.screen-lyrics .lyr-outline { display: flex; flex-direction: column; gap: 2px; }
+.screen-lyrics .lyr-outline { display: flex; flex-direction: column; gap: 1px; }
 .screen-lyrics .lyr-outline__row {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) 42px;
+  grid-template-columns: 100px minmax(0, 1fr) 34px;
   align-items: center;
   gap: var(--space-5);
-  padding: var(--space-4) var(--space-4);
+  height: 30px;
+  padding-inline: var(--space-4);
   border-radius: var(--r-sm);
   text-align: left;
   transition: background var(--t-fast);
 }
 .screen-lyrics .lyr-outline__row:hover { background: var(--surface-hover); }
+/* The planned shape before anything is written — a preview, not a control. */
+.screen-lyrics .lyr-outline__row.is-ghost:hover { background: none; }
+.screen-lyrics .lyr-outline__row.is-ghost .lyr-outline__tag { color: var(--text-lo); }
+.screen-lyrics .lyr-outline__row.is-ghost .lyr-outline__bar { background: var(--surface-3); }
+.screen-lyrics .lyr-outline__lead { margin-bottom: var(--space-5); }
 .screen-lyrics .lyr-outline__tag {
   font-size: var(--fs-2xs);
-  color: var(--brand-cyan);
+  color: var(--accent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -334,11 +413,12 @@
   background: var(--surface-4);
   overflow: hidden;
 }
+/* Weight, not hue — the length bar is a neutral fill. */
 .screen-lyrics .lyr-outline__fill {
   display: block;
   height: 100%;
   border-radius: var(--r-pill);
-  background: var(--gradient-brand-cool);
+  background: var(--text-mid);
   min-width: 2px;
 }
 .screen-lyrics .lyr-outline__meta {
@@ -346,9 +426,13 @@
   color: var(--text-faint);
   text-align: right;
 }
-.screen-lyrics .lyr-outline__hint { margin-top: var(--space-5); }
+.screen-lyrics .lyr-outline__hint {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-faint);
+}
 
-/* 4 — rule check ----------------------------------------------------------- */
+/* 3 — checks --------------------------------------------------------------- */
 
 .screen-lyrics .lyr-checks { display: flex; flex-direction: column; gap: var(--space-5); }
 
@@ -381,9 +465,10 @@
 
 /* ===================================================== RESPONSIVE ======== */
 
-@media (max-width: 1240px) {
-  .screen-lyrics { grid-template-columns: minmax(0, 1fr) 340px; }
-  .screen-lyrics .lyr-outline__row { grid-template-columns: 88px minmax(0, 1fr) 38px; }
+@media (max-width: 1320px) {
+  .screen-lyrics { grid-template-columns: minmax(0, 1fr) 344px; }
+  .screen-lyrics .lyr-outline__row { grid-template-columns: 92px minmax(0, 1fr) 32px; }
+  .screen-lyrics .lyr-stats .lyr-stat:nth-child(3) { display: none; }
 }
 
 @media (max-width: 1040px) {
@@ -391,7 +476,9 @@
     height: auto;
     overflow: visible;
     grid-template-columns: minmax(0, 1fr);
+    --rail-x: var(--space-6);
   }
-  .screen-lyrics .lyr-editor { min-height: 58vh; }
-  .screen-lyrics .lyr-inspector { overflow: visible; padding-right: 0; }
+  .screen-lyrics .lyr-editor { min-height: 62vh; }
+  .screen-lyrics .lyr-rail { height: auto; }
+  .screen-lyrics .lyr-rail__scroll { overflow: visible; }
 }

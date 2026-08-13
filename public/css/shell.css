@@ -301,15 +301,19 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .workspace__rename:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-softer); }
 
 /* Deliberately NOT .btn--primary: the gradient belongs to the one action on
-   the screen you are looking at, not to persistent chrome. */
-.railfoot__cta {
+   the screen you are looking at, not to persistent chrome.
+   Scoped under .rail so it outranks the .btn primitives declared further down. */
+.rail .railfoot__cta {
   height: var(--control-h-lg);
   border-radius: var(--r-md);
   border-color: var(--border);
+  background: transparent;
   color: var(--text-hi);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
 }
-.railfoot__cta:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.rail .railfoot__cta:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.rail .railfoot__cta .icon { width: 15px; height: 15px; }
 
 /* collapsed rail ---------------------------------------------------------- */
 .app[data-rail="collapsed"] { --rail-w: var(--rail-w-narrow); }
@@ -331,7 +335,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .app[data-rail="collapsed"] .railfoot__cta-label { display: none; }
 .app[data-rail="collapsed"] .navitem { justify-content: center; padding-inline: 0; }
 .app[data-rail="collapsed"] .workspace__btn { justify-content: center; padding-inline: 0; }
-.app[data-rail="collapsed"] .railfoot__cta { padding-inline: 0; }
+.app[data-rail="collapsed"] .rail .railfoot__cta { padding-inline: 0; }
 .app[data-rail="collapsed"] .workspace__rename { display: none; }
 
 /* ------------------------------------------------------------- main ----- */
@@ -1184,7 +1188,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   .app[data-rail="collapsed"] .railfoot__cta-label { display: revert; }
   .app[data-rail="collapsed"] .navitem { justify-content: flex-start; padding-inline: var(--space-5); }
   .app[data-rail="collapsed"] .workspace__btn { justify-content: flex-start; padding-inline: var(--space-4) var(--space-4); }
-  .app[data-rail="collapsed"] .railfoot__cta { padding-inline: var(--space-6); }
+  .app[data-rail="collapsed"] .rail .railfoot__cta { padding-inline: var(--space-6); }
   .app[data-rail="collapsed"] .workspace__rename { display: revert; }
   .app[data-rail="collapsed"] .workspace__rename[hidden] { display: none; }
   .railtoggle { display: none; }
