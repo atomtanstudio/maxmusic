@@ -50,10 +50,7 @@
     line-height: 1.05; margin: 0; letter-spacing: -0.025em; font-weight: 680;
     text-wrap: balance;
   }
-  h1 .mark {
-    background: var(--ramp);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
+  h1 .mark { color: var(--cyan); }
   .sub { color: var(--ink-dim); margin: 10px 0 0; max-width: 60ch; }
 
   .stamp {
@@ -62,7 +59,7 @@
   }
   .stamp b { color: var(--ink-dim); font-weight: 500; }
 
-  .rule { height: 2px; background: var(--ramp); border-radius: 2px; margin: 26px 0 0; opacity: .85; }
+  .rule { height: 1px; background: var(--hair-lit); margin: 26px 0 0; }
 
   /* ---- section headings ---- */
   .eyebrow {
@@ -98,7 +95,7 @@
   }
   .seg.win { background: var(--win); }
   .seg.loss { background: var(--loss); }
-  .seg.live { background: var(--ramp); animation: pulse 1.7s ease-in-out infinite; }
+  .seg.live { background: var(--cyan); animation: pulse 1.7s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
   @media (prefers-reduced-motion: reduce) { .seg.live { animation: none; opacity: .9 } }
   .track .rn { font-family: var(--mono); font-size: 11px; color: var(--ink-mute); margin-left: 6px; }
@@ -127,12 +124,18 @@
   /* ---- notes ---- */
   .notes { display: flex; flex-direction: column; gap: 9px; }
   .note {
-    background: var(--panel); border: 1px solid var(--hair); border-left: 2px solid var(--amber);
-    border-radius: 0 8px 8px 0; padding: 12px 15px; font-size: 13.5px; color: var(--ink-dim);
+    background: var(--panel); border: 1px solid var(--hair);
+    border-radius: 8px; padding: 13px 15px; font-size: 13.5px; color: var(--ink-dim);
   }
   .note b { color: var(--ink); font-weight: 580; }
-  .note.cut { border-left-color: var(--red); }
-  .note.ok { border-left-color: var(--win); }
+  /* Severity is stated inside the card as a labelled chip — never as an edge stripe. */
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 4px; margin-right: 9px;
+    border: 1px solid var(--hair-lit); color: var(--ink-mute); vertical-align: 1.5px;
+  }
+  .tag.cut { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+  .tag.ok { color: var(--win); border-color: color-mix(in srgb, var(--win) 40%, transparent); }
 
   code {
     font-family: var(--mono); font-size: .89em;
@@ -235,8 +238,8 @@
 
     <div class="strip is-live">
       <div>
-        <div class="ch-name">Lyrics &amp; Covers</div>
-        <div class="ch-file">js/screens/lyrics.js · covers.js</div>
+        <div class="ch-name">Lyrics &amp; Art</div>
+        <div class="ch-file">js/screens/lyrics.js · art.js</div>
       </div>
       <div class="track"><span class="seg loss"></span><span class="seg live"></span><span class="rn">r2</span></div>
       <div class="readout">
@@ -275,7 +278,23 @@
 
   <div class="eyebrow">Decisions that shaped the build</div>
   <div class="notes">
-    <div class="note cut">
+    <div class="note">
+      <span class="tag cut">cut</span>
+      <b>Cover songs are gone — the model cannot do them.</b> “Covers” meant two different features
+      sharing a word. Uploading a reference track to restyle it was a legacy MiniMax API feature;
+      the official pipeline docs confirm Music 3 takes <b>no audio input of any kind</b>, and the
+      backend returns 501 for both audio endpoints. Album art is the one that works, so that screen
+      is now called <b>Art</b> and cover songs are cut rather than shipped as a dead end.
+    </div>
+    <div class="note">
+      <span class="tag cut">cut</span>
+      <b>Gradient buttons and left-edge accent stripes.</b> Both read as AI-generated. The gradient
+      now appears only on the logo and the played portion of the waveform; buttons are a solid cyan.
+      Cards separate by elevation, border and type — severity is stated in a chip inside the card,
+      like this one. This page was guilty of both and has been fixed.
+    </div>
+    <div class="note">
+      <span class="tag cut">lost</span>
       <b>Round 1's verdict, in one line: we published our own plumbing as product UI.</b>
       All five judges found the build the same way — a LAN address in the sidebar, endpoint paths
       under buttons, model quantization strings, byte counts, even a spec section number. None of
@@ -287,16 +306,19 @@
       they made it permanent furniture. “Honest” means never faking success — not publishing the
       machine to the user. The contract has been rewritten.
     </div>
-    <div class="note cut">
-      <b>Cut: guidance and step sliders.</b> Both read from server environment variables, not the
+    <div class="note">
+      <span class="tag cut">cut</span>
+      <b>Guidance and step sliders.</b> Both read from server environment variables, not the
       request body. A slider for either would move nothing — so they appear in Settings as
       read-only server values instead.
     </div>
-    <div class="note cut">
-      <b>Cut: auto-lyrics toggle.</b> <code>lyrics_optimizer</code> throws outright in ComfyUI mode.
+    <div class="note">
+      <span class="tag cut">cut</span>
+      <b>Auto-lyrics toggle.</b> <code>lyrics_optimizer</code> throws outright in ComfyUI mode.
       Simple mode calls the lyrics endpoint first and shows you what it wrote.
     </div>
-    <div class="note ok">
+    <div class="note">
+      <span class="tag ok">kept</span>
       <b>Brand sampled, not guessed.</b> The ramp comes from the logo's own pixels, left to right:
       <code>#00C0E0</code> <code>#0090F0</code> <code>#7060F0</code> <code>#B040F0</code>
       <code>#F04060</code> <code>#E0A040</code>.

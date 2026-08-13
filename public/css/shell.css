@@ -204,6 +204,9 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   padding: 1px 7px;
 }
 
+/* Active is said with a container, full-contrast text and a marker in a fixed
+   position — three form signals, no hue. The rail used to slice the brand
+   gradient differently per item, which put four accents on screen at once. */
 .navitem.is-active {
   color: var(--text-hi);
   background: var(--surface-3);
@@ -215,66 +218,98 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   width: 3px; height: 18px;
   margin-top: -9px;
   border-radius: 0 var(--r-pill) var(--r-pill) 0;
-  background: var(--gradient-brand-vertical);
-  background-size: 100% 400%;
-  background-position: 0 var(--nav-accent-pos, 0%);
+  background: var(--text-hi);
 }
-.rail__nav .navitem:nth-child(1).is-active { --nav-accent-pos: 0%; }
-.rail__nav .navitem:nth-child(2).is-active { --nav-accent-pos: 25%; }
-.rail__nav .navitem:nth-child(3).is-active { --nav-accent-pos: 50%; }
-.rail__nav .navitem:nth-child(4).is-active { --nav-accent-pos: 75%; }
-.rail__nav .navitem:nth-child(5).is-active { --nav-accent-pos: 100%; }
 
 .rail__spacer { flex: 1 1 auto; min-height: var(--space-6); }
-.rail__nav--foot { margin-bottom: var(--space-3); }
+.rail__nav--foot { margin-bottom: var(--space-5); }
 
-/* backend status pill ----------------------------------------------------- */
-.status {
+/* ------------------------------------------------------- rail anchor ----- */
+/* The bottom of the nav is the most valuable slot in the frame. It holds the
+   workspace identity and the one action this product exists for. It never
+   holds diagnostics — connection state is a transient toast (see app.js). */
+.railfoot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-faint);
+}
+
+.workspace { position: relative; min-width: 0; }
+
+.workspace__btn {
   display: flex;
   align-items: center;
   gap: var(--space-5);
-  padding: var(--space-4) var(--space-5);
+  width: 100%;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-3);
   border-radius: var(--r-md);
-  border: 1px solid var(--border-faint);
-  background: var(--surface-2);
   color: var(--text-mid);
+  text-align: left;
   min-width: 0;
-  transition: border-color var(--t-fast), background var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast);
 }
-.status:hover { border-color: var(--border); background: var(--surface-3); color: var(--text-mid); }
+.workspace__btn:hover { background: var(--surface-hover); color: var(--text-mid); }
+.workspace__btn[aria-expanded="true"] { background: var(--surface-3); }
 
-.status__dot {
-  --dot: var(--text-faint);
-  position: relative;
+.workspace__avatar {
   flex: none;
-  width: 8px; height: 8px;
+  display: grid;
+  place-items: center;
+  width: 30px; height: 30px;
   border-radius: var(--r-circle);
-  background: var(--dot);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot) 18%, transparent);
-}
-.status__text { display: flex; flex-direction: column; min-width: 0; }
-.status__label {
-  font-size: var(--fs-xs);
+  background: var(--surface-4);
+  border: 1px solid var(--border);
+  color: var(--text-hi);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  color: var(--text);
+  line-height: 1;
+  text-transform: uppercase;
+}
+.workspace__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.workspace__name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+  line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.status__detail {
-  font-size: var(--fs-3xs);
-  color: var(--text-faint);
+.workspace__meta {
+  font-size: var(--fs-2xs);
+  color: var(--text-lo);
+  line-height: 1.35;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums;
 }
+.workspace__chev { width: 15px; height: 15px; color: var(--text-faint); flex: none; }
+.workspace__btn:hover .workspace__chev { color: var(--text-mid); }
 
-.status[data-state="online"]   .status__dot { --dot: var(--ok); }
-.status[data-state="degraded"] .status__dot { --dot: var(--warn); }
-.status[data-state="offline"]  .status__dot { --dot: var(--danger); }
-.status[data-state="checking"] .status__dot { --dot: var(--accent); animation: pulse 1.4s var(--ease-in-out) infinite; }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+.workspace__rename {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-brand);
+  border-radius: var(--r-md);
+  color: var(--text-hi);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  padding-inline: var(--space-5);
 }
+.workspace__rename[hidden] { display: none; }
+.workspace__rename:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-softer); }
+
+/* Deliberately NOT .btn--primary: the gradient belongs to the one action on
+   the screen you are looking at, not to persistent chrome. */
+.railfoot__cta {
+  height: var(--control-h-lg);
+  border-radius: var(--r-md);
+  border-color: var(--border);
+  color: var(--text-hi);
+  font-weight: var(--fw-semibold);
+}
+.railfoot__cta:hover { background: var(--surface-3); border-color: var(--border-strong); }
 
 /* collapsed rail ---------------------------------------------------------- */
 .app[data-rail="collapsed"] { --rail-w: var(--rail-w-narrow); }
@@ -288,12 +323,16 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 }
 .app[data-rail="collapsed"] .brand { justify-content: center; flex: none; }
 .app[data-rail="collapsed"] .brand .brandmark { --mark-size: 40px; }
-.app[data-rail="collapsed"] .brand__text,
+.app[data-rail="collapsed"] .brand__name,
 .app[data-rail="collapsed"] .navitem__label,
 .app[data-rail="collapsed"] .navitem__count,
-.app[data-rail="collapsed"] .status__text { display: none; }
+.app[data-rail="collapsed"] .workspace__text,
+.app[data-rail="collapsed"] .workspace__chev,
+.app[data-rail="collapsed"] .railfoot__cta-label { display: none; }
 .app[data-rail="collapsed"] .navitem { justify-content: center; padding-inline: 0; }
-.app[data-rail="collapsed"] .status { justify-content: center; padding-inline: 0; }
+.app[data-rail="collapsed"] .workspace__btn { justify-content: center; padding-inline: 0; }
+.app[data-rail="collapsed"] .railfoot__cta { padding-inline: 0; }
+.app[data-rail="collapsed"] .workspace__rename { display: none; }
 
 /* ------------------------------------------------------------- main ----- */
 .main {
@@ -379,14 +418,8 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   border-top: 1px solid var(--border-faint);
   transition: left var(--t-base);
 }
-.playerbar::before {
-  content: "";
-  position: absolute;
-  inset: -1px 0 auto 0;
-  height: 1px;
-  background: var(--gradient-brand);
-  opacity: .22;
-}
+/* No gradient hairline here. The player's own waveform is the brand gesture in
+   this bar; a second ramp behind it is exactly the "four accents" problem. */
 .playerbar__fallback {
   height: 100%;
   display: flex;
@@ -411,7 +444,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   pointer-events: none;
 }
 .toast {
-  --toast-accent: var(--accent);
+  --toast-accent: var(--text-hi);
   pointer-events: auto;
   display: flex;
   gap: var(--space-5);
@@ -419,7 +452,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   border-radius: var(--r-lg);
   border: 1px solid var(--border);
   border-left: 2px solid var(--toast-accent);
-  background: var(--surface-3);
+  background: var(--surface-4);
   box-shadow: var(--shadow-3);
   animation: toast-in var(--dur-base) var(--ease-out) both;
 }
@@ -445,10 +478,14 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 }
 .toast__close:hover { color: var(--text-hi); }
 .toast__close .icon { width: 15px; height: 15px; }
+/* Only the two toasts that report a real problem carry a hue. Success and
+   info are said with the glyph and the words. */
 .toast[data-kind="error"]   { --toast-accent: var(--danger); }
 .toast[data-kind="warn"]    { --toast-accent: var(--warn); }
-.toast[data-kind="success"] { --toast-accent: var(--ok); }
-.toast[data-kind="info"]    { --toast-accent: var(--accent); }
+.toast[data-kind="success"] { --toast-accent: var(--text-hi); }
+.toast[data-kind="info"]    { --toast-accent: var(--text-mid); }
+.toast[data-kind="info"] .toast__icon { color: var(--text-lo); }
+.toast__actions { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
 
 @keyframes toast-in  { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { to   { opacity: 0; transform: translateY(6px) scale(.98); } }
@@ -505,7 +542,9 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .btn--icon.btn--sm { width: var(--control-h-sm); }
 .btn--icon.btn--lg { width: var(--control-h-lg); }
 
-/* the one loud gesture */
+/* THE one loud gesture. Exactly one per view — the shell logs a warning in the
+   console if it finds a second. If you need a second emphatic action, that is
+   what .btn--strong is for. */
 .btn--primary {
   position: relative;
   border-color: transparent;
