@@ -260,3 +260,66 @@ state through form (weight, container, position) before reaching for hue.
 
 Rows must share one left rail and one fixed pitch. Ours broke its own rail (title at x=415,
 icons at x=425) and varied row heights. Pick the rhythm, then hold it everywhere.
+
+---
+
+## 8. "Covers" resolved — it meant cover SONGS, and they are impossible here
+
+Verified three ways on 2026-08-13:
+
+1. **`server.js`** — in `local-comfy` mode both audio endpoints hard-fail:
+   `POST /api/cover` → `501 "Audio cover restyling is not provided by the local Music 3
+   Comfy workflow."` and `POST /api/cover-preprocess` → `501` likewise.
+2. **`local-providers.js:55`** — the health field is album art, not song covers:
+   `coverArt: comfyCoverWorkflow ? 'local-comfy-workflow' : broker.configured ? 'local-media-broker' : 'disabled'`
+3. **Official diffusers pipeline doc for MiniMax Music 3** — the pipeline takes `prompt`,
+   `lyrics`, `audio_duration`, `generator`, `output`. **No argument accepts audio.** It is
+   purely text-to-audio: no reference audio, no melody conditioning, no continuation.
+
+So the two things were always separate features that share a word:
+
+| Old name | What it actually is | Status here |
+|---|---|---|
+| `/api/cover`, `/api/cover-preprocess` | **Cover songs** — upload a reference track, restyle it | **Impossible.** Legacy MiniMax `music-2.6` API feature. MM3 cannot accept audio at all. |
+| `/api/cover-art` | **Album art** — image generation for a track | **Works.** Via the local media broker (gpt-image-2 on the signed-in OpenAI account), or a ComfyUI image workflow. |
+
+### Decisions
+
+- **Cut cover songs entirely.** Not a disabled screen, not a "coming soon" — the model cannot
+  do it, so it does not exist in this product. Remove any upload-reference-audio affordance.
+- **Rename the screen `Art`.** Route `#/art`, files `public/js/screens/art.js` and
+  `public/css/screens/art.css`. Nav label "Art". Never use the bare word "Covers" as a
+  destination — it is the ambiguity that caused this.
+- Within Art, "cover" may appear only as a noun for the image on a track ("cover art",
+  "album art"), never as a verb or a section name.
+
+---
+
+## 9. Two banned patterns — they read as AI-generated
+
+Both called out directly. Neither is a matter of taste; both are house style now.
+
+### 9a. Gradient restraint
+
+The brand gradient is currently doing too much work and it makes the product look generated.
+The logo is deliberately polychrome; the interface must not be.
+
+- The gradient appears on **the logo mark, and the waveform's played portion. That is all.**
+- Primary buttons are **solid**. Pick ONE stop from the ramp as the product's accent —
+  cyan `#00C0E0` is the recommendation — and use a flat fill of it. A solid, confident accent
+  reads as designed; a gradient fill on a button reads as generated.
+- No gradient text. No gradient borders. No gradient card backgrounds. No gradient rules or
+  dividers. No glow/bloom behind buttons.
+- Hover and active states shift lightness or elevation, not hue.
+
+### 9b. No coloured accent bar on the left edge of cards
+
+The 2–4px coloured stripe down the left side of an information card, notice, or callout is
+one of the most recognisable AI-generated design tells. It is banned outright.
+
+Distinguish cards by the things real design systems use: background elevation, border weight,
+internal spacing, type weight and size, an icon set in the content, or a small chip. If a card
+must signal severity, put the signal **inside** the card as a labelled chip — not as a
+decorative edge.
+
+This applies to every surface in the product, including any documentation or status page.

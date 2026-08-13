@@ -8,6 +8,25 @@
      background      #000000 with a faint blue cast (#01010a average)
      wave ramp       hue 180 #0bf3fd -> 210 #1281f4 -> 265 #7422e6
                      -> 300 #eb33ec -> 345 #e42a5a -> 40 #f6c057
+
+   ---------------------------------------------------------------------------
+   ACCENT DISCIPLINE — read before you reach for a colour.
+
+   The product is near-monochrome. There is exactly one loud gesture, the brand
+   gradient, and it is spent on:
+       1. the mark,
+       2. ONE primary action per view (`.btn--primary`),
+       3. the live waveform / actively-generating state.
+   Nothing else. Two gradient fills in one frame is the bug, not the feature.
+
+   For everything else, express state through FORM before hue — weight, a
+   container, position, size, an icon. Only three non-neutral values remain and
+   each has one job:
+       --accent   cyan, from the ramp: focus rings, links, carets, selection.
+       --warn     amber, from the ramp: transient warnings only.
+       --danger   red,   from the ramp: destructive intent only.
+   There is no success green and no info blue: "done" is a check glyph plus
+   full-contrast text in a container, not a colour.
    ========================================================================= */
 
 :root {
@@ -101,15 +120,17 @@
   --surface-0: #06070b; /* app ground, behind everything */
   --surface-1: #0b0d13; /* nav rail, player bar, sticky chrome */
   --surface-2: #10131a; /* cards, panels */
-  --surface-3: #161a23; /* raised panel, popover, active chip */
-  --surface-4: #1e232e; /* hover on raised, tooltip, menu */
+  --surface-3: #161a23; /* raised panel, active chip */
+  --surface-4: #1e232e; /* action-chip rest, menu, tooltip */
+  --surface-5: #272d3a; /* hover on an action chip or menu item */
   --surface-inset: #08090e; /* wells: text areas, code, track rows */
 
   --surface-hover: rgba(255, 255, 255, 0.04);
   --surface-active: rgba(255, 255, 255, 0.075);
-  --surface-selected: rgba(53, 200, 245, 0.1);
+  /* Selection is a container, not a hue — see the accent note at the top. */
+  --surface-selected: rgba(255, 255, 255, 0.09);
   --surface-scrim: rgba(3, 4, 7, 0.72);
-  --surface-glass: rgba(16, 19, 26, 0.82);
+  --surface-glass: rgba(16, 19, 26, 0.92);
 
   /* --------------------------------------------------------------------
      3. TEXT RAMP
@@ -128,21 +149,28 @@
   --border-faint: rgba(255, 255, 255, 0.045);
   --border: rgba(255, 255, 255, 0.085);
   --border-strong: rgba(255, 255, 255, 0.16);
+  /* Reserved for focus and for the caret on a live field. A brand border is
+     not a way to say "selected" — use --border-strong and a container. */
   --border-brand: rgba(53, 200, 245, 0.45);
   --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent);
   --focus-ring-tight: 0 0 0 2px rgba(53, 200, 245, 0.75);
 
   /* --------------------------------------------------------------------
-     5. STATUS
+     5. STATUS — three colours, each with one job. See the accent note above.
+
+     "Success" is deliberately colourless: it resolves to full-contrast text
+     in a raised container. A green tick is a fourth accent and we shipped
+     four accents last round. Say it with a check glyph and weight instead.
      -------------------------------------------------------------------- */
-  --ok: #3ddc97;
-  --ok-bg: rgba(61, 220, 151, 0.12);
-  --warn: #f5b544;
-  --warn-bg: rgba(245, 181, 68, 0.12);
-  --danger: #ff5f6d;
-  --danger-bg: rgba(255, 95, 109, 0.12);
-  --info: var(--accent);
-  --info-bg: var(--accent-soft);
+  --ok: var(--text-hi);
+  --ok-bg: var(--surface-4);
+  --warn: var(--brand-amber);
+  --warn-bg: rgba(251, 191, 63, 0.11);
+  --danger: #f8536f; /* --brand-red, lifted for text contrast on near-black */
+  --danger-bg: rgba(243, 47, 85, 0.13);
+  --info: var(--text-hi);
+  --info-bg: var(--surface-4);
+  /* Actively generating — the one state allowed to borrow the ramp. */
   --busy: var(--brand-violet);
   --busy-bg: rgba(123, 34, 230, 0.14);
 
@@ -256,6 +284,14 @@
   --field-bg: var(--surface-inset);
   --field-border: var(--border);
   --field-radius: var(--r-md);
+
+  /* Icon-action metrics. These are floors, not suggestions: an interactive
+     icon is never smaller than --action-size and never sits closer to its
+     neighbour than --action-gap. Round 1 shipped 1.1:1 bare glyphs. */
+  --action-size: 34px;
+  --action-size-lg: 40px;
+  --action-gap: 12px;
+  --icon-stroke: 1.75;
 
   /* --------------------------------------------------------------------
      12. Z-INDEX

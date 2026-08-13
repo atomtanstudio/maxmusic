@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="MaxMusic — a front end for MiniMax Music 3.">
+<meta name="description" content="MaxMusic — write, render and keep your own songs.">
 <title>MaxMusic</title>
 <link rel="icon" href="/logo.png" type="image/png">
 <link rel="apple-touch-icon" href="/logo.png">
@@ -15,73 +15,97 @@
 
 <!-- ===================================================================
      Icon sprite. Reference with:  <svg class="icon"><use href="#i-play"/></svg>
-     All icons are 24x24, stroke: currentColor unless marked [solid].
+
+     ONE icon style, ONE stroke weight. Every symbol is drawn on a 24x24 grid
+     as a 1.75 stroke in currentColor with round caps and joins. The only
+     filled shapes in the whole set are dots. Do not add a filled or a
+     heavier-stroked icon — a strip of mixed weights is what lost round 1.
      =================================================================== -->
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0">
-  <defs>
-    <g id="s-stroke" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></g>
-  </defs>
 
-  <symbol id="i-create" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
-    <path d="M11 3.6 12.75 9.05 18.2 10.8 12.75 12.55 11 18 9.25 12.55 3.8 10.8 9.25 9.05Z"/>
-    <path d="M17.6 15.4 18.35 17.55 20.5 18.3 18.35 19.05 17.6 21.2 16.85 19.05 14.7 18.3 16.85 17.55Z"/>
+  <symbol id="i-create" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 3.8 12.7 9.1 18 10.8 12.7 12.5 11 17.8 9.3 12.5 4 10.8 9.3 9.1Z"/>
+    <path d="M17.7 15.6 18.4 17.6 20.4 18.3 18.4 19 17.7 21 17 19 15 18.3 17 17.6Z"/>
   </symbol>
-  <symbol id="i-studio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+  <symbol id="i-studio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 3.8v16.4M12 3.8v16.4M18 3.8v16.4"/>
     <path d="M3.9 8.6h4.2M9.9 15h4.2M15.9 6.6h4.2"/>
   </symbol>
-  <symbol id="i-library" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round">
-    <path d="M4 9.5v5M8.6 5.2v13.6M13.2 7.6v8.8M17.8 10.6v2.8M21 8.4v7.2"/>
+  <symbol id="i-library" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9.6v4.8M8.6 5.4v13.2M13.2 7.8v8.4M17.8 10.6v2.8M21 8.6v6.8"/>
   </symbol>
-  <symbol id="i-lyrics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+  <symbol id="i-lyrics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <path d="M4.5 6.2h11M4.5 11h15M4.5 15.8h8"/>
     <path d="M18.4 20.4a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm1.7-1.7v-4.2"/>
   </symbol>
-  <symbol id="i-covers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="i-covers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3.2" y="4.2" width="17.6" height="15.6" rx="3.2"/>
     <circle cx="8.9" cy="9.6" r="1.5"/>
     <path d="M4 17.4 8.3 13.1a2 2 0 0 1 2.8 0l3.1 3.1M13.6 15.4l1.5-1.5a2 2 0 0 1 2.8 0l2.9 2.9"/>
   </symbol>
-  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
-    <circle cx="12" cy="12" r="4.5"/>
-    <circle cx="12" cy="12" r="1.7"/>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4.3"/>
     <path d="M18.2 12h2.6M5.8 12H3.2M12 5.8V3.2M12 18.2v2.6M16.38 7.62l1.84-1.84M5.78 18.22l1.84-1.84M16.38 16.38l1.84 1.84M5.78 5.78l1.84 1.84"/>
   </symbol>
 
-  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8.4 5.2a1 1 0 0 1 1.53-.85l9.1 5.9a1.2 1.2 0 0 1 0 2.02l-9.1 5.9A1 1 0 0 1 8.4 17.3Z"/></symbol>
-  <symbol id="i-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M8 4.6h2.6a.8.8 0 0 1 .8.8v13.2a.8.8 0 0 1-.8.8H8a.8.8 0 0 1-.8-.8V5.4a.8.8 0 0 1 .8-.8Zm5.4 0H16a.8.8 0 0 1 .8.8v13.2a.8.8 0 0 1-.8.8h-2.6a.8.8 0 0 1-.8-.8V5.4a.8.8 0 0 1 .8-.8Z"/></symbol>
-  <symbol id="i-prev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18.4 5.6v12.8L9.2 12ZM5.9 5.6v12.8"/></symbol>
-  <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5.6 5.6v12.8L14.8 12ZM18.1 5.6v12.8"/></symbol>
-  <symbol id="i-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 6.4h3.1c1.2 0 2.3.6 3 1.6l4.6 6.9c.7 1 1.8 1.6 3 1.6h3.1M3.6 17.6h3.1c1.2 0 2.3-.6 3-1.6l.9-1.4M15 9l.3-.4c.7-1 1.8-1.6 3-1.6h2.1"/><path d="m17.9 3.9 2.5 2.5-2.5 2.5M17.9 14.6l2.5 2.5-2.5 2.5"/></symbol>
-  <symbol id="i-repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 4.8h9a3.4 3.4 0 0 1 3.4 3.4v1.6M17.2 19.2h-9a3.4 3.4 0 0 1-3.4-3.4v-1.6"/><path d="m16.7 2.6 2.5 2.2-2.5 2.2M7.3 21.4l-2.5-2.2 2.5-2.2"/></symbol>
-  <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11.4 4.6 6.9 8.5H4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2.9l4.5 3.9a.6.6 0 0 0 1-.45V5.05a.6.6 0 0 0-1-.45Z"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6M18.2 6.4a8 8 0 0 1 0 11.2"/></symbol>
-  <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11.4 4.6 6.9 8.5H4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2.9l4.5 3.9a.6.6 0 0 0 1-.45V5.05a.6.6 0 0 0-1-.45Z"/><path d="m16.2 9.6 4.6 4.8M20.8 9.6l-4.6 4.8"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 6.2 18.4 12 9 17.8Z"/>
+  </symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.6 5.8v12.4M14.4 5.8v12.4"/>
+  </symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18.4 6.1v11.8L9.4 12ZM5.9 6.1v11.8"/>
+  </symbol>
+  <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5.6 6.1v11.8L14.6 12ZM18.1 6.1v11.8"/>
+  </symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.6 6.4h3.1c1.2 0 2.3.6 3 1.6l4.6 6.9c.7 1 1.8 1.6 3 1.6h3.1M3.6 17.6h3.1c1.2 0 2.3-.6 3-1.6l.9-1.4M15 9l.3-.4c.7-1 1.8-1.6 3-1.6h2.1"/>
+    <path d="m17.9 3.9 2.5 2.5-2.5 2.5M17.9 14.6l2.5 2.5-2.5 2.5"/>
+  </symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.8 4.8h9a3.4 3.4 0 0 1 3.4 3.4v1.6M17.2 19.2h-9a3.4 3.4 0 0 1-3.4-3.4v-1.6"/>
+    <path d="m16.7 2.6 2.5 2.2-2.5 2.2M7.3 21.4l-2.5-2.2 2.5-2.2"/>
+  </symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11.4 4.6 6.9 8.5H4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2.9l4.5 3.9a.6.6 0 0 0 1-.45V5.05a.6.6 0 0 0-1-.45Z"/>
+    <path d="M15.4 9.2a4 4 0 0 1 0 5.6M18.2 6.4a8 8 0 0 1 0 11.2"/>
+  </symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11.4 4.6 6.9 8.5H4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2.9l4.5 3.9a.6.6 0 0 0 1-.45V5.05a.6.6 0 0 0-1-.45Z"/>
+    <path d="m16.2 9.6 4.6 4.8M20.8 9.6l-4.6 4.8"/>
+  </symbol>
 
-  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m15.6 15.6 4 4"/></symbol>
-  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5.4v13.2M5.4 12h13.2"/></symbol>
-  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="m6.4 6.4 11.2 11.2M17.6 6.4 6.4 17.6"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.6 4.6 4.6L19 6.6"/></symbol>
-  <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6.6 9.4 5.4 5.2 5.4-5.2"/></symbol>
-  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9.4 6.6 5.2 5.4-5.2 5.4"/></symbol>
-  <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.6 6.6 9.4 12l5.2 5.4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m15.6 15.6 4 4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.4v13.2M5.4 12h13.2"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6.4 6.4 11.2 11.2M17.6 6.4 6.4 17.6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.6 4.6 4.6L19 6.6"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6.6 9.4 5.4 5.2 5.4-5.2"/></symbol>
+  <symbol id="i-chevron-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6.6 14.6 5.4-5.2 5.4 5.2"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9.4 6.6 5.2 5.4-5.2 5.4"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.6 6.6 9.4 12l5.2 5.4"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.8v10.8M7.8 10.8 12 15l4.2-4.2M4.6 17.2v1.4a1.6 1.6 0 0 0 1.6 1.6h11.6a1.6 1.6 0 0 0 1.6-1.6v-1.4"/></symbol>
-  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8.6" y="8.6" width="11.4" height="11.4" rx="2.6"/><path d="M15.4 5.4a2.6 2.6 0 0 0-2.6-2.6H6.6A2.6 2.6 0 0 0 4 5.4v6.2a2.6 2.6 0 0 0 2.6 2.6"/></symbol>
-  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 6.6h14.8M9.4 6.6V5a1.4 1.4 0 0 1 1.4-1.4h2.4A1.4 1.4 0 0 1 14.6 5v1.6M6.4 6.6l.9 12.1a1.6 1.6 0 0 0 1.6 1.5h6.2a1.6 1.6 0 0 0 1.6-1.5l.9-12.1"/></symbol>
-  <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2s-7.6-4.6-7.6-9.7A4.3 4.3 0 0 1 12 7.8a4.3 4.3 0 0 1 7.6 2.7c0 5.1-7.6 9.7-7.6 9.7Z"/></symbol>
-  <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.4" cy="12" r="1.6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8.6" y="8.6" width="11.4" height="11.4" rx="2.6"/><path d="M15.4 5.4a2.6 2.6 0 0 0-2.6-2.6H6.6A2.6 2.6 0 0 0 4 5.4v6.2a2.6 2.6 0 0 0 2.6 2.6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 6.6h14.8M9.4 6.6V5a1.4 1.4 0 0 1 1.4-1.4h2.4A1.4 1.4 0 0 1 14.6 5v1.6M6.4 6.6l.9 12.1a1.6 1.6 0 0 0 1.6 1.5h6.2a1.6 1.6 0 0 0 1.6-1.5l.9-12.1"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2s-7.6-4.6-7.6-9.7A4.3 4.3 0 0 1 12 7.8a4.3 4.3 0 0 1 7.6 2.7c0 5.1-7.6 9.7-7.6 9.7Z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="none"><circle cx="5.7" cy="12" r="1.55" fill="currentColor"/><circle cx="12" cy="12" r="1.55" fill="currentColor"/><circle cx="18.3" cy="12" r="1.55" fill="currentColor"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19.6 12a7.6 7.6 0 1 1-2.4-5.55"/><path d="M19.9 4.2v4.4h-4.4"/></symbol>
-  <symbol id="i-wand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4.4 19.6 9.9-9.9M12.6 8l3.4 3.4"/><path d="M17.6 3.2v3.4M20.8 8.6h-3M18.8 4.6l-1.6 1.6M6.4 3.6v2.6M7.7 4.9H5.1"/></symbol>
-  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.2 21 19.4H3Z"/><path d="M12 9.9v4.1M12 16.9h.01"/></symbol>
+  <symbol id="i-wand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m4.4 19.6 9.9-9.9M12.6 8l3.4 3.4"/><path d="M17.6 3.2v3.4M20.8 8.6h-3M18.8 4.6l-1.6 1.6M6.4 3.6v2.6M7.7 4.9H5.1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.4 20.6 19.2H3.4Z"/><path d="M12 10v4.1M12 17h.01"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 11v5.2M12 7.9h.01"/></symbol>
-  <symbol id="i-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="3.4"/><circle cx="8.9" cy="8.9" r="1.15" fill="currentColor" stroke="none"/><circle cx="15.1" cy="15.1" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3.4"/><circle cx="8.9" cy="8.9" r="1.15" fill="currentColor" stroke="none"/><circle cx="15.1" cy="15.1" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.2V12l3.2 2"/></symbol>
-  <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M2.8 12h1.9M7 8.4v7.2M10.6 4.8v14.4M14.2 7.2v9.6M17.8 10v4M21.2 12h.6"/></symbol>
-  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.4 11.4a6.6 6.6 0 0 0 13.2 0M12 18v3"/></symbol>
-  <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.6h5.4V10M19.4 4.6 11.6 12.4"/><path d="M18.2 14.4v4a1.8 1.8 0 0 1-1.8 1.8h-9a1.8 1.8 0 0 1-1.8-1.8v-9a1.8 1.8 0 0 1 1.8-1.8h4"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4.8" y="10.4" width="14.4" height="9.6" rx="2.6"/><path d="M8.4 10.4V7.8a3.6 3.6 0 0 1 7.2 0v2.6"/></symbol>
-  <symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="4.6" width="17.2" height="14.8" rx="2.8"/><path d="M9.6 4.6v14.8"/></symbol>
-  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
-  <symbol id="i-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3.4a8.6 8.6 0 1 1-6.08 2.52" opacity=".9"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 12h1.4M7 8.4v7.2M10.6 4.8v14.4M14.2 7.2v9.6M17.8 10v4M21.2 12h.6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.4 11.4a6.6 6.6 0 0 0 13.2 0M12 18v3"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.6h5.4V10M19.4 4.6 11.6 12.4"/><path d="M18.2 14.4v4a1.8 1.8 0 0 1-1.8 1.8h-9a1.8 1.8 0 0 1-1.8-1.8v-9a1.8 1.8 0 0 1 1.8-1.8h4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4.8" y="10.4" width="14.4" height="9.6" rx="2.6"/><path d="M8.4 10.4V7.8a3.6 3.6 0 0 1 7.2 0v2.6"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="4.6" width="17.2" height="14.8" rx="2.8"/><path d="M9.6 4.6v14.8"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6a8.4 8.4 0 1 1-5.94 2.46"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.6V4.2M8.2 7.9 12 4.1l3.8 3.8"/><path d="M5.2 13.6v4.8a1.8 1.8 0 0 0 1.8 1.8h10a1.8 1.8 0 0 0 1.8-1.8v-4.8"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 19.4h3.3L19.1 8.2a1.9 1.9 0 0 0 0-2.7l-.6-.6a1.9 1.9 0 0 0-2.7 0L4.6 16.1Z"/><path d="m14.5 6.7 2.8 2.8"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.3" r="3.9"/><path d="M4.9 20.2a7.1 7.1 0 0 1 14.2 0"/></symbol>
 </svg>
 
 <!-- =================================================================== -->
@@ -93,10 +117,7 @@
     <div class="rail__head">
       <a class="brand" href="#/create" aria-label="MaxMusic — home">
         <span class="brandmark"><img src="/logo.png" alt=""></span>
-        <span class="brand__text">
-          <span class="brand__name">MaxMusic</span>
-          <span class="brand__sub">MiniMax Music 3</span>
-        </span>
+        <span class="brand__name">MaxMusic</span>
       </a>
       <button class="railtoggle" id="rail-toggle" type="button"
               aria-label="Collapse navigation" title="Collapse navigation">
@@ -137,14 +158,28 @@
       </a>
     </nav>
 
-    <a class="status" id="status-pill" href="#/settings" data-state="checking"
-       title="Backend status — open Settings">
-      <span class="status__dot" aria-hidden="true"></span>
-      <span class="status__text">
-        <span class="status__label" id="status-label">Checking backend…</span>
-        <span class="status__detail" id="status-detail">contacting /api/health</span>
-      </span>
-    </a>
+    <!-- Anchor slot: who you are + the one thing you came here to do. -->
+    <div class="railfoot">
+      <div class="workspace" id="workspace">
+        <button class="workspace__btn" id="workspace-btn" type="button"
+                aria-haspopup="menu" aria-expanded="false" aria-label="Workspace options">
+          <span class="workspace__avatar" id="workspace-avatar" aria-hidden="true">M</span>
+          <span class="workspace__text">
+            <span class="workspace__name" id="workspace-name">My Studio</span>
+            <span class="workspace__meta" id="workspace-meta">Local workspace</span>
+          </span>
+          <svg class="icon workspace__chev" aria-hidden="true"><use href="#i-chevron-up"/></svg>
+        </button>
+        <input class="workspace__rename" id="workspace-rename" type="text"
+               maxlength="28" spellcheck="false" autocomplete="off"
+               aria-label="Workspace name" hidden>
+      </div>
+
+      <a class="btn btn--outline btn--block railfoot__cta" href="#/create">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+        <span class="railfoot__cta-label">New song</span>
+      </a>
+    </div>
   </aside>
 
   <div class="rail-scrim" id="rail-scrim" hidden></div>
@@ -152,7 +187,7 @@
   <!-- ---------------- Main region ---------------- -->
   <main class="main" id="main">
     <header class="topbar" id="topbar">
-      <button class="iconbtn topbar__menu" id="nav-open" type="button" aria-label="Open navigation">
+      <button class="actionchip topbar__menu" id="nav-open" type="button" aria-label="Open navigation">
         <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
       </button>
       <div class="topbar__titles">
@@ -174,7 +209,7 @@
   <footer class="playerbar" id="player-root" data-state="unavailable" aria-label="Player">
     <div class="playerbar__fallback" id="player-fallback">
       <svg class="icon playerbar__fallback-icon" aria-hidden="true"><use href="#i-wave"/></svg>
-      <span class="playerbar__fallback-text" id="player-fallback-text">Player module not loaded</span>
+      <span class="playerbar__fallback-text" id="player-fallback-text">Playback is starting…</span>
     </div>
   </footer>
 

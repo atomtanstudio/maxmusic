@@ -64,13 +64,19 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 
+/* ONE icon style, ONE stroke weight, everywhere. The sprite carries the same
+   attributes; this is the safety net so a stray <svg> cannot introduce a
+   second weight or a filled glyph next to a stroked one. */
 .icon {
   width: 18px;
   height: 18px;
   flex: none;
-  fill: none;
-  stroke: none;
   color: inherit;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--icon-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .visually-hidden {
@@ -146,8 +152,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   border-radius: var(--r-md);
 }
 .brand:hover { color: inherit; }
-.brand .brandmark { --mark-size: 46px; }
-.brand__text { display: flex; flex-direction: column; min-width: 0; }
+.brand .brandmark { --mark-size: 44px; }
 .brand__name {
   font-size: var(--fs-lg);
   font-weight: var(--fw-semibold);
@@ -155,15 +160,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   line-height: 1.1;
   color: var(--text-hi);
   white-space: nowrap;
-}
-.brand__sub {
-  font-size: var(--fs-3xs);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-faint);
-  white-space: nowrap;
-  margin-top: 2px;
+  min-width: 0;
 }
 
 .railtoggle {
