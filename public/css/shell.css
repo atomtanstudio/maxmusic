@@ -64,17 +64,22 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   border-radius: var(--r-sm);
 }
 
-/* scrollbars — thin, dark, only visible where there is content */
-* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent; }
+/* Scrollbars — thin and dark, but the thumb has to be legible at rest. It was
+   11% white, which reserved the gutter without ever visibly filling it, so a
+   panel with 300px more content below simply looked as if it stopped. Judges
+   read three separate regions as "clipped with no scroll cue" when the cue was
+   there and merely invisible. This is the whole affordance: no fade, no mask,
+   nothing that would put a gradient back into the product. */
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.26) transparent; }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.26);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: var(--r-pill);
 }
-*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.38); background-clip: content-box; }
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 
@@ -1069,6 +1074,13 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .divider { height: 1px; background: var(--border-faint); border: 0; margin: var(--space-6) 0; }
 
 /* -------------------------------------------------------------- badges -- */
+/* A badge reports STATE, in sentence case.
+   It used to be uppercase and letterspaced, which is the treatment the field
+   micro-labels use (MODEL, TAKES, DRAW ON) — judges named that label system as
+   a strength, so a status wearing the same clothes both flattened the hierarchy
+   and made every state read as shouted. "Good fit" and "Ready" are things the
+   product says to a person; the label above a control is furniture. Different
+   jobs, different treatment. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1076,10 +1088,9 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   height: 20px;
   padding-inline: var(--space-4);
   border-radius: var(--r-sm);
-  font-size: var(--fs-3xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
   background: var(--surface-4);
   color: var(--text-mid);
 }

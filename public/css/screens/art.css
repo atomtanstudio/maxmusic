@@ -402,10 +402,12 @@
   background: color-mix(in srgb, var(--surface-0) 76%, transparent);
   backdrop-filter: blur(8px);
   color: var(--text-mid);
-  font-size: var(--fs-3xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
+  /* Sentence case, like every other status. Caps + letterspacing is reserved
+     for the field micro-labels (THE MUSIC / LYRICS / DRAW ON), and a tag
+     wearing that treatment made a piece of state read as a label. */
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
 }
 .screen-art .art-tag--sm { top: var(--space-3); left: var(--space-3); padding: 1px var(--space-3); }
 

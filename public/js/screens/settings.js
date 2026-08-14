@@ -154,7 +154,7 @@ function capCard(id, glyph, name, link) {
       </header>
       <div class="set-cap__row">
         <p class="set-cap__value mono" data-value>…</p>
-        <span class="badge set-cap__badge" data-badge>checking</span>
+        <span class="badge set-cap__badge" data-badge>Checking</span>
       </div>
       <p class="set-cap__note" data-note></p>
       ${link
@@ -609,12 +609,12 @@ export function mount(root, ctx) {
 
     /* --- capabilities ---------------------------------------------------- */
     paintCap('music', offline
-      ? { state: 'fail', badge: 'offline', value: h.backend, note: 'MaxMusic could not reach your studio.' }
+      ? { state: 'fail', badge: 'Offline', value: h.backend, note: 'MaxMusic could not reach your studio.' }
       : degraded
-        ? { state: 'warn', badge: 'not ready', value: h.backend, note: h.comfyError || h.message }
+        ? { state: 'warn', badge: 'Not ready', value: h.backend, note: h.comfyError || h.message }
         : {
             state: 'ok',
-            badge: 'ready',
+            badge: 'Ready',
             value: h.backend,
             note: remote
               ? 'Generation runs on the MiniMax API.'
@@ -622,24 +622,24 @@ export function mount(root, ctx) {
           });
 
     paintCap('lyrics', offline
-      ? { state: 'fail', badge: 'unknown', value: h.lyricsProvider, note: 'The backend did not answer, so its lyrics provider is unknown.' }
+      ? { state: 'fail', badge: 'Unknown', value: h.lyricsProvider, note: 'The backend did not answer, so its lyrics provider is unknown.' }
       : h.lyricsEnabled
-        ? { state: 'ok', badge: 'available', value: h.lyricsProvider, note: 'Ready to write lyrics. A song with vocals needs words first — start on the Lyrics screen.' }
-        : { state: 'warn', badge: 'off', value: h.lyricsProvider, note: 'No lyrics provider is configured. Set LOCAL_CODEX_BIN and LOCAL_CODEX_HOME in the backend environment, or paste lyrics by hand.' });
+        ? { state: 'ok', badge: 'Available', value: h.lyricsProvider, note: 'Ready to write lyrics. A song with vocals needs words first — start on the Lyrics screen.' }
+        : { state: 'warn', badge: 'Off', value: h.lyricsProvider, note: 'No lyrics provider is configured. Set LOCAL_CODEX_BIN and LOCAL_CODEX_HOME in the backend environment, or paste lyrics by hand.' });
 
     paintCap('cover', offline
-      ? { state: 'fail', badge: 'unknown', value: h.coverArtProvider, note: 'The backend did not answer, so cover art availability is unknown.' }
+      ? { state: 'fail', badge: 'Unknown', value: h.coverArtProvider, note: 'The backend did not answer, so cover art availability is unknown.' }
       : h.coverArtEnabled
-        ? { state: 'ok', badge: 'available', value: h.coverArtProvider, note: 'Ready to make album art for any of your songs. Start on the Art screen.' }
-        : { state: 'warn', badge: 'disabled', value: h.coverArtProvider, note: 'Cover art is off. Set COMFY_COVER_WORKFLOW to a ComfyUI image workflow, or LOCAL_MEDIA_BROKER_URL to a running local broker, in the backend environment.' });
+        ? { state: 'ok', badge: 'Available', value: h.coverArtProvider, note: 'Ready to make album art for any of your songs. Start on the Art screen.' }
+        : { state: 'warn', badge: 'Disabled', value: h.coverArtProvider, note: 'Cover art is off. Set COMFY_COVER_WORKFLOW to a ComfyUI image workflow, or LOCAL_MEDIA_BROKER_URL to a running local broker, in the backend environment.' });
 
     paintCap('key', offline
-      ? { state: 'fail', badge: 'unknown', value: '—', note: 'The backend did not answer.' }
+      ? { state: 'fail', badge: 'Unknown', value: '—', note: 'The backend did not answer.' }
       : h.hasServerKey
-        ? { state: 'ok', badge: 'present', value: 'server key set', note: 'The server holds its own MiniMax key, so this browser never sends one.' }
+        ? { state: 'ok', badge: 'Present', value: 'server key set', note: 'The server holds its own MiniMax key, so this browser never sends one.' }
         : remote
-          ? { state: 'warn', badge: 'missing', value: 'none', note: 'The remote backend has no MINIMAX_API_KEY. Requests to the MiniMax API will be rejected until one is set on the server.' }
-          : { state: 'info', badge: 'not needed', value: 'none', note: 'local-comfy renders on your own hardware. A MiniMax API key is only used by the remote backend.' });
+          ? { state: 'warn', badge: 'Missing', value: 'none', note: 'The remote backend has no MINIMAX_API_KEY. Requests to the MiniMax API will be rejected until one is set on the server.' }
+          : { state: 'info', badge: 'Not needed', value: 'none', note: 'local-comfy renders on your own hardware. A MiniMax API key is only used by the remote backend.' });
 
     /* --- models + raw ---------------------------------------------------- */
     paintModels(h);

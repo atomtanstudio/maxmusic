@@ -64,12 +64,18 @@
 
 .idea { flex: 1 1 auto; display: flex; flex-direction: column; }
 
+/* Four whole lines. It used to stand at 7.2 — a paragraph-sized box under a
+   placeholder asking for one line, and a fractional line count that clipped
+   the last row of glyphs. Four leaves room to run on without the field
+   contradicting what it asks for. 24px lines make the arithmetic exact:
+   4 x 24 + the two 16px paddings = 128. */
 .screen-create .idea__input {
-  flex: 1 1 auto;
-  min-height: 176px;
+  flex: 0 0 auto;
+  height: 128px;
+  min-height: 0;
   padding: var(--space-6);
   font-size: var(--fs-lg);
-  line-height: var(--lh-snug);
+  line-height: 24px;
   letter-spacing: var(--tracking-tight);
   color: var(--text-hi);
   background: var(--surface-inset);
