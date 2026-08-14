@@ -273,6 +273,8 @@ const CONNECTION_TOAST = 'shell:connection';
 const state = {
   /** @type {?import('./api.js').Health} */
   health: null,
+  /** @type {?import('./api.js').OpenAIAuth} */
+  auth: null,
   /** @type {?Object} */
   player: null,
   playerReason: '',
@@ -280,6 +282,7 @@ const state = {
 
 let healthTimer = null;
 let healthInFlight = null;
+let authInFlight = null;
 /** Status the customer was last told about, so we speak only on a real change. */
 let announcedStatus = null;
 
@@ -344,8 +347,43 @@ export function refreshHealth() {
   return healthInFlight;
 }
 
+/**
+ * Re-read the OpenAI account state and notify subscribers.
+ *
+ * Kept separate from health on purpose: `/api/health` describes how the backend
+ * routes lyrics and cover art, this describes whether the account behind them is
+ * signed in, and neither answers the other's question.
+ *
+ * @returns {Promise<import('./api.js').OpenAIAuth>}
+ */
+export function refreshAuth() {
+  if (authInFlight) return authInFlight;
+
+  authInFlight = api.openaiStatus()
+    .then((snapshot) => {
+      state.auth = snapshot;
+      bus.emit('auth', snapshot);
+      return snapshot;
+    })
+    .finally(() => { authInFlight = null; });
+
+  return authInFlight;
+}
+
+/**
+ * Subscribe to account snapshots. Fires immediately when one already exists.
+ * @param {(a: import('./api.js').OpenAIAuth) => void} fn
+ * @returns {() => void} unsubscribe
+ */
+function onAuth(fn) {
+  const off = bus.on('auth', fn);
+  if (state.auth) { try { fn(state.auth); } catch (err) { console.error(err); } }
+  return off;
+}
+
 function startHealthPolling() {
   refreshHealth();
+  refreshAuth();
   healthTimer = setInterval(refreshHealth, HEALTH_INTERVAL);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
@@ -872,6 +910,14 @@ function buildContext(route, opts = {}) {
     onHealth: (fn) => track(onHealth(fn)),
     refreshHealth,
 
+    /* The authority on whether the OpenAI account is signed in. Screens gate
+       lyrics and artwork on `ctx.auth.ready`, never on health.lyricsEnabled or
+       health.coverArtEnabled — those report configured routing, and signing in
+       is not expected to change them. */
+    get auth() { return state.auth; },
+    onAuth: (fn) => track(onAuth(fn)),
+    refreshAuth,
+
     get player() { return state.player; },
     get playerUnavailableReason() { return state.player ? '' : state.playerReason; },
 
@@ -989,9 +1035,10 @@ function boot() {
 
   // Debug handle. Not an API — screens use ctx.
   window.MaxMusic = {
-    api, bus, router, toast, storage, registerCss, refreshHealth, icon, iconMarkup,
+    api, bus, router, toast, storage, registerCss, refreshHealth, refreshAuth, icon, iconMarkup,
     menu, attachMenu, registerDock,
     get health() { return state.health; },
+    get auth() { return state.auth; },
     get player() { return state.player; },
   };
 }

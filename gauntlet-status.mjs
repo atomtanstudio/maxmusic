@@ -131,7 +131,9 @@ function scanBans() {
   const stripeRe = /border-left:\s*[234]px|::(?:before|after)\s*\{[^}]*?position:\s*absolute[^}]*?left:[^};]*;[^}]*?width:\s*[234]px/s;
 
   return {
-    gradients: files('public/css/screens', '.css', /linear-gradient/),
+    // Any gradient function, not just linear — a radial wash on the Settings
+    // hero hid behind a `linear-gradient`-only grep for three rounds.
+    gradients: files('public/css/screens', '.css', /(?:linear|radial|conic)-gradient/),
     stripes: files('public/css', '.css', stripeRe),
     plumbing: files('public/js', '.js', /192\.168\.1\.100|POST \/api|ConvRot/),
     // The Covers -> Art rename. Matches the old product name or a bare

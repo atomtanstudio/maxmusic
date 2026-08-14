@@ -417,6 +417,8 @@ export async function mount(root, ctx) {
     busy: null,        // 'write' | 'rewrite'
     undo: null,        // one level of undo for the last generated draft
     health: null,
+    /** @type {?import('../api.js').OpenAIAuth} */
+    auth: null,
   };
 
   const page = el('div', { class: 'screen-lyrics' });
@@ -562,13 +564,12 @@ export async function mount(root, ctx) {
 
   /* Severity is a labelled chip on the title row (CONTRACT §0b/§6d) — never a
      coloured bar down the left edge. */
+  const offlineTitle = el('span', { class: 'notice__title', text: 'Writing help is offline' });
   const offlineNotice = el('div', { class: 'notice notice--warn lyr-offline', hidden: true }, [
     el('span', { class: 'notice__icon', html: ctx.iconMarkup('alert') }),
     el('div', { class: 'notice__body' }, [
       // The title already says "offline"; the icon and border say how serious.
-      el('p', { class: 'notice__head' }, [
-        el('span', { class: 'notice__title', text: 'Writing help is offline' }),
-      ]),
+      el('p', { class: 'notice__head' }, [offlineTitle]),
       el('p', { text: 'You can still write and check the words by hand.' }),
       el('button', {
         class: 'btn btn--sm lyr-offline__btn', type: 'button', text: 'Open Settings',
@@ -1103,7 +1104,10 @@ export async function mount(root, ctx) {
 
   /* -------------------------------------------------------- availability */
 
-  const writingAvailable = () => Boolean(state.health && state.health.lyricsEnabled);
+  /* Writing help needs the OpenAI account, not a health flag. `/api/health`'s
+     `lyrics` field reports configured routing and does not change when the
+     account signs in, so it is not consulted here. */
+  const writingAvailable = () => Boolean(state.auth?.ready);
 
   function selectionLength() {
     return Math.max(0, doc.selectionEnd - doc.selectionStart);
@@ -1114,19 +1118,27 @@ export async function mount(root, ctx) {
     const busy = Boolean(state.busy);
     const hasText = doc.value.trim().length > 0;
 
-    offlineNotice.hidden = available || !state.health;
-    ideaInput.disabled = !available && Boolean(state.health);
-    instructionInput.disabled = !available && Boolean(state.health);
-    for (const chip of presetRow.children) chip.disabled = !available && Boolean(state.health);
+    // "Known" is now the account snapshot, not the health one: until it has
+    // arrived we say nothing rather than claiming writing help is off.
+    const known = Boolean(state.auth);
+    offlineNotice.hidden = available || !known;
+    offlineTitle.textContent = state.auth && state.auth.brokerConfigured && !state.auth.authenticated
+      ? 'Sign in to write lyrics'
+      : 'Writing help is offline';
+    ideaInput.disabled = !available && known;
+    instructionInput.disabled = !available && known;
+    for (const chip of presetRow.children) chip.disabled = !available && known;
 
     let label;
     let reason = '';
     if (state.mode === 'write') {
       const hasIdea = ideaInput.value.trim().length > 0;
       ideaSeeds.hidden = hasIdea;
-      for (const chip of ideaSeeds.children) chip.disabled = !available && Boolean(state.health);
+      for (const chip of ideaSeeds.children) chip.disabled = !available && known;
       label = busy ? 'Writing…' : 'Write the lyrics';
-      if (!available) reason = 'Writing help is offline right now.';
+      if (!available) reason = state.auth && state.auth.brokerConfigured && !state.auth.authenticated
+        ? 'Connect your OpenAI account in Settings first.'
+        : 'Writing help is offline right now.';
       else if (!hasIdea) reason = 'Say what the song is about first.';
       actionBtn.disabled = busy || !available || !hasIdea;
 
@@ -1141,7 +1153,9 @@ export async function mount(root, ctx) {
       label = busy
         ? 'Rewriting…'
         : selected ? `Rewrite ${plural(lines, 'line')}` : 'Rewrite the song';
-      if (!available) reason = 'Writing help is offline right now.';
+      if (!available) reason = state.auth && state.auth.brokerConfigured && !state.auth.authenticated
+        ? 'Connect your OpenAI account in Settings first.'
+        : 'Writing help is offline right now.';
       else if (!hasText) reason = 'Write or paste some lyrics first.';
       else if (!hasInstruction) reason = 'Say what should change.';
       actionBtn.disabled = busy || !available || !hasText || !hasInstruction;
@@ -1302,6 +1316,11 @@ export async function mount(root, ctx) {
 
   ctx.onHealth((h) => {
     state.health = h;
+    syncAction();
+  });
+
+  ctx.onAuth((a) => {
+    state.auth = a;
     syncAction();
   });
 

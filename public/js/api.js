@@ -290,6 +290,142 @@ export async function health(opts = {}) {
 }
 
 /* ========================================================================== *
+ * OpenAI account — GET /api/openai/status, POST /api/openai/auth/start,
+ *                  GET /api/openai/auth/poll/:id
+ *
+ * The browser never speaks to the broker itself and never handles a broker
+ * token: the backend holds the credential and these three routes are the whole
+ * surface. Nothing here may be logged or rendered beyond what these responses
+ * carry, and none of it is a secret.
+ *
+ * This — not `/api/health` — is the authority on whether the account is signed
+ * in. `/api/health` reports how the backend is *configured to route* lyrics and
+ * cover art; it does not know whether the account is authenticated, and signing
+ * in is not expected to change its `lyrics` / `coverArt` fields.
+ * ========================================================================== */
+
+/**
+ * @typedef {Object} OpenAIAuth
+ * @property {*}       raw               Untouched response body.
+ * @property {boolean} brokerConfigured  The backend has a broker to talk to.
+ * @property {boolean} authenticated     An OpenAI account is signed in.
+ * @property {boolean} codexAvailable    Lyrics can be written.
+ * @property {boolean} imageGeneration   Album art can be rendered.
+ * @property {?string} provider          e.g. `codex-chatgpt`.
+ * @property {?string} planType          e.g. `pro`.
+ * @property {boolean} ready             brokerConfigured && authenticated && codexAvailable.
+ * @property {boolean} reachable         False when the status route itself failed.
+ * @property {?ApiError} error
+ * @property {number}  checkedAt
+ */
+
+/** @param {*} raw @returns {OpenAIAuth} */
+function readAuth(raw) {
+  const brokerConfigured = Boolean(raw?.brokerConfigured);
+  const authenticated = Boolean(raw?.authenticated);
+  const codexAvailable = Boolean(raw?.codexAvailable);
+  return {
+    raw,
+    brokerConfigured,
+    authenticated,
+    codexAvailable,
+    imageGeneration: Boolean(raw?.imageGeneration),
+    provider: raw?.provider || null,
+    planType: raw?.planType || null,
+    ready: brokerConfigured && authenticated && codexAvailable,
+    reachable: true,
+    error: null,
+    checkedAt: Date.now(),
+  };
+}
+
+/**
+ * Read account state. Never throws — an unreachable backend is a legitimate
+ * answer, the same contract `health()` keeps.
+ *
+ * @param {{ signal?: AbortSignal, timeoutMs?: number }} [opts]
+ * @returns {Promise<OpenAIAuth>}
+ */
+export async function openaiStatus(opts = {}) {
+  const { signal, timeoutMs = 8000 } = opts;
+  try {
+    return readAuth(await request('/api/openai/status', { signal, timeoutMs }));
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    const apiErr = err instanceof ApiError
+      ? err
+      : new ApiError(err?.message || String(err), { endpoint: '/api/openai/status' });
+    return {
+      raw: apiErr.body,
+      brokerConfigured: false,
+      authenticated: false,
+      codexAvailable: false,
+      imageGeneration: false,
+      provider: null,
+      planType: null,
+      ready: false,
+      reachable: false,
+      error: apiErr,
+      checkedAt: Date.now(),
+    };
+  }
+}
+
+/**
+ * Begin sign-in. Resolves either `{ status: 'already_authenticated', auth }` or
+ * `{ status: 'pending', id, url, verificationCode, expiresAt }`.
+ *
+ * Throws on a failed request, because a click that goes nowhere is a real
+ * failure the customer is waiting on — unlike a background status poll.
+ *
+ * @param {{ signal?: AbortSignal }} [opts]
+ */
+export async function openaiAuthStart(opts = {}) {
+  const raw = await request('/api/openai/auth/start', {
+    method: 'POST',
+    signal: opts.signal,
+    timeoutMs: 20000,
+  });
+  if (raw?.status === 'already_authenticated') {
+    return { status: 'already_authenticated', auth: readAuth(raw.auth || raw) };
+  }
+  return {
+    status: 'pending',
+    id: raw?.id ? String(raw.id) : '',
+    url: raw?.url ? String(raw.url) : '',
+    // Optional manual fallback. Shown to the customer; it is not a secret, and
+    // it is the ONLY code this app ever displays.
+    verificationCode: raw?.verification_code ? String(raw.verification_code) : '',
+    // Seconds since epoch in the contract; normalised to ms here.
+    expiresAt: Number(raw?.expires_at) > 0 ? Number(raw.expires_at) * 1000 : 0,
+  };
+}
+
+/**
+ * Poll one sign-in attempt. Resolves `{ status: 'pending'|'completed'|'failed' }`
+ * with `auth` on completion and `message` on failure.
+ *
+ * @param {string} attemptId
+ * @param {{ signal?: AbortSignal }} [opts]
+ */
+export async function openaiAuthPoll(attemptId, opts = {}) {
+  const raw = await request(`/api/openai/auth/poll/${encodeURIComponent(attemptId)}`, {
+    signal: opts.signal,
+    timeoutMs: 15000,
+  });
+  if (raw?.status === 'completed') {
+    return { status: 'completed', auth: readAuth(raw.auth || {}) };
+  }
+  if (raw?.status === 'failed') {
+    return { status: 'failed', message: raw?.error || 'The sign-in didn’t finish.' };
+  }
+  return {
+    status: 'pending',
+    expiresAt: Number(raw?.expires_at) > 0 ? Number(raw.expires_at) * 1000 : 0,
+  };
+}
+
+/* ========================================================================== *
  * Generation payload — SPEC §3a
  * ========================================================================== */
 
@@ -720,5 +856,6 @@ const api = {
   LIMITS, FORMATS, BITRATES, SAMPLE_RATES, SECTION_TAGS, ASPECT_RATIOS, LYRICS_MODES,
   request, health, validateGeneration, generate, generateDual, generateStream,
   lyrics, coverArt, upload, cover, coverPreprocess, mediaUrl, errorText,
+  openaiStatus, openaiAuthStart, openaiAuthPoll,
 };
 export default api;

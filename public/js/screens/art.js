@@ -651,6 +651,8 @@ export async function mount(root, ctx) {
     plan: null,
     undo: null,
     health: null,
+    /** @type {?import('../api.js').OpenAIAuth} */
+    auth: null,
     busy: false,
     startedAt: 0,
     error: null,
@@ -851,6 +853,12 @@ export async function mount(root, ctx) {
 
   const pausedTitle = el('span', { class: 'notice__title', text: 'Artwork is paused' });
   const pausedText = el('p', { class: 'art-paused__text' });
+  /* Shown only when signing in is the actual fix — a "Check again" button is
+     no use against a state that is waiting on the customer, not the studio. */
+  const signInBtn = el('button', {
+    class: 'btn btn--sm art-paused__btn', type: 'button', text: 'Open Settings', hidden: true,
+    onclick: () => ctx.navigate('settings'),
+  });
   const pausedNotice = el('div', { class: 'notice notice--warn art-paused', hidden: true }, [
     el('span', { class: 'notice__icon', html: ctx.iconMarkup('alert') }),
     el('div', { class: 'notice__body' }, [
@@ -859,12 +867,13 @@ export async function mount(root, ctx) {
       el('p', { class: 'notice__head' }, [pausedTitle]),
       pausedText,
     ]),
+    signInBtn,
     el('button', {
       class: 'btn btn--sm art-paused__btn', type: 'button', text: 'Check again',
       onclick: async (e) => {
         const btn = e.currentTarget;
         btn.disabled = true;
-        try { await ctx.refreshHealth(); } finally { btn.disabled = false; }
+        try { await Promise.all([ctx.refreshHealth(), ctx.refreshAuth()]); } finally { btn.disabled = false; }
       },
     }),
   ]);
@@ -1010,14 +1019,28 @@ export async function mount(root, ctx) {
    * Derived
    * ===================================================================== */
 
-  const available = () => Boolean(state.health?.coverArtEnabled) && state.health?.status !== 'offline';
+  /**
+   * Artwork needs the studio reachable AND the OpenAI account signed in with
+   * image generation on. `/api/health` is not consulted for the second half:
+   * its `coverArt` field reports how the backend is configured to route, not
+   * whether the account behind it is authenticated, and signing in is not
+   * expected to change it.
+   */
+  const available = () => state.health?.status !== 'offline'
+    && Boolean(state.auth?.ready)
+    && Boolean(state.auth?.imageGeneration);
 
   /** Why the button is off, in the customer's words. Empty string when it is on. */
   function blockedReason() {
     const h = state.health;
+    const a = state.auth;
     if (!h) return 'Checking your studio…';
     if (h.status === 'offline') return h.message;
-    if (!h.coverArtEnabled) return 'Artwork can’t be rendered right now.';
+    if (!a) return 'Checking your OpenAI account…';
+    if (!a.reachable) return 'MaxMusic can’t check your OpenAI account right now.';
+    if (!a.brokerConfigured) return 'No OpenAI account is set up for album art yet.';
+    if (!a.authenticated) return 'Sign in to OpenAI in Settings to make album art.';
+    if (!a.imageGeneration) return 'This OpenAI account can’t make images.';
     if (!clean(state.prompt) && !clean(state.title) && !clean(state.style)) {
       return 'Write a brief, or pick a starting point, first.';
     }
@@ -1199,11 +1222,24 @@ export async function mount(root, ctx) {
     pausedNotice.hidden = !paused;
     if (paused) {
       const offline = state.health.status === 'offline';
-      pausedTitle.textContent = offline ? 'Your studio is not answering' : 'Artwork is paused';
+      const needsSignIn = !offline && state.auth && !state.auth.authenticated && state.auth.brokerConfigured;
+
+      // Three different causes, three different truths. "It switches back on by
+      // itself" is only true of a busy studio — an account that is not signed
+      // in waits for the customer, and saying otherwise would leave them
+      // waiting for something that is never going to happen.
+      pausedTitle.textContent = offline
+        ? 'Your studio is not answering'
+        : needsSignIn ? 'Sign in to make album art' : 'Artwork is paused';
       pausedText.textContent = offline
         ? `${state.health.message} Your brief is saved here.`
-        : 'Nothing can be rendered right now. Your brief is saved, and this switches back on by itself.';
+        : needsSignIn
+          ? 'Connect your OpenAI account in Settings and come back — your brief is saved here.'
+          : `${reason} Your brief is saved here.`;
     }
+    signInBtn.hidden = !paused
+      || state.health.status === 'offline'
+      || !(state.auth && state.auth.brokerConfigured && !state.auth.authenticated);
     generateHint.hidden = paused;
     generateHint.textContent = paused ? '' : (reason
       || 'One square cover, about a minute. It is saved to the gallery below.');
@@ -1580,6 +1616,12 @@ export async function mount(root, ctx) {
 
   ctx.onHealth((h) => {
     state.health = h;
+    renderForm();
+  });
+
+  /* Whether artwork can be made is the account's answer, not health's. */
+  ctx.onAuth((a) => {
+    state.auth = a;
     renderForm();
   });
 

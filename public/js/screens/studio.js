@@ -1106,10 +1106,16 @@ export async function mount(root, ctx) {
    * facts and each one has to state its own reason.
    */
   function syncLyricButtons() {
-    const providerOff = health ? !health.lyricsEnabled : false;
+    // The account decides, not health: health.lyricsEnabled reports configured
+    // routing and does not flip when someone signs in.
+    const auth = ctx.auth;
+    const providerOff = auth ? !auth.ready : false;
+    const needsSignIn = Boolean(auth && auth.brokerConfigured && !auth.authenticated);
     const busy = Boolean(lyricsJob);
     const reason = providerOff
-      ? 'Lyric writing is switched off for this studio.'
+      ? (needsSignIn
+        ? 'Connect your OpenAI account in Settings to write lyrics here.'
+        : 'Lyric writing is switched off for this studio.')
       : (state.instrumental
         ? 'Instrumental tracks are rendered without lyrics.'
         : 'Draft a full set of lyrics from your description.');
@@ -1897,6 +1903,7 @@ export async function mount(root, ctx) {
   syncAll();
   syncOutput();
   ctx.onHealth(applyHealth); // fires immediately when a snapshot already exists
+  ctx.onAuth(() => syncLyricButtons()); // the two Codex buttons are gated by it
 
   // Re-attach to a render that survived a screen change.
   if (job) {

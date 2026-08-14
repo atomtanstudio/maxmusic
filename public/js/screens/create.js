@@ -600,10 +600,17 @@ export function mount(root, ctx) {
           retry: true,
         };
       }
-      if (!state.instrumental && !health.lyricsEnabled && !state.song?.lyrics) {
+      // Lyrics come from the OpenAI account, so the account is what is asked.
+      // health.lyricsEnabled describes configured routing and does not change
+      // when someone signs in.
+      const auth = ctx.auth;
+      if (!state.instrumental && auth && !auth.ready && !state.song?.lyrics) {
+        const needsSignIn = auth.brokerConfigured && !auth.authenticated;
         return {
-          title: 'Lyric writing is unavailable',
-          text: 'Songs with vocals need lyrics before they can render. Switch to Instrumental, or turn lyric writing back on in Settings.',
+          title: needsSignIn ? 'Sign in to write lyrics' : 'Lyric writing is unavailable',
+          text: needsSignIn
+            ? 'Songs with vocals need words first. Connect your OpenAI account in Settings, or make this one instrumental.'
+            : 'Songs with vocals need lyrics before they can render. Switch to Instrumental, or set up lyric writing in Settings.',
           kind: 'warn',
           instrumental: true,
         };
@@ -1906,6 +1913,10 @@ export function mount(root, ctx) {
     health = snapshot;
     paintFooter();
   });
+
+  // Signing in changes whether a vocal song can render, so the footer has to
+  // be repainted on the account too, not only on health.
+  ctx.onAuth(() => paintFooter());
 
   /* ------------------------------------------------------------------ boot -- */
 

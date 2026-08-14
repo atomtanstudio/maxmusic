@@ -300,6 +300,40 @@ function template(iconMarkup) {
 
   <section class="set-sec">
     <header class="set-sec__head">
+      <h2 class="set-sec__title">OpenAI account</h2>
+      <p class="set-sec__note">Signs in on the server. This browser never holds the credential.</p>
+    </header>
+
+    <div class="panel set-account" data-account data-state="checking">
+      <div class="set-account__row">
+        <span class="set-account__dot" aria-hidden="true"></span>
+        <div class="set-account__text">
+          <p class="set-account__state" data-account-state>Checking OpenAI…</p>
+          <p class="set-account__note" data-account-note></p>
+        </div>
+        <button class="btn btn--sm set-account__btn" type="button" data-account-btn disabled>
+          Sign in with OpenAI
+        </button>
+      </div>
+
+      <div class="set-account__pending" data-account-pending hidden>
+        <p class="set-account__pendtext">
+          Finish signing in on the OpenAI tab. This page picks it up on its own.
+        </p>
+        <p class="set-account__code" data-account-code hidden>
+          If the tab didn’t open, go to <b data-account-url></b> and enter
+          <code class="code" data-account-verify></code>
+        </p>
+        <div class="row">
+          <button class="btn btn--sm" type="button" data-account-cancel>Stop waiting</button>
+          <button class="btn btn--sm btn--ghost" type="button" data-account-reopen>Open the tab again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="set-sec">
+    <header class="set-sec__head">
       <h2 class="set-sec__title">Your defaults</h2>
       <p class="set-sec__note">Stored in this browser under <code class="code">maxmusic:defaults</code>.</p>
       <button class="btn btn--sm btn--ghost set-sec__action" type="button" data-reset>
@@ -429,6 +463,16 @@ export function mount(root, ctx) {
     start: $('[data-start]'),
     artist: $('[data-artist]'),
     openStart: $('[data-open-start]'),
+    account: $('[data-account]'),
+    accountState: $('[data-account-state]'),
+    accountNote: $('[data-account-note]'),
+    accountBtn: $('[data-account-btn]'),
+    accountPending: $('[data-account-pending]'),
+    accountCode: $('[data-account-code]'),
+    accountUrl: $('[data-account-url]'),
+    accountVerify: $('[data-account-verify]'),
+    accountCancel: $('[data-account-cancel]'),
+    accountReopen: $('[data-account-reopen]'),
     preview: $('[data-preview]'),
     previewWarn: $('[data-preview-warn]'),
     reset: $('[data-reset]'),
@@ -893,15 +937,170 @@ export function mount(root, ctx) {
 
   /* ----------------------------------------------------------------- boot */
 
+  /* ------------------------------------------------------- OpenAI account  */
+
+  /* One attempt at a time. `pollTimer` is a chain of delayed single requests,
+     never a setInterval — an interval can start a second poll while the first
+     is still out, which the broker contract rules out explicitly. */
+  const attempt = { id: '', url: '', expiresAt: 0 };
+  let pollTimer = null;
+  let pollAbort = null;
+  let starting = false;
+
+  function stopPolling() {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+    pollAbort?.abort(new DOMException('Cancelled', 'AbortError'));
+    pollAbort = null;
+    attempt.id = '';
+    attempt.url = '';
+    attempt.expiresAt = 0;
+    el.accountPending.hidden = true;
+    paintAccount(ctx.auth);
+  }
+
+  function paintAccount(auth) {
+    const waiting = Boolean(attempt.id);
+    el.accountPending.hidden = !waiting;
+
+    if (waiting) {
+      el.account.dataset.state = 'pending';
+      el.accountState.textContent = 'Finish sign-in in the OpenAI tab…';
+      el.accountNote.textContent = 'This page is watching for it.';
+      el.accountBtn.hidden = true;
+      return;
+    }
+    el.accountBtn.hidden = false;
+
+    if (!auth) {
+      el.account.dataset.state = 'checking';
+      el.accountState.textContent = 'Checking OpenAI…';
+      el.accountNote.textContent = '';
+      el.accountBtn.disabled = true;
+      return;
+    }
+    if (!auth.reachable) {
+      el.account.dataset.state = 'fail';
+      el.accountState.textContent = 'Can’t check your OpenAI account';
+      el.accountNote.textContent = 'Your studio didn’t answer. It has to be running to sign in.';
+      el.accountBtn.disabled = true;
+      el.accountBtn.textContent = 'Sign in with OpenAI';
+      return;
+    }
+    if (!auth.brokerConfigured) {
+      el.account.dataset.state = 'off';
+      el.accountState.textContent = 'No OpenAI account is set up';
+      el.accountNote.textContent = 'Your studio has no broker to sign in through, so this is set up on the server.';
+      el.accountBtn.disabled = true;
+      el.accountBtn.textContent = 'Sign in with OpenAI';
+      return;
+    }
+    if (auth.authenticated) {
+      el.account.dataset.state = 'ok';
+      el.accountState.textContent = 'OpenAI · connected';
+      const bits = [];
+      if (auth.planType) bits.push(`${auth.planType} plan`);
+      bits.push(auth.codexAvailable ? 'lyrics ready' : 'lyrics unavailable');
+      bits.push(auth.imageGeneration ? 'album art ready' : 'album art unavailable');
+      el.accountNote.textContent = bits.join(' · ');
+      el.accountBtn.disabled = false;
+      el.accountBtn.textContent = 'Check again';
+      return;
+    }
+    el.account.dataset.state = 'off';
+    el.accountState.textContent = 'Not signed in';
+    el.accountNote.textContent = 'Signing in lets MaxMusic write lyrics and make album art.';
+    el.accountBtn.disabled = false;
+    el.accountBtn.textContent = 'Sign in with OpenAI';
+  }
+
+  async function pollOnce() {
+    if (!attempt.id) return;
+    if (attempt.expiresAt && Date.now() > attempt.expiresAt) {
+      stopPolling();
+      ctx.toast('That sign-in expired before it finished. Try again when you are ready.',
+        { kind: 'warn', title: 'Sign-in timed out' });
+      return;
+    }
+    pollAbort = new AbortController();
+    try {
+      const res = await api.openaiAuthPoll(attempt.id, { signal: pollAbort.signal });
+      if (!attempt.id) return;                       // cancelled while in flight
+      if (res.status === 'completed') {
+        attempt.id = '';
+        el.accountPending.hidden = true;
+        await ctx.refreshAuth();
+        ctx.toast('Lyrics and album art are ready to use.', { kind: 'success', title: 'OpenAI connected' });
+        return;
+      }
+      if (res.status === 'failed') {
+        const message = res.message;
+        stopPolling();
+        ctx.toast(message, { kind: 'error', title: 'Sign-in didn’t finish' });
+        return;
+      }
+      if (res.expiresAt) attempt.expiresAt = res.expiresAt;
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      const message = api.errorText(err);
+      stopPolling();
+      ctx.toast(message, { kind: 'error', title: 'Sign-in didn’t finish' });
+      return;
+    }
+    pollTimer = setTimeout(pollOnce, 1500);
+  }
+
+  el.accountBtn.addEventListener('click', async () => {
+    if (starting) return;                            // duplicate clicks do nothing
+    const auth = ctx.auth;
+    if (auth?.authenticated) { await ctx.refreshAuth(); return; }
+
+    starting = true;
+    el.accountBtn.disabled = true;
+    try {
+      const started = await api.openaiAuthStart();
+      if (started.status === 'already_authenticated') {
+        await ctx.refreshAuth();
+        return;
+      }
+      if (!started.id) throw new Error('Your studio didn’t return a sign-in to wait on.');
+
+      attempt.id = started.id;
+      attempt.url = started.url;
+      attempt.expiresAt = started.expiresAt;
+      el.accountUrl.textContent = started.url;
+      el.accountVerify.textContent = started.verificationCode;
+      el.accountCode.hidden = !started.verificationCode;
+      paintAccount(ctx.auth);
+      if (started.url) window.open(started.url, '_blank', 'noopener,noreferrer');
+      pollTimer = setTimeout(pollOnce, 1200);
+    } catch (err) {
+      ctx.toast(api.errorText(err), { kind: 'error', title: 'Couldn’t start sign-in' });
+    } finally {
+      starting = false;
+      el.accountBtn.disabled = false;
+      paintAccount(ctx.auth);
+    }
+  });
+
+  el.accountCancel.addEventListener('click', stopPolling);
+  el.accountReopen.addEventListener('click', () => {
+    if (attempt.url) window.open(attempt.url, '_blank', 'noopener,noreferrer');
+  });
+
   ctx.onHealth(paintHealth);
+  ctx.onAuth(paintAccount);
   ctx.bus.on('player:ready', paintClient);
   paintClient();
   paintDefaults();
+  paintAccount(ctx.auth);
+  ctx.refreshAuth();
   const ticker = setInterval(paintClock, 1000);
   recheck();
 
   return () => {
     clearInterval(ticker);
+    stopPolling();
     window.removeEventListener('online', onNetwork);
     window.removeEventListener('offline', onNetwork);
   };
