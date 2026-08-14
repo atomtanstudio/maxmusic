@@ -4,7 +4,7 @@
  *
  * Takes the current captures in `shots/now/` and the real product screenshots
  * in `refs/`, de-identifies both, shuffles them into `a` / `b` slots, and
- * writes `shots/blind-r3/<piece>/{a,b}.png` plus a `key.json` recording which
+ * writes `shots/blind-r<round>/<piece>/{a,b}.png` plus a `key.json` recording which
  * slot is ours. The judge sees only the two images; the key stays out of the
  * prompt.
  *
@@ -32,7 +32,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = path.dirname(fileURLToPath(import.meta.url));
-const OUT = path.join(REPO, 'shots/blind-r3');
+const ROUND = Number(process.env.ROUND || 4);
+const OUT = path.join(REPO, `shots/blind-r${ROUND}`);
 const PORT = Number(process.env.CDP_PORT || 9372);
 const CROP_TOP = 56;
 const FILL = { x: 18, y: 376, w: 200, h: 34 };   // reference sidebar account handle
@@ -185,7 +186,7 @@ for (const { piece, ours, ref } of PIECES) {
     fs.writeFileSync(path.join(dir, `${refSlot}.png`), refPng);
     fs.writeFileSync(path.join(dir, 'key.json'), `${JSON.stringify({
       piece,
-      round: 3,
+      round: ROUND,
       ours: oursSlot,
       reference: refSlot,
       sources: { [oursSlot]: ours, [refSlot]: ref },
@@ -212,5 +213,5 @@ for (let i = 0; i < 5; i++) {
 }
 fileServer.close();
 
-console.log(`\n  ${done}/${PIECES.length} pairings written to shots/blind-r3/\n`);
+console.log(`\n  ${done}/${PIECES.length} pairings written to shots/blind-r${ROUND}/\n`);
 process.exit(done === PIECES.length ? 0 : 1);

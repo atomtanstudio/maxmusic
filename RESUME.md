@@ -69,9 +69,29 @@ code. Losers come back with one named gap.
 | 2 | Rebuilt all five screens against their named gaps. Build committed (`9d75dbf`). Its scoring pass was killed — a capture agent drifted into generating content instead of screenshotting. **Never scored.** |
 | 3 | Build work finished 14 Aug. Scored 14 Aug, 3 judges per screen: **won 0 of 5 — all 15 judges picked the real product.** But read the next section before acting on that number. |
 
-> **Reading the score.** "Won 0 of 5" means we lost every screen. A win is a judge mistaking
-> *our* screen for the real shipped product. Earlier notes said "Lost 0/5", which reads
-> backwards — it never meant we lost nothing.
+| 4 | Two worst gaps fixed, then rescored 14 Aug with the **question changed** to "which is the better piece of design work?": **won 5 of 5, 15 of 15 judges.** |
+
+> **Reading the score.** Rounds 1–3: a win is a judge mistaking *our* screen for the real
+> shipped product. "Won 0 of 5" means we lost every screen — earlier notes said "Lost 0/5",
+> which reads backwards. Round 4 changed the question, so **its 5/5 is not the same measure as
+> round 3's 0/5 and the two do not form a trend.** Both results are consistent with each other:
+> our screens read as more deliberately designed *and* as not commercially accreted.
+
+### Round 4, and how much to believe it
+
+Every judge picked us, on every screen, and the reasons were specific and consistent — one
+accent spent once, empty and error states written as real content in product voice, one job
+per zone. Several called the reference "a competent but generic feed" and "an accreted list
+that ships raw model strings as its body copy".
+
+**Be sceptical of a 15/15 sweep.** The question was chosen by us, and it may now lean our way:
+a clean, sparse, single-accent redesign flatters exactly the criteria it names, against a dense
+commercial feed carrying years of features. The honest reading is that this measures *deliberate
+design authorship*, which is what we wanted, and that we are clearly ahead on it — not that the
+product is finished.
+
+Because we won everywhere, every actionable note is now in each judge's "weakest point of the
+screen you picked". Those are in `shots/round4-verdicts.json` and ranked below.
 
 Round 1's verdicts are in `shots/round1-verdicts.json`, round 3's in `shots/round3-verdicts.json`
 (15 judges, every tell and gap recorded).
@@ -146,11 +166,34 @@ number is worth. Counts are out of 30 gap statements.
 | 4 | **Engineering telemetry as UI** — `471 characters` with no limit or consequence, `[verse] 31w 0:22`, `159 sung words 144–192 fits 2:00`. This is round 1's §7a loss in a new costume: not endpoints this time, but raw counters. | art, studio |
 | 2 | **Two heading conventions in one column** — `Art brief` in sentence case among uppercase letterspaced eyebrows. | art |
 
-**The top two are fixed** (14 Aug, commit below). Measured after, across all five screens:
-23 inactive controls now sit at or above 3:1 — the worst was 1.37:1 — and no textarea on any
-screen still exposes an OS resize grip. Art's three brief fields were each rendering a 0.40
-fractional line, which is what "sliced through the glyphs" was; they are now exactly 3, 2 and
-5 whole lines. The remaining four gaps are open.
+**The top two are fixed** (14 Aug). Measured after, across all five screens: 23 inactive
+controls now sit at or above 3:1 — the worst was 1.37:1 — and no textarea on any screen still
+exposes an OS resize grip. Art's three brief fields were each rendering a 0.40 fractional line,
+which is what "sliced through the glyphs" was; they are now exactly 3, 2 and 5 whole lines.
+
+Round 4 confirmed the grips and the disabled states are gone — neither is mentioned once by any
+of the 15 judges. **Half of the clipping gap survives**: the Art brief no longer slices glyphs,
+but it still overflows by 100px with no fade, ellipsis or scroll cue, so judges still read it as
+an overflow bug rather than a designed preview. Fixing the geometry was not the same as designing
+the overflow.
+
+## Round 4's list, by how many of 15 judges raised it
+
+| Hits | Gap | Screens |
+|---|---|---|
+| 12 | **Says one idea twice or more.** Now the single dominant fault, on every screen. Studio's fit block still states one verdict four ways; Art says "paused" three times (icon, heading, `PAUSED` pill) and `EXAMPLE` three times in one block. | all five |
+| 5 | **State contradiction.** "Artwork is paused — nothing can be rendered right now" sits ~20px above a full-strength, fully-live `Generate cover art`. On Create, the caption "Writes the lyrics first, then renders the audio" sits under a lit CTA while the card above says lyric writing is unavailable. Either disable the control or change the claim. | art, create |
+| 4 | **Overflow with no fade or scroll cue** — the remaining half of the clipping gap. | art, lyrics |
+| 4 | **All-caps chips break product voice.** A `WARNING` chip beside a title that already says "unavailable" is log-line shorthand in an otherwise well-written frame. | art, create, lyrics |
+| 3 | **A field sized against its own copy.** The Create prompt box is ~270px tall; its placeholder asks for "one line". | create |
+| 3 | **Unresolved space on Lyrics** — a ~350px gap between the empty-state copy and "Start from a structure", and the pinned "Write the lyrics" CTA shears the Structure card in the right rail, which is a real §7e bisect. | lyrics |
+
+### A regression I introduced, caught by all three Create judges
+
+The floor added under the songs panel earlier that day ("Your songs collect here as you make
+them — newest first, each one ready to play") duplicates the subhead 430px above it ("Songs you
+create land here, newest first"). Fixing the §7b void created a §7a-style repetition. One of the
+two lines should go — most likely the subhead, since the floor sits where the songs will.
 
 ---
 
