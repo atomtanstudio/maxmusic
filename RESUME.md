@@ -67,9 +67,45 @@ code. Losers come back with one named gap.
 |---|---|
 | 1 | **Lost 0 / 5**, four "obvious". Every judge identified the build the same way: we published engineering internals as product UI. |
 | 2 | Rebuilt all five screens against their named gaps. Build committed (`9d75dbf`). Its scoring pass was killed — a capture agent drifted into generating content instead of screenshotting. **Never scored.** |
-| 3 | Design pass landed (solid accent, stripe removal, Covers → Art rename). Build work **finished 14 Aug**. Still **never blind-judged.** |
+| 3 | Build work finished 14 Aug. Scored 14 Aug with 3 judges per screen: **lost 0 / 5, 15 / 15 judges**. But read the next section before acting on that number. |
 
-Round 1's full verdicts with the named gaps are in `shots/round1-verdicts.json`.
+Round 1's verdicts are in `shots/round1-verdicts.json`, round 3's in `shots/round3-verdicts.json`
+(15 judges, every tell and gap recorded).
+
+## Round 3 says the test is now measuring the wrong thing
+
+**13 of the 15 tells did not name a design flaw.** They named commercial furniture:
+`Earn Credits`, `Upgrade to Premier`, `Labs`, per-track `v5.5` model badges, pagination,
+`Filters (3)`, `Liked / Public / Uploads`, verified ticks, play/like/comment counts. The
+judges' own words: *"none of which a redesign would bother to invent"*, *"only accretes
+through shipping"*.
+
+That is not craft. It is a billing system and a social graph. MaxMusic is local, single-user
+and self-hosted — it has no plans to upsell, no credits to earn, no public feed and no model
+version history. It cannot grow those tells without inventing a business it does not have.
+Asked *"which is the real shipped commercial product"*, a judge finds the payment rail every
+time, and the answer stops depending on how well either screen is designed.
+
+Round 1 was a fair loss and its correction was real — we were publishing plumbing. Round 3 is
+not the same loss wearing new clothes. **Only 2 of 15 judges identified us on craft**, and
+both named the same thing: the interface says one thing several times in a single frame.
+
+So 0/5 should not be read as "no progress". Judges repeatedly volunteered that our empty
+states, copy voice and colour discipline beat the real product's — *"the best-written copy on
+either screen"*, *"A's colour discipline is genuinely stronger than the real product's"*.
+
+**This is a product-owner call, and it is the next decision to make.** Either change the
+question the judge is asked, or stop scoring against a mass-market SaaS. Options, cheapest
+first:
+
+1. Ask the sharper question. Not *"which shipped?"* but *"which was designed by a better
+   team?"* or *"which would you rather use?"* — both survive the missing billing rail.
+2. Crop the commercial chrome out of the reference the way the wordmark already is, so the
+   comparison is the working area only.
+3. Change the bar to a product with a comparable shape — a local, single-user creative tool
+   rather than a freemium social platform.
+
+Until one of those lands, another round costs judges and tells you what this one did.
 
 ### Live counters (what "done" looks like)
 
@@ -92,10 +128,22 @@ pinned left), which the old `border-left` grep missed — that is how the second
 
 ## Pick up here
 
-### The only thing left: round 3's scoring pass
+### The six gaps round 3 named, by how often 15 judges independently hit them
 
-Nothing has been blind-judged since round 1. The build is ready for it. See "Resuming the
-loop" below, and keep the capture step tightly scoped.
+These stand on their own merit — they are real craft faults regardless of what the win/loss
+number is worth. Counts are out of 30 gap statements.
+
+| Hits | Gap | Screens |
+|---|---|---|
+| 15 | **Says the same thing 2–4 times in one frame.** The lyric-fit card states one boolean five ways; `EXAMPLE` appears three times within 120px on Art; the same three prompts render as placeholder, pills *and* cards on Create. | all five |
+| 11 | **Clipped text and an exposed native textarea grip.** Lyrics and Art brief fields cut the last line through the glyphs — no fade, no scroll affordance — and leave the OS resize grabber visible. Judges read it as a rendering bug, not truncation. | art, create, lyrics, studio |
+| 8 | **Disabled states read as broken**, not as unavailable — grey so low against the panel it looks like a fault, with no reason given. | art, create, library, studio |
+| 5 | **State contradiction.** "Artwork is paused" sits directly above a fully enabled, full-strength `Generate cover art` button. The screen says the service is off and invites you to press the largest control on it. | art, create, library |
+| 4 | **Engineering telemetry as UI** — `471 characters` with no limit or consequence, `[verse] 31w 0:22`, `159 sung words 144–192 fits 2:00`. This is round 1's §7a loss in a new costume: not endpoints this time, but raw counters. | art, studio |
+| 2 | **Two heading conventions in one column** — `Art brief` in sentence case among uppercase letterspaced eyebrows. | art |
+
+Fix these before spending another round. The first two are cheap and appear on nearly every
+screen.
 
 ### Closed on 14 Aug — do not redo these
 
