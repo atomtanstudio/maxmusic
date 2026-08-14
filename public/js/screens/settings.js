@@ -311,9 +311,14 @@ function template(iconMarkup) {
           <p class="set-account__state" data-account-state>Checking OpenAI…</p>
           <p class="set-account__note" data-account-note></p>
         </div>
-        <button class="btn btn--sm set-account__btn" type="button" data-account-btn disabled>
-          Sign in with OpenAI
-        </button>
+        <div class="row set-account__actions">
+          <button class="btn btn--sm btn--ghost set-account__out" type="button" data-account-out hidden>
+            Sign out
+          </button>
+          <button class="btn btn--sm set-account__btn" type="button" data-account-btn disabled>
+            Sign in with OpenAI
+          </button>
+        </div>
       </div>
 
       <div class="set-account__pending" data-account-pending hidden>
@@ -467,6 +472,7 @@ export function mount(root, ctx) {
     accountState: $('[data-account-state]'),
     accountNote: $('[data-account-note]'),
     accountBtn: $('[data-account-btn]'),
+    accountOut: $('[data-account-out]'),
     accountPending: $('[data-account-pending]'),
     accountCode: $('[data-account-code]'),
     accountUrl: $('[data-account-url]'),
@@ -962,6 +968,8 @@ export function mount(root, ctx) {
   function paintAccount(auth) {
     const waiting = Boolean(attempt.id);
     el.accountPending.hidden = !waiting;
+    // Only offered while there is actually a session to end.
+    el.accountOut.hidden = waiting || !auth?.authenticated;
 
     if (waiting) {
       el.account.dataset.state = 'pending';
@@ -1080,6 +1088,25 @@ export function mount(root, ctx) {
       starting = false;
       el.accountBtn.disabled = false;
       paintAccount(ctx.auth);
+    }
+  });
+
+  el.accountOut.addEventListener('click', async () => {
+    el.accountOut.disabled = true;
+    try {
+      const res = await api.openaiAuthLogout();
+      if (!res.supported) {
+        // Honest about the shape of the problem: the button is wired, the
+        // route is not there yet, and nothing was changed.
+        ctx.toast(res.message, { kind: 'warn', title: 'Sign-out isn’t available' });
+        return;
+      }
+      await ctx.refreshAuth();
+      ctx.toast('You can sign back in whenever you like.', { kind: 'info', title: 'Signed out of OpenAI' });
+    } catch (err) {
+      ctx.toast(api.errorText(err), { kind: 'error', title: 'Couldn’t sign out' });
+    } finally {
+      el.accountOut.disabled = false;
     }
   });
 

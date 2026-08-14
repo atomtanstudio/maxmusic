@@ -425,6 +425,39 @@ export async function openaiAuthPoll(attemptId, opts = {}) {
   };
 }
 
+/**
+ * Sign the account out.
+ *
+ * Not part of the original broker handoff, which documents only status, start
+ * and poll. The route is expected at the obvious place beside the other two.
+ * `supported: false` comes back when the backend does not offer it yet, so the
+ * UI can say so plainly instead of showing a raw 404.
+ *
+ * @param {{ signal?: AbortSignal }} [opts]
+ * @returns {Promise<{ok: boolean, supported: boolean, message?: string}>}
+ */
+export async function openaiAuthLogout(opts = {}) {
+  try {
+    await request('/api/openai/auth/logout', {
+      method: 'POST',
+      signal: opts.signal,
+      timeoutMs: 15000,
+    });
+    return { ok: true, supported: true };
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    const status = err instanceof ApiError ? err.status : 0;
+    if (status === 404 || status === 405 || status === 501) {
+      return {
+        ok: false,
+        supported: false,
+        message: 'Your studio has no sign-out route yet, so the account stays connected.',
+      };
+    }
+    throw err;
+  }
+}
+
 /* ========================================================================== *
  * Generation payload — SPEC §3a
  * ========================================================================== */
@@ -856,6 +889,6 @@ const api = {
   LIMITS, FORMATS, BITRATES, SAMPLE_RATES, SECTION_TAGS, ASPECT_RATIOS, LYRICS_MODES,
   request, health, validateGeneration, generate, generateDual, generateStream,
   lyrics, coverArt, upload, cover, coverPreprocess, mediaUrl, errorText,
-  openaiStatus, openaiAuthStart, openaiAuthPoll,
+  openaiStatus, openaiAuthStart, openaiAuthPoll, openaiAuthLogout,
 };
 export default api;

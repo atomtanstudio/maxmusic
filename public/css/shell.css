@@ -1123,6 +1123,8 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
        </div>
      </div>
    ======================================================================== */
+/* Sentence case, like .badge. Caps and letterspacing belong to the field
+   micro-labels; a severity wearing them read as shouted. */
 .sev {
   display: inline-flex;
   align-items: center;
@@ -1134,10 +1136,9 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   border: 1px solid var(--border);
   background: var(--surface-4);
   color: var(--text-mid);
-  font-size: var(--fs-3xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
   white-space: nowrap;
 }
 .sev--warn {

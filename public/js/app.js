@@ -186,7 +186,14 @@ const TOAST_ICON = { info: 'info', success: 'check', warn: 'alert', error: 'aler
  * Only the two kinds that report a real problem get a chip; success and info
  * are carried by the glyph and the words.
  */
-const TOAST_SEVERITY = { warn: 'Warning', error: 'Error' };
+/* Empty on purpose. Every toast title already names its own state — "Sign-out
+   isn't available", "Couldn't sign out" — so a generic Warning/Error chip beside
+   it repeated the title in shouted shorthand, alongside a coloured glyph and a
+   kind-coloured surface already saying the same thing. Same rule the notices on
+   every screen now follow: a chip earns its place only when it says something
+   the title does not. Kept as a map so a kind that genuinely needs a word can
+   have one. */
+const TOAST_SEVERITY = {};
 
 /** Live toasts that were given a `key`, so a repeat replaces rather than stacks. */
 const keyedToasts = new Map();

@@ -646,7 +646,7 @@
   color: var(--text-lo);
   line-height: var(--lh-snug);
 }
-.screen-settings .set-account__btn { flex: none; margin-left: auto; }
+.screen-settings .set-account__btn { flex: none; }
 
 .screen-settings .set-account__pending {
   display: flex;
@@ -668,3 +668,5 @@
   overflow-wrap: anywhere;
 }
 .screen-settings .set-pref__text { width: 100%; }
+.screen-settings .set-account__actions { flex: none; margin-left: auto; gap: var(--space-4); }
+.screen-settings .set-account__out[hidden] { display: none; }
