@@ -1,6 +1,7 @@
 # MaxMusic — resume here
 
-Paused 13 Aug 2026, mid round 3. Everything below is verified, not remembered.
+Updated 14 Aug 2026. Round 3 build work is **done**; the scoring pass is what remains.
+Everything below is verified, not remembered.
 
 ---
 
@@ -12,6 +13,10 @@ cd /Users/richgates/Documents/claude/maxmusic && ./start.sh
 
 That starts the app on **:3020** and the live gauntlet monitor on **:3021**, and tells you
 whether your backend on :3010 is up.
+
+> **Node.** This machine had no `node` at all on 14 Aug — `start.sh` failed both servers with
+> `node: command not found`. Installed via `brew install node` (v26.7.0, `/opt/homebrew/bin/node`).
+> If it goes missing again, that is the fix.
 
 Then open:
 
@@ -62,60 +67,75 @@ code. Losers come back with one named gap.
 |---|---|
 | 1 | **Lost 0 / 5**, four "obvious". Every judge identified the build the same way: we published engineering internals as product UI. |
 | 2 | Rebuilt all five screens against their named gaps. Build committed (`9d75dbf`). Its scoring pass was killed — a capture agent drifted into generating content instead of screenshotting. **Never scored.** |
-| 3 | Design pass landed (solid accent, stripe removal, Covers → Art rename). Lanes partially done. **Stopped here.** |
+| 3 | Design pass landed (solid accent, stripe removal, Covers → Art rename). Build work **finished 14 Aug**. Still **never blind-judged.** |
 
 Round 1's full verdicts with the named gaps are in `shots/round1-verdicts.json`.
 
 ### Live counters (what "done" looks like)
 
-The monitor's *Outstanding review items* panel greps the source on every refresh. At pause:
+The monitor's *Outstanding review items* panel scans the source on every refresh.
 
-| Item | At pause | Target |
-|---|---|---|
-| gradient stylesheets | 1 | 0 |
-| left-edge accent stripes | 1 | 0 |
-| modules with plumbing strings | 3 | 0 |
+| Item | Round 1 | 13 Aug pause | Now |
+|---|---|---|---|
+| gradient stylesheets | 4 | 1 | **0** |
+| left-edge accent stripes | 2 | 1 | **0** |
+| modules with plumbing strings | 3 | 3 | **0** |
+| files still named covers | — | 2 | **0** |
 
-Round 1 started at 4 / 2 / 3.
+The counters now scan **code with comments stripped**, because the old greps counted JSDoc.
+`api.js` documenting `POST /api/generate` in a comment block is good documentation, not a
+plumbing leak — round 1 was lost on what the customer can see, so that is what is measured.
+The stripe check also catches the pseudo-element dodge (an absolutely positioned 2–4px bar
+pinned left), which the old `border-left` grep missed — that is how the second stripe hid.
 
 ---
 
-## Pick up here — in priority order
+## Pick up here
 
-### 1. `#/art` is broken (blocker, ~10 min)
+### The only thing left: round 3's scoring pass
 
-Navigating to `#/art` silently redirects to `#/create`.
+Nothing has been blind-judged since round 1. The build is ready for it. See "Resuming the
+loop" below, and keep the capture step tightly scoped.
 
-- `ROUTES` in `public/js/app.js:901` **does** include `{ name: 'art', path: '/art', … }`
-- `public/js/screens/art.js` imports cleanly and `public/css/screens/art.css` exists
-- The nav item and label are correct
+### Closed on 14 Aug — do not redo these
 
-So `parse()` in `public/js/router.js` is returning `matched: false` for `/art`, and
-`onHashChange` (line ~176) rewrites to the fallback. **Check how the route list is passed into
-the router** — it is probably reading a stale list rather than `ROUTES`. Every other route
-works, so this is specific to the newly added one.
+**1. `#/art` was not broken.** The note claiming it silently redirects to `#/create` was
+stale. Verified in a real browser on all three paths — direct `#/art`, nav click, and
+route-to-route — the hash holds and the screen mounts. `parse()` and `ROUTES` were correct
+all along. No change was needed or made.
 
-### 2. Finish the two banned patterns
+**2. Six CSS custom properties were used but never defined**, which was the real bug behind
+the gradient item. `--gradient-brand`, `--gradient-brand-warm`, `--gradient-brand-wash`,
+`--gradient-brand-vertical`, `--shadow-glow-cyan` and `--shadow-glow-magenta` were removed
+from `tokens.css` during the earlier purge but left in use at eight sites. They resolved to
+empty, so the play-button ring, the job dot, the level meter, the art wash and the settings
+hairline were all painting **transparent**. Every site now uses `--accent` or a flat scrim.
 
-Product-owner call, non-negotiable, written up in `docs/SPEC.md` §9:
+Three of those sites animated a gradient's `background-position`, which does nothing once the
+fill is solid, so they were reworked to opacity pulses and a travelling solid band. The
+`player-shimmer` and `set-flow-v` keyframes became dead and were deleted.
 
-- **No gradients** anywhere except the logo mark and the played portion of the waveform.
-  Primary buttons are a **solid** cyan `#00C0E0`. No gradient text, borders, card backgrounds,
-  rules or glows. Hover shifts lightness, never hue.
-- **No coloured left-edge stripe** on cards or notices. Distinguish by elevation, border,
-  spacing, type weight, or a labelled chip inside the card.
+**3. Both remaining stripes are gone** — the `border-left: 2px solid var(--brand-violet)` on
+the settings code block, and a 2px `::before` bar on the read-only server rows that the old
+grep never saw. Those rows now read as locked through recessed elevation plus their existing
+lock badge.
 
-One stylesheet and one stripe remain. `grep -rl linear-gradient public/css/screens/` and
-`grep -rnE "border-left:\s*[234]px" public/css/` find them.
+**4. User-visible plumbing is clear.** Five strings were rewritten in customer language.
+Every remaining grep hit is a JSDoc comment, which is why the counters were changed to strip
+comments before matching.
 
-### 3. Purge the last plumbing strings
+**Not changed, deliberately:** the Settings screen's `This client` panel and its `/api ·
+/tracks · /covers · /uploads` row. SPEC §7a names the Settings screen as exactly where
+diagnostics belong. The two surviving `covers` hits are the English word in `art.js`'s
+imagery map and the real `/covers` backend route.
 
-Three modules still carry engineering internals in resting UI. This lost us round 1 outright.
-`grep -rlE "192\.168\.1\.100|POST /api|ConvRot" public/js/`
+### Verified in the browser, not just by grep
 
-### 4. Then run round 3's scoring pass
-
-Nothing has been blind-judged since round 1. See "Resuming the loop" below.
+Walking every element and both pseudo-elements, **zero gradients paint anywhere** in the
+running app. The one sanctioned gradient still exists where it should: the played portion of
+the waveform, built in canvas at `public/js/player.js:440` with stops matching the ramp
+exactly. That is why `--ramp-logo-waveform-only` has no CSS reference — the waveform is
+canvas, not CSS. It is not dead.
 
 ---
 

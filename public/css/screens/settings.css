@@ -54,21 +54,23 @@
     var(--surface-2);
 }
 
-/* The brand's one loud gesture: a hairline that only animates while checking. */
+/* A flat accent hairline that only breathes while a check is running. */
 .screen-settings .set-hero__line {
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: var(--gradient-brand);
-  background-size: 220% 100%;
+  background: var(--accent);
   opacity: 0.32;
   transition: opacity var(--t-base);
 }
 .screen-settings .set-hero[data-busy] .set-hero__line {
   opacity: 1;
-  animation: set-brandline 3.2s linear infinite;
+  animation: set-brandline 3.2s var(--ease-in-out) infinite;
 }
-@keyframes set-brandline { to { background-position: 220% 0; } }
+@keyframes set-brandline {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .34; }
+}
 
 .screen-settings .set-hero__top {
   display: flex;
@@ -252,14 +254,12 @@
   background: var(--danger);
 }
 .screen-settings .set-hero[data-busy] .set-chain__link {
-  background-image: linear-gradient(90deg, transparent, var(--accent), transparent);
-  background-size: 60% 100%;
-  background-repeat: no-repeat;
-  animation: set-flow 1.1s linear infinite;
+  background: var(--accent);
+  animation: set-flow 1.1s var(--ease-in-out) infinite;
 }
 @keyframes set-flow {
-  from { background-position: -60% 0; }
-  to   { background-position: 160% 0; }
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .3; }
 }
 
 /* ------------------------------------------------------------- verdict -- */
@@ -444,27 +444,15 @@
 }
 .screen-settings .set-fact dd[data-state="warn"] { color: var(--warn); }
 
-/* read-only server rows — locked treatment, no control anywhere near them */
+/* Read-only server rows — locked treatment, no control anywhere near them.
+   The "locked" read comes from recessed elevation and the lock badge inside
+   the row itself, never from a coloured edge. */
 .screen-settings .set-envs { display: flex; flex-direction: column; }
 .screen-settings .set-env {
   position: relative;
-  padding: var(--space-5) var(--space-6) var(--space-6) var(--space-7);
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border-faint);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.017) 0 6px,
-    transparent 6px 12px
-  );
-}
-.screen-settings .set-env::before {
-  content: "";
-  position: absolute;
-  left: var(--space-4);
-  top: var(--space-6);
-  bottom: var(--space-6);
-  width: 2px;
-  border-radius: var(--r-pill);
-  background: var(--border-strong);
+  background: var(--surface-inset);
 }
 
 .screen-settings .set-env__head {
@@ -538,7 +526,6 @@
   padding: var(--space-5) var(--space-6);
   border-radius: var(--r-md);
   border: 1px solid var(--border-faint);
-  border-left: 2px solid var(--brand-violet);
   background: var(--surface-inset);
   color: var(--text-hi);
   font-size: var(--fs-xs);
@@ -611,14 +598,7 @@
     align-self: flex-start;
     margin-left: calc(var(--space-6) + 16px);
   }
-  .screen-settings .set-hero[data-busy] .set-chain__link {
-    background-image: linear-gradient(180deg, transparent, var(--accent), transparent);
-    background-size: 100% 60%;
-    animation-name: set-flow-v;
-  }
-  @keyframes set-flow-v {
-    from { background-position: 0 -60%; }
-    to   { background-position: 0 160%; }
-  }
+  /* The busy state is an opacity pulse, so it needs no direction-specific
+     override here — the base rule carries over to the stacked layout. */
   .screen-settings .set-hero__meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

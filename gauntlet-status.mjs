@@ -94,16 +94,50 @@ function readTree() {
   } catch { return 0; }
 }
 
+/* These counters describe the SHIPPED SURFACE, not the source text. A JSDoc
+   block naming the endpoint a function calls is good documentation, not a
+   plumbing leak — round 1 was lost on what the customer can see. So comments
+   are stripped before anything is matched, and a banned pattern only counts
+   when it survives into code. */
+function stripComments(src, lang) {
+  let out = src.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  if (lang === 'js') out = out.replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+  return out;
+}
+
+function walk(dir, ext, acc = []) {
+  let entries;
+  try { entries = fs.readdirSync(path.join(REPO, dir), { withFileTypes: true }); } catch { return acc; }
+  for (const e of entries) {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) walk(rel, ext, acc);
+    else if (e.name.endsWith(ext)) acc.push(rel);
+  }
+  return acc;
+}
+
 function scanBans() {
-  const grep = (args) => {
-    try { return execFileSync('grep', args, { encoding: 'utf8', cwd: REPO }).trim().split('\n').filter(Boolean).length; }
-    catch { return 0; }
+  /** Count files whose *code* (comments removed) matches `re`. */
+  const files = (dir, ext, re) => {
+    const lang = ext === '.js' ? 'js' : 'css';
+    return walk(dir, ext).filter((f) => {
+      try { return re.test(stripComments(fs.readFileSync(path.join(REPO, f), 'utf8'), lang)); }
+      catch { return false; }
+    }).length;
   };
+
+  // A left-edge stripe is either a thick border-left, or a narrow absolutely
+  // positioned bar pinned to the left of a card — the pseudo-element dodge.
+  const stripeRe = /border-left:\s*[234]px|::(?:before|after)\s*\{[^}]*?position:\s*absolute[^}]*?left:[^};]*;[^}]*?width:\s*[234]px/s;
+
   return {
-    gradients: grep(['-rl', 'linear-gradient', 'public/css/screens/']),
-    stripes: grep(['-rnE', 'border-left:\\s*[234]px', 'public/css/']),
-    plumbing: grep(['-rlE', '192\\.168\\.1\\.100|POST /api|ConvRot', 'public/js/']),
-    coversNamed: grep(['-rl', 'covers', 'public/js/screens/']),
+    gradients: files('public/css/screens', '.css', /linear-gradient/),
+    stripes: files('public/css', '.css', stripeRe),
+    plumbing: files('public/js', '.js', /192\.168\.1\.100|POST \/api|ConvRot/),
+    // The Covers -> Art rename. Matches the old product name or a bare
+    // `covers` identifier — not the English word, and not the /covers proxy
+    // route, which is a real backend path and stays.
+    coversNamed: files('public/js/screens', '.js', /\bCovers\b|screen-covers|['"`]covers['"`]/),
   };
 }
 

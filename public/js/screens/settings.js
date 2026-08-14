@@ -64,13 +64,13 @@ const SERVER_ONLY = [
     name: 'Guidance (cfg)',
     env: 'COMFY_MUSIC_CFG',
     fallback: '1.7',
-    note: 'Sampler guidance for the Music 3 workflow. Server env only — clamped to 0–100. Not reported by /api/health, so this screen cannot show the live number.',
+    note: 'How closely the model follows your description. Set on the server, between 0 and 100. The server does not report its live value, so it is not shown here.',
   },
   {
     name: 'Flow-matching steps',
     env: 'COMFY_MUSIC_STEPS',
     fallback: '30',
-    note: 'Sampling steps per generation. Server env only — clamped to 1–200. Not reported by /api/health.',
+    note: 'How much work goes into each take — more steps, slower and steadier. Set on the server, between 1 and 200.',
   },
   {
     name: 'Server default duration',
@@ -586,7 +586,7 @@ export function mount(root, ctx) {
 
     /* --- capabilities ---------------------------------------------------- */
     paintCap('music', offline
-      ? { state: 'fail', badge: 'offline', value: h.backend, note: 'The backend did not answer /api/health.' }
+      ? { state: 'fail', badge: 'offline', value: h.backend, note: 'MaxMusic could not reach your studio.' }
       : degraded
         ? { state: 'warn', badge: 'not ready', value: h.backend, note: h.comfyError || h.message }
         : {
@@ -601,13 +601,13 @@ export function mount(root, ctx) {
     paintCap('lyrics', offline
       ? { state: 'fail', badge: 'unknown', value: h.lyricsProvider, note: 'The backend did not answer, so its lyrics provider is unknown.' }
       : h.lyricsEnabled
-        ? { state: 'ok', badge: 'available', value: h.lyricsProvider, note: 'POST /api/lyrics runs a locally signed-in Codex CLI. Vocal generation needs lyrics; write them there first.' }
+        ? { state: 'ok', badge: 'available', value: h.lyricsProvider, note: 'Ready to write lyrics. A song with vocals needs words first — start on the Lyrics screen.' }
         : { state: 'warn', badge: 'off', value: h.lyricsProvider, note: 'No lyrics provider is configured. Set LOCAL_CODEX_BIN and LOCAL_CODEX_HOME in the backend environment, or paste lyrics by hand.' });
 
     paintCap('cover', offline
       ? { state: 'fail', badge: 'unknown', value: h.coverArtProvider, note: 'The backend did not answer, so cover art availability is unknown.' }
       : h.coverArtEnabled
-        ? { state: 'ok', badge: 'available', value: h.coverArtProvider, note: 'POST /api/cover-art will render album art for a track.' }
+        ? { state: 'ok', badge: 'available', value: h.coverArtProvider, note: 'Ready to make album art for any of your songs. Start on the Art screen.' }
         : { state: 'warn', badge: 'disabled', value: h.coverArtProvider, note: 'Cover art is off. Set COMFY_COVER_WORKFLOW to a ComfyUI image workflow, or LOCAL_MEDIA_BROKER_URL to a running local broker, in the backend environment.' });
 
     paintCap('key', offline
