@@ -341,7 +341,15 @@
   overscroll-behavior: contain;
   padding: 0 var(--gutter) var(--space-9);
 }
-.wsbody { display: flex; flex-direction: column; gap: var(--space-6); }
+/* min-height lets the empty state's floor claim the rest of the scroll
+   viewport. .wsscroll is a block, so flex on this element alone would not
+   give it height to hand down. */
+.wsbody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-height: 100%;
+}
 
 /* -------------------------------------------------------------- artwork -- */
 
@@ -642,6 +650,9 @@
 /* ----------------------------------------------------------- empty state -- */
 
 .wsempty {
+  /* Fills the panel so the floor below the starters has height to claim. */
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -675,6 +686,33 @@
   transition: background var(--t-fast), border-color var(--t-fast), transform var(--dur-instant) var(--ease-out);
 }
 .ideacard:hover { background: var(--surface-3); border-color: var(--border); transform: translateY(-1px); }
+
+/* SPEC §7b floor. Takes whatever height is left under the starters so the
+   column ends on a deliberate edge instead of trailing into dark nothing.
+   Not a button: it states what the space is for and invites no press. */
+.wsreserve {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-7);
+  text-align: center;
+}
+.wsreserve__icon {
+  width: 22px;
+  height: 22px;
+  color: var(--text-faint);
+}
+.wsreserve__text {
+  max-width: 42ch;
+  font-size: var(--fs-sm);
+  color: var(--text-lo);
+  line-height: var(--lh-snug);
+}
 .ideacard__tag {
   font-size: var(--fs-3xs);
   font-weight: var(--fw-semibold);

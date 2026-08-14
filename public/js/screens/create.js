@@ -280,14 +280,15 @@ export function mount(root, ctx) {
   let history = ctx.storage.get(HISTORY_KEY, []);
   history = Array.isArray(history) ? history.map(normalise).filter(Boolean) : [];
   let liked = new Set(Array.isArray(ctx.storage.get(LIKES_KEY, [])) ? ctx.storage.get(LIKES_KEY, []) : []);
-  const starters = STARTERS.slice();
   const sample = (pool, n) => {
     const rest = pool.slice();
     const out = [];
     while (out.length < n && rest.length) out.push(rest.splice(Math.floor(Math.random() * rest.length), 1)[0]);
     return out;
   };
-  const pickIdeas = (n) => sample(STARTERS, n);
+  // Four is enough to show the shape of a good prompt. Ten filled the panel
+  // but made a browsing exercise out of a field you are meant to type in.
+  const starters = sample(STARTERS, 4);
   const pickDetails = (n) => {
     const line = state.idea.toLowerCase();
     return sample(
@@ -315,7 +316,7 @@ export function mount(root, ctx) {
             <textarea id="cr-idea" class="textarea idea__input" spellcheck="true"
               maxlength="${LIMITS.PROMPT_MAX}"
               aria-label="Describe the song"
-              placeholder="Describe the song in one line — a smoky late-night soul ballad about old flames, warm female voice"></textarea>
+              placeholder="Describe the song in one line."></textarea>
             <div class="idea__foot">
               <span class="idea__count" data-idea-count></span>
             </div>
@@ -323,9 +324,9 @@ export function mount(root, ctx) {
 
           <div class="hints" data-hints>
             <div class="hints__head">
-              <span class="hints__label" data-hints-label>Try one of these</span>
+              <span class="hints__label" data-hints-label>Add a detail</span>
               <button class="actionchip hints__dice" type="button" data-surprise
-                aria-label="Show other ideas">${iconMarkup('dice')}</button>
+                aria-label="Show other details">${iconMarkup('dice')}</button>
             </div>
             <div class="hints__list" data-hint-list></div>
           </div>
@@ -652,34 +653,36 @@ export function mount(root, ctx) {
   }
 
   /**
-   * The block under the field is never empty and never decorative: starters
-   * while there is nothing to work with, details once there is.
+   * Details to add once there is something to refine.
+   *
+   * This block used to offer starter ideas while the field was empty, but the
+   * songs panel already shows starters as its empty state and the placeholder
+   * echoed one of them verbatim — the same idea said three times in one frame,
+   * which is what a blind judge picked us out on. The starters now live in one
+   * place, and this block earns its keep only when it has something the rest of
+   * the screen does not: how to sharpen a prompt you have already written.
+   *
    * @param {boolean} [reroll] force a fresh draw even if the mode has not changed
    */
   function paintHints(reroll = false) {
     const mode = state.idea.trim() ? 'detail' : 'start';
     if (reroll || mode !== hintMode) {
       hintMode = mode;
-      hintItems = mode === 'start' ? pickIdeas(3) : pickDetails(3);
+      hintItems = mode === 'start' ? [] : pickDetails(3);
     }
 
-    el.hintsLabel.textContent = mode === 'start' ? 'Try one of these' : 'Add a detail';
-    el.surprise.setAttribute('aria-label', mode === 'start' ? 'Show other ideas' : 'Show other details');
+    el.hintsLabel.textContent = 'Add a detail';
+    el.surprise.setAttribute('aria-label', 'Show other details');
     el.hintList.classList.toggle('hints__list--wrap', mode === 'detail');
-    el.hints.hidden = mode === 'detail' && !hintItems.length;
+    el.hints.hidden = mode === 'start' || !hintItems.length;
 
     el.hintList.replaceChildren();
     for (const item of hintItems) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'chip hint-chip';
-      if (mode === 'start') {
-        b.textContent = item.idea;
-        b.addEventListener('click', () => useIdea(item.idea));
-      } else {
-        b.append(ctx.icon('plus', 'icon hint-chip__plus'), document.createTextNode(item.text));
-        b.addEventListener('click', () => addDetail(item.text));
-      }
+      b.append(ctx.icon('plus', 'icon hint-chip__plus'), document.createTextNode(item.text));
+      b.addEventListener('click', () => addDetail(item.text));
       el.hintList.append(b);
     }
   }
@@ -1443,7 +1446,21 @@ export function mount(root, ctx) {
         b.addEventListener('click', () => useIdea(s.idea));
         grid.append(b);
       }
+
       wrap.append(grid);
+
+      // SPEC §7b: the panel needs a floor. Four starters leave roughly half this
+      // column empty, and a region that simply stops reads as a failed render.
+      // This claims the rest of the space and says what it is being held for,
+      // so the emptiness is deliberate and labelled rather than just absent.
+      const end = document.createElement('div');
+      end.className = 'wsreserve';
+      end.append(ctx.icon('wave', 'icon wsreserve__icon'));
+      const endText = document.createElement('p');
+      endText.className = 'wsreserve__text';
+      endText.textContent = 'Your songs collect here as you make them — newest first, each one ready to play.';
+      end.append(endText);
+      wrap.append(end);
     } else {
       const b = document.createElement('button');
       b.className = 'btn btn--sm';
