@@ -215,6 +215,9 @@ function normalise(raw) {
     url,
     filename,
     title: String(r.title || '').trim() || titleFromIdea(r.idea || prompt) || 'Untitled take',
+    // Empty is a real answer — a song may simply be uncredited. Nothing
+    // substitutes a house name in.
+    artist: String(r.artist || '').trim(),
     prompt,
     idea: String(r.idea || ''),
     lyrics: String(r.lyrics ?? ''),

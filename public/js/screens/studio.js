@@ -497,6 +497,8 @@ function template(ctx) {
       <div class="studio__doc">
         <input class="studio__title" data-title type="text" maxlength="120"
                placeholder="Untitled song" aria-label="Song title" autocomplete="off" spellcheck="false">
+        <input class="studio__artist" data-artist type="text" maxlength="60"
+               aria-label="Artist" autocomplete="off" spellcheck="false">
         <div class="segment" data-mode role="group" aria-label="Vocal or instrumental">
           <button class="segment__item is-active" type="button" data-mode-btn="vocal" aria-pressed="true">Vocal</button>
           <button class="segment__item" type="button" data-mode-btn="instrumental" aria-pressed="false">Instrumental</button>
@@ -713,6 +715,9 @@ export async function mount(root, ctx) {
 
   const defaults = {
     title: '',
+    // Empty means "use the default from Settings". Only a value typed here
+    // overrides it, so changing the default still moves every uncredited song.
+    artist: '',
     instrumental: false,
     lyrics: '',
     global: '',
@@ -763,6 +768,7 @@ export async function mount(root, ctx) {
 
   const el = {
     title: q('[data-title]'),
+    artist: q('[data-artist]'),
     modeBtns: qa('[data-mode-btn]'),
     lyricsPanel: q('[data-lyrics-panel]'),
     twostep: q('[data-twostep]'),
@@ -1189,8 +1195,28 @@ export async function mount(root, ctx) {
     return p;
   }
 
+  /**
+   * The default artist from Settings, or empty. Read fresh each time rather
+   * than cached, so changing it in Settings takes effect here immediately.
+   * @returns {string}
+   */
+  function defaultArtist() {
+    const prefs = ctx.storage.get('defaults', null);
+    return String((prefs && prefs.artist) || '').trim();
+  }
+
+  /** Who this particular song is credited to: its own value, else the default. */
+  function creditedArtist() {
+    return state.artist.trim() || defaultArtist();
+  }
+
   function syncControls() {
     el.title.value = state.title;
+    // The default shows through as the placeholder, so it is visible without
+    // being typed into every song — and typing here overrides it for this one.
+    const fallback = defaultArtist();
+    el.artist.placeholder = fallback ? `${fallback} — tap to change for this song` : 'Add an artist';
+    if (document.activeElement !== el.artist) el.artist.value = state.artist;
     el.lyrics.value = state.lyrics;
     for (const f of CAPTION_FIELDS) el.caption[f.key].area.value = state[f.key];
 
@@ -1414,6 +1440,7 @@ export async function mount(root, ctx) {
     const controller = new AbortController();
     const metaBase = {
       title: state.title.trim() || 'Untitled song',
+      artist: creditedArtist(),
       prompt: v.payload.prompt || '',
       lyrics: state.instrumental ? '' : state.lyrics,
       duration: v.payload.duration,
@@ -1607,6 +1634,7 @@ export async function mount(root, ctx) {
   };
 
   on(el.title, 'input', () => { state.title = el.title.value; save(); });
+  on(el.artist, 'input', () => { state.artist = el.artist.value; save(); });
 
   // Re-wrapping at a new width changes how tall every grown textarea needs to
   // be, so remeasure once the resize settles.

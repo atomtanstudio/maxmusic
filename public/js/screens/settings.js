@@ -15,7 +15,8 @@
  * The only writable settings are client-side defaults, persisted to
  * localStorage under the single key `maxmusic:defaults`:
  *   { duration: number, format: 'flac'|'mp3'|'wav', bitrate: number,
- *     startScreen: 'create'|'studio'|'library'|'lyrics'|'art'|'settings' }
+ *     startScreen: 'create'|'studio'|'library'|'lyrics'|'art'|'settings',
+ *     artist: string }
  *
  * @module screens/settings
  */
@@ -37,7 +38,13 @@ const PREF_FALLBACK = Object.freeze({
   format: 'flac',
   bitrate: 256000,
   startScreen: 'create',
+  // Whoever is credited on a song. Almost always the same person every time,
+  // so it lives here and each song may override it rather than being retyped.
+  artist: '',
 });
+
+/** Longest artist name we will store. Long enough for a band, short enough to lay out. */
+const ARTIST_MAX = 60;
 
 const START_SCREENS = [
   ['create', 'Create'],
@@ -341,6 +348,21 @@ function template(iconMarkup) {
 
       <div class="set-pref">
         <div class="field">
+          <label class="label" for="set-artist">Artist name</label>
+          <div class="set-pref__control">
+            <input class="input set-pref__text" type="text" id="set-artist" data-artist
+                   maxlength="${ARTIST_MAX}" autocomplete="off" spellcheck="false"
+                   placeholder="Nobody in particular">
+          </div>
+          <p class="hint">
+            Who gets credited on the songs you make. Any song can override it in Studio.
+            Leave it empty and songs stay uncredited.
+          </p>
+        </div>
+      </div>
+
+      <div class="set-pref">
+        <div class="field">
           <label class="label" for="set-start">Start screen</label>
           <div class="set-pref__control">
             <select class="select" id="set-start" data-start></select>
@@ -405,6 +427,7 @@ export function mount(root, ctx) {
     bitrate: $('[data-bitrate]'),
     bitrateState: $('[data-bitrate-state]'),
     start: $('[data-start]'),
+    artist: $('[data-artist]'),
     openStart: $('[data-open-start]'),
     preview: $('[data-preview]'),
     previewWarn: $('[data-preview-warn]'),
@@ -664,6 +687,7 @@ export function mount(root, ctx) {
     startScreen: START_SCREENS.some(([k]) => k === (stored && stored.startScreen))
       ? stored.startScreen
       : PREF_FALLBACK.startScreen,
+    artist: String((stored && stored.artist) || PREF_FALLBACK.artist).slice(0, ARTIST_MAX),
   };
 
   for (const rate of api.BITRATES) {
@@ -728,6 +752,9 @@ export function mount(root, ctx) {
     el.bitrate.disabled = !mp3;
     el.bitrate.value = String(prefs.bitrate);
     el.bitrateState.textContent = mp3 ? '' : `ignored for ${prefs.format}`;
+
+    // Don't fight the caret while it is being typed into.
+    if (document.activeElement !== el.artist) el.artist.value = prefs.artist;
 
     el.start.value = prefs.startScreen;
     const label = (START_SCREENS.find(([k]) => k === prefs.startScreen) || [])[1] || '';
@@ -844,6 +871,11 @@ export function mount(root, ctx) {
     prefs.startScreen = el.start.value;
     persist();
     paintDefaults();
+  });
+
+  el.artist.addEventListener('input', () => {
+    prefs.artist = el.artist.value.slice(0, ARTIST_MAX);
+    persist();
   });
 
   el.openStart.addEventListener('click', () => ctx.navigate(prefs.startScreen));

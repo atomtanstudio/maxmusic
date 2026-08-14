@@ -730,7 +730,9 @@ export function mount(root, ctx) {
       navigator.mediaSession.metadata = t && window.MediaMetadata
         ? new window.MediaMetadata({
           title: displayTitle(t),
-          artist: 'MaxMusic',
+          // The song's own credit. It used to say "MaxMusic" on every track,
+          // which put the tool's name where the artist's belongs.
+          artist: String(t.artist || '').trim(),
           album: t.instrumental ? 'Instrumental' : 'MiniMax Music 3',
         })
         : null;

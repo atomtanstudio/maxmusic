@@ -95,6 +95,25 @@
 }
 .screen-studio .studio__title::placeholder { color: var(--text-faint); }
 .screen-studio .studio__title:hover { border-bottom-color: var(--border); }
+
+/* Sits under the title as a credit line, not as a second headline: same field
+   behaviour, a step down in size and weight. */
+.screen-studio .studio__artist {
+  flex: 1 1 100%;
+  order: 1;
+  min-width: 0;
+  height: 26px;
+  margin-top: calc(var(--space-5) * -1);
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  color: var(--text-mid);
+  font-size: var(--fs-sm);
+}
+.screen-studio .studio__artist::placeholder { color: var(--text-faint); }
+.screen-studio .studio__artist:hover { border-bottom-color: var(--border); }
 .screen-studio .studio__title:focus {
   outline: none;
   border-bottom-color: var(--border-brand);
