@@ -1055,7 +1055,11 @@ export function mount(root, ctx) {
       ctx.toast(message, { kind: 'error', title: 'Sign-in didn’t finish' });
       return;
     }
-    pollTimer = setTimeout(pollOnce, 1500);
+    /* The delay runs AFTER the response, so the interval a server sees is
+       delay + round trip. At 1500 that measured ~2000ms, sitting right on the
+       ceiling of the contract's "every 1-2 seconds"; 1200 lands it comfortably
+       inside on this network without polling harder than asked. */
+    pollTimer = setTimeout(pollOnce, 1200);
   }
 
   el.accountBtn.addEventListener('click', async () => {
