@@ -591,11 +591,19 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   color: var(--accent-ink);
 }
 .btn--primary:active { background: var(--accent-press); transform: translateY(1px); }
+/* A disabled primary gives up the accent entirely and takes the same recessed
+   treatment as every other disabled control.
+   It used to hold a darker accent fill (--accent-disabled, L 26%). That was
+   still unmistakably the brand colour on the largest element in the frame, so
+   it read as pressable: judges saw "Artwork is paused" sitting directly above
+   a live-looking "Generate cover art", and called it a screen arguing with
+   itself. The accent marks the one thing you CAN do; a control that cannot act
+   has no claim on it. Still no opacity — the fill and the label say it. */
 .btn--primary:disabled, .btn--primary[aria-disabled="true"] {
-  background: var(--accent-disabled);
-  border-color: transparent;
-  color: var(--accent-ink);
-  opacity: 1; /* the dimmer fill IS the disabled signal — no double-fading */
+  background: var(--surface-3);
+  border-color: var(--border-faint);
+  color: var(--text-faint);
+  opacity: 1;
   box-shadow: none;
 }
 

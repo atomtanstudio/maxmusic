@@ -565,9 +565,9 @@ export async function mount(root, ctx) {
   const offlineNotice = el('div', { class: 'notice notice--warn lyr-offline', hidden: true }, [
     el('span', { class: 'notice__icon', html: ctx.iconMarkup('alert') }),
     el('div', { class: 'notice__body' }, [
+      // The title already says "offline"; the icon and border say how serious.
       el('p', { class: 'notice__head' }, [
         el('span', { class: 'notice__title', text: 'Writing help is offline' }),
-        el('span', { class: 'sev sev--warn', text: 'Warning' }),
       ]),
       el('p', { text: 'You can still write and check the words by hand.' }),
       el('button', {

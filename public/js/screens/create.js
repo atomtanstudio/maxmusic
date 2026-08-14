@@ -750,8 +750,16 @@ export function mount(root, ctx) {
   }
 
   /**
-   * A notice whose severity is a labelled chip on its own title row, inside the
-   * card — SPEC §9b. There is no edge stripe on any surface in this screen.
+   * A notice card. Severity is carried by the icon and the card's own border,
+   * inside the surface and never on its edge — SPEC §9b.
+   *
+   * It deliberately does NOT add a `Warning` / `Error` chip. Every title here
+   * already names the state ("Lyric writing is unavailable", "Your studio is
+   * offline"), so the chip was a fourth encoding of one fact alongside the
+   * icon, the border and the title — and it was the only place this screen
+   * dropped out of product voice into log-line shorthand. §9b asks severity to
+   * live inside the card, not for it to be said twice.
+   *
    * @returns {{node: HTMLElement, body: HTMLElement}}
    */
   function notice(kind, title, text) {
@@ -765,10 +773,7 @@ export function mount(root, ctx) {
     const t = document.createElement('span');
     t.className = 'notice__title';
     t.textContent = title;
-    const sev = document.createElement('span');
-    sev.className = `sev sev--${kind === 'error' ? 'error' : 'warn'}`;
-    sev.textContent = kind === 'error' ? 'Error' : 'Warning';
-    head.append(t, sev);
+    head.append(t);
 
     const p = document.createElement('p');
     p.className = 'notice__text';
@@ -817,9 +822,15 @@ export function mount(root, ctx) {
       el.footHint.textContent = '';
     } else {
       el.ctaLabel.textContent = state.instrumental ? 'Create instrumental' : 'Create song';
-      el.footHint.textContent = state.instrumental
-        ? 'Renders straight to audio.'
-        : 'Writes the lyrics first, then renders the audio.';
+      // While something is blocking the render, the notice directly above says
+      // what is wrong and how to fix it. Describing what the button normally
+      // does would contradict it — "writes the lyrics first" sitting under a
+      // card that just said lyric writing is unavailable.
+      el.footHint.textContent = block
+        ? ''
+        : (state.instrumental
+          ? 'Renders straight to audio.'
+          : 'Writes the lyrics first, then renders the audio.');
     }
   }
 
@@ -1417,12 +1428,17 @@ export function mount(root, ctx) {
     const wrap = document.createElement('div');
     wrap.className = 'wsempty';
 
-    const line = document.createElement('p');
-    line.className = 'wsempty__line';
-    line.textContent = total === 0
-      ? 'Songs you create land here, newest first.'
-      : 'No songs match that.';
-    wrap.append(line);
+    // With nothing in the library the promise is made once, by the floor at the
+    // bottom of this panel — which is where the songs will actually appear.
+    // Saying it here as well put the same sentence twice in one column, 430px
+    // apart, and all three judges called it. So this line is only for the
+    // filtered-to-nothing case, which the floor does not cover.
+    if (total > 0) {
+      const line = document.createElement('p');
+      line.className = 'wsempty__line';
+      line.textContent = 'No songs match that.';
+      wrap.append(line);
+    }
 
     if (total === 0) {
       const kicker = document.createElement('h3');

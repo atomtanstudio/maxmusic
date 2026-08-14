@@ -87,7 +87,10 @@
   --accent: #00c0e0; /* L 44% — rest. The product's one accent. */
   --accent-hover: #0fddff; /* L 53% — lighter, never a different hue. */
   --accent-press: #00a6c1; /* L 38% — darker, pairs with a 1px press shift. */
-  --accent-disabled: #007285; /* L 26% — plainly inert, still the accent. */
+  /* Kept for reference, deliberately unused. A disabled control gives up the
+     accent rather than wearing a dimmer version of it — see .btn--primary
+     :disabled in shell.css. The accent marks what you CAN do. */
+  --accent-disabled: #007285; /* L 26% */
   --accent-ink: #04161a; /* text and glyphs ON an accent fill. */
 
   /* Low-alpha washes of the same cyan — focus halo, selection, quiet fills. */

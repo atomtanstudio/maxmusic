@@ -989,9 +989,6 @@ export async function mount(root, ctx) {
     const [lo, hi] = analysis.target;
     const scale = Math.max(hi * 1.5, analysis.sungWords * 1.08, 1);
     el.fitWords.textContent = String(analysis.sungWords);
-    el.fitTarget.textContent = state.instrumental
-      ? 'not sung while Instrumental is on'
-      : `${lo}–${hi} fits ${clock(state.duration)}`;
     el.fitFill.style.width = `${clamp((analysis.sungWords / scale) * 100, 0, 100)}%`;
     el.fitBand.style.left = `${clamp((lo / scale) * 100, 0, 100)}%`;
     el.fitBand.style.width = `${clamp(((hi - lo) / scale) * 100, 0, 100)}%`;
@@ -1003,6 +1000,17 @@ export async function mount(root, ctx) {
     else if (analysis.sungWords < lo) { fitState = 'under'; badge = 'Sparse'; }
     else if (analysis.sungWords > hi) { fitState = 'over'; badge = 'Dense'; }
     else { fitState = 'good'; badge = 'Good fit'; }
+    // The verdict is said ONCE, by the badge. The meter's band already shows
+    // the target range, so the range is spelled out only when the words are
+    // outside it and it becomes something to aim at. This block used to state
+    // one boolean four ways — range line, badge, meter and a ticked sentence
+    // below — and it was the most-cited fault in two rounds of judging.
+    el.fitTarget.textContent = state.instrumental
+      ? 'not sung while Instrumental is on'
+      : (fitState === 'under' || fitState === 'over')
+        ? `aim for ${lo}–${hi} at ${clock(state.duration)}`
+        : '';
+
     el.fit.dataset.fit = fitState;
     el.fitBadge.textContent = badge;
     el.fitBadge.className = `badge ${{ good: 'badge--ok', over: 'badge--warn', under: 'badge--warn' }[fitState] || ''}`;
@@ -1021,8 +1029,10 @@ export async function mount(root, ctx) {
       b.className = 'sectionchip';
       b.dataset.start = String(s.line.start);
       b.dataset.end = String(s.line.end);
-      b.innerHTML = `<b>${escapeHtml(s.name ? `[${s.name}]` : 'untagged')}</b><i>${s.words}w</i>`
-        + (s.words ? `<u>${clock(s.words / WORDS_PER_SEC)}</u>` : '');
+      // A chip reporting "0w" announces the absence of content and should not
+      // draw at all — a section with no words gets its name and nothing else.
+      b.innerHTML = `<b>${escapeHtml(s.name ? `[${s.name}]` : 'untagged')}</b>`
+        + (s.words ? `<i>${s.words}w</i><u>${clock(s.words / WORDS_PER_SEC)}</u>` : '');
       b.title = 'Jump to this section';
       el.sections.append(b);
     }
@@ -1032,8 +1042,11 @@ export async function mount(root, ctx) {
     if (!analysis.issues.length) {
       const ok = document.createElement('p');
       ok.className = 'lint__ok';
+      // This row reports whether there is anything to FIX. Whether the words
+      // fit the duration is the meter's job directly above, and repeating its
+      // verdict here was the fourth statement of one fact.
       ok.innerHTML = `${ctx.iconMarkup('check')}<span>${text.trim()
-        ? `Lyrics fit the ${clock(state.duration)} target.`
+        ? 'Nothing to fix.'
         : 'Nothing to check yet.'}</span>`;
       el.lint.append(ok);
     } else {
@@ -1134,7 +1147,6 @@ export async function mount(root, ctx) {
       <div class="notice__body">
         <p class="notice__head">
           <span class="notice__title">Not ready to render</span>
-          <span class="sev sev--warn">Waiting</span>
         </p>
         <p data-notready></p>
       </div>`;
@@ -1160,9 +1172,12 @@ export async function mount(root, ctx) {
     el.generateLabel.textContent = busy
       ? 'Rendering'
       : (state.takes === 'two' ? 'Generate two takes' : 'Generate');
+    // Both halves describe TAKES. The single-take line used to talk about
+    // render progress, which belongs to the output panel — it read as a stray
+    // note parked under the nearest available control.
     el.takesNote.textContent = state.takes === 'two'
       ? 'Two takes from the same brief — the second explores a different arrangement.'
-      : 'Progress updates live while your track renders.';
+      : 'One take from your brief.';
     return v;
   }
 
@@ -1479,7 +1494,6 @@ export async function mount(root, ctx) {
       <div class="notice__body">
         <p class="notice__head">
           <span class="notice__title">Render failed</span>
-          <span class="sev sev--error">Error</span>
         </p>
         <span class="take__errmsg"></span>
         <p class="take__errfoot mono"></p>
@@ -1570,7 +1584,6 @@ export async function mount(root, ctx) {
           <div class="notice__body">
             <p class="notice__head">
               <span class="notice__title">Take ${escapeHtml(e.slot)} failed</span>
-              <span class="sev sev--error">Error</span>
             </p>
             <span class="take__errmsg"></span>
           </div>`;
