@@ -122,14 +122,14 @@
 .screen-art .art-style {
   line-height: 20px;
   min-height: 0;
-  height: 74px;    /* 12px top padding + 3 lines + borders */
+  height: 86px;    /* 12px padding top AND bottom + 3 lines + borders */
 }
 /* The words are read for imagery and never printed on the cover, so this is a
    quiet input, not a lyric editor. It hides itself on an instrumental. */
 .screen-art .art-lyrics {
   line-height: 20px;
   min-height: 0;
-  height: 54px;    /* 12px top padding + 2 lines + borders */
+  height: 66px;    /* 12px padding top AND bottom + 2 lines + borders */
   font-size: var(--fs-xs);
 }
 /* What was read out of the chosen song, in the customer's words. The song's
@@ -180,8 +180,10 @@
 
 .screen-art .art-draw { gap: var(--space-4); margin-bottom: var(--space-4); }
 .screen-art .art-toggles { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+/* No opacity here. It used to stack on top of --text-faint, and two dimmings
+   multiplied put the label under 1.5:1 — the "reads as a rendering fault"
+   this screen was called out for. The colour says disabled on its own. */
 .screen-art .art-toggle:disabled {
-  opacity: .45;
   cursor: not-allowed;
   background: var(--surface-2);
   border-color: var(--border-faint);
@@ -210,7 +212,7 @@
 .screen-art .art-prompt {
   line-height: 20px;
   min-height: 0;
-  height: 114px;   /* 12px top padding + 5 lines + borders */
+  height: 126px;   /* 12px padding top AND bottom + 5 lines + borders */
 }
 .screen-art .art-brief__hint { margin-top: var(--space-3); }
 

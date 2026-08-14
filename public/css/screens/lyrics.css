@@ -413,7 +413,9 @@
   gap: var(--space-6);
 }
 
-.screen-lyrics .lyr-idea { min-height: 86px; font-size: var(--fs-sm); }
+/* 20px lines make 86px exactly three of them plus the 12px paddings and the
+   borders, so the field never shows a part-line at its bottom edge. */
+.screen-lyrics .lyr-idea { min-height: 86px; font-size: var(--fs-sm); line-height: 20px; }
 
 .screen-lyrics .lyr-seeds {
   display: flex;

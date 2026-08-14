@@ -549,12 +549,15 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .btn:hover { background: var(--surface-4); border-color: var(--border-strong); color: var(--text-hi); }
 .btn:active { transform: translateY(1px); }
 .btn .icon { width: 16px; height: 16px; }
+/* The recessed fill and the faint label ARE the disabled signal, the same rule
+   --primary already follows below. Stacking opacity on top of an already-faint
+   colour multiplies two dimmings together and lands the label near 1.5:1,
+   which reads as a rendering fault rather than a switched-off control. */
 .btn:disabled, .btn[aria-disabled="true"] {
-  opacity: .45;
   transform: none;
   background: var(--surface-2);
   border-color: var(--border-faint);
-  color: var(--text-lo);
+  color: var(--text-faint);
 }
 
 .btn--sm { height: var(--control-h-sm); padding-inline: var(--space-5); font-size: var(--fs-xs); border-radius: var(--r-sm); }
@@ -695,10 +698,9 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .actionchip:disabled,
 .actionchip[aria-disabled="true"],
 .iconbtn:disabled {
-  opacity: .4;
   transform: none;
   background: var(--surface-3);
-  color: var(--text-mid);
+  color: var(--text-faint);
 }
 
 /* Bigger target for a row's primary affordance (play). Same look. */
@@ -761,7 +763,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .menu__item:focus-visible { background: var(--surface-5); color: var(--text-hi); outline: none; }
 .menu__item:hover .icon,
 .menu__item:focus-visible .icon { color: inherit; }
-.menu__item:disabled { opacity: .4; }
+.menu__item:disabled { color: var(--text-faint); }
 .menu__item:disabled:hover { background: none; color: var(--text); }
 .menu__item__note { margin-left: auto; color: var(--text-faint); font-size: var(--fs-2xs); font-weight: var(--fw-regular); }
 
@@ -921,7 +923,10 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   min-height: 96px;
   padding: var(--space-5);
   line-height: var(--lh-normal);
-  resize: vertical;
+  /* No OS resize grip. It is the one piece of unstyled browser furniture that
+     survives into an otherwise designed frame, and blind judges named it on
+     four separate screens. Fields are sized to their job and scroll past it. */
+  resize: none;
   font-family: inherit;
 }
 .textarea--mono { font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.65; }
@@ -950,9 +955,13 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   outline: none;
 }
 .input:disabled, .textarea:disabled, .select:disabled {
-  opacity: .5;
   cursor: not-allowed;
   background: var(--surface-2);
+  color: var(--text-faint);
+  /* Chromium applies opacity .7 to a disabled select of its own accord, which
+     lands the value near 2.3:1 on top of an already-faint colour. The colour
+     is the signal; the UA's extra fade is not wanted. */
+  opacity: 1;
 }
 .input[aria-invalid="true"], .textarea[aria-invalid="true"] { border-color: var(--danger); }
 

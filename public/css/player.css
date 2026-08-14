@@ -402,7 +402,9 @@
   flex: none;
 }
 
-.player__download[aria-disabled="true"] { opacity: .55; }
+/* --text-faint from .player__btn[aria-disabled] already carries this; an
+   opacity on top would dim an already-dim colour twice. */
+.player__download[aria-disabled="true"] { cursor: not-allowed; }
 
 /* ================================================================ states == */
 

@@ -120,7 +120,11 @@
   --text: #ccd2de; /* body */
   --text-mid: #8c94a6; /* secondary, labels */
   --text-lo: #6e7889; /* meta, timestamps, helper text */
-  --text-faint: #4a5364; /* placeholder, disabled */
+  /* Placeholder and disabled. Was #4a5364, which measured 2.25-2.60:1 against
+     surfaces 0-3 — under the 3:1 floor everywhere, so disabled controls read as
+     broken rather than as switched off. This clears 3:1 on every surface and
+     still sits clearly below --text-lo, so the hierarchy survives. */
+  --text-faint: #606a7c; /* placeholder, disabled */
   --text-inverse: #06070b; /* on top of a full-contrast (white) fill */
   --text-link: var(--accent);
 

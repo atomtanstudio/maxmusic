@@ -168,14 +168,17 @@
 /* the editor: a highlight layer behind a transparent textarea ------------- */
 
 .screen-studio .lyricbox {
+  /* A px line-height, not a ratio, so the box can be an exact number of lines:
+     13 x 24 + the two 16px paddings + borders = 346. A fractional line here is
+     what made the editor look like it had a rendering bug. */
   --ly-pad: var(--space-6);
-  --ly-lh: 1.8;
+  --ly-lh: 24px;
   position: relative;
-  height: 336px;
-  min-height: 180px;
+  height: 346px;
+  min-height: 178px;
   max-height: 72vh;
   overflow: auto;
-  resize: vertical;
+  resize: none;
   background: var(--surface-inset);
   border: 1px solid var(--field-border);
   border-radius: var(--field-radius);
@@ -595,8 +598,12 @@
   gap: var(--space-5);
 }
 
-/* A setting that cannot act reads as inactive — label, value and all. */
-.screen-studio .field[data-off="true"] { opacity: .45; }
+/* A setting that cannot act reads as inactive — label, value and all. Said in
+   colour rather than opacity: the select inside is already disabled and
+   carries --text-faint, so an opacity here would dim a dim colour a second
+   time and put the value near 1.3:1. */
+.screen-studio .field[data-off="true"] .label,
+.screen-studio .field[data-off="true"] .label__hint { color: var(--text-faint); }
 .screen-studio .field[data-off="true"] .select { pointer-events: none; }
 
 .screen-studio .rack__switch { align-items: flex-start; }

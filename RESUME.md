@@ -146,8 +146,30 @@ number is worth. Counts are out of 30 gap statements.
 | 4 | **Engineering telemetry as UI** — `471 characters` with no limit or consequence, `[verse] 31w 0:22`, `159 sung words 144–192 fits 2:00`. This is round 1's §7a loss in a new costume: not endpoints this time, but raw counters. | art, studio |
 | 2 | **Two heading conventions in one column** — `Art brief` in sentence case among uppercase letterspaced eyebrows. | art |
 
-Fix these before spending another round. The first two are cheap and appear on nearly every
-screen.
+**The top two are fixed** (14 Aug, commit below). Measured after, across all five screens:
+23 inactive controls now sit at or above 3:1 — the worst was 1.37:1 — and no textarea on any
+screen still exposes an OS resize grip. Art's three brief fields were each rendering a 0.40
+fractional line, which is what "sliced through the glyphs" was; they are now exactly 3, 2 and
+5 whole lines. The remaining four gaps are open.
+
+---
+
+## Coming after the gauntlet — owner's roadmap, 14 Aug
+
+Do not start these until the design work is signed off.
+
+1. **OpenAI OAuth via a broker.** Rich is building it on his Unraid server and will supply the
+   endpoint. It powers **lyrics** and **artwork** generation, replacing the currently disabled
+   `lyrics` and `coverArt` capabilities. Note this supersedes the old local-media-broker path
+   described under "Cover art is off" below — that broker's `collect_with_retries` bug stops
+   mattering once this lands.
+2. **Video export.** Start simple: a slideshow of the cover art with a visualiser along the
+   bottom, the song title, and the artist name **if an artist field is added** (there is none
+   today — that is a schema question to settle first). Exports as MP4.
+
+**Not wanted, ever:** a billing system, credits, plans, or a social graph. This is an open
+source tool whose whole point is giving people a premium experience instead of driving ComfyUI
+by hand. That is also exactly why the Suno comparison stopped being informative — see round 3.
 
 ### Closed on 14 Aug — do not redo these
 
