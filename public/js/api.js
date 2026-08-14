@@ -459,6 +459,73 @@ export async function openaiAuthLogout(opts = {}) {
 }
 
 /* ========================================================================== *
+ * Video jobs — POST /api/video-jobs, then poll, then fetch the file
+ *
+ * A render outlives a request, so this is asynchronous by design: the POST
+ * answers 202 with somewhere to watch, and the file is collected afterwards.
+ * The browser sends only names the backend already knows — a `/tracks/…` and a
+ * `/covers/…` path it served itself — never a filesystem path or an argument.
+ * ========================================================================== */
+
+/**
+ * @typedef {Object} VideoJob
+ * @property {string} id
+ * @property {'queued'|'rendering'|'completed'|'failed'|'cancelled'} status
+ * @property {number} progress 0..1
+ * @property {string} statusUrl
+ * @property {string} [downloadUrl]
+ * @property {string} [filename]
+ * @property {string} [error]
+ */
+
+/**
+ * Queue a render.
+ *
+ * @param {{trackUrl: string, coverArtUrl?: ?string, title?: string,
+ *          artist?: string, lyrics?: string, preset?: string}} input
+ * @param {{signal?: AbortSignal}} [opts]
+ * @returns {Promise<VideoJob>}
+ */
+export function videoJobCreate(input, opts = {}) {
+  return request('/api/video-jobs', {
+    method: 'POST',
+    body: {
+      trackUrl: input.trackUrl,
+      coverArtUrl: input.coverArtUrl || null,
+      title: input.title || 'Untitled',
+      artist: input.artist || '',
+      lyrics: input.lyrics || '',
+      preset: input.preset || 'square-1080',
+    },
+    signal: opts.signal,
+    timeoutMs: 20000,
+  });
+}
+
+/**
+ * @param {string} id
+ * @param {{signal?: AbortSignal}} [opts]
+ * @returns {Promise<VideoJob>}
+ */
+export function videoJobStatus(id, opts = {}) {
+  return request(`/api/video-jobs/${encodeURIComponent(id)}`, {
+    signal: opts.signal,
+    timeoutMs: 15000,
+  });
+}
+
+/** Stop a render and let the server drop its files. */
+export async function videoJobCancel(id) {
+  try {
+    await request(`/api/video-jobs/${encodeURIComponent(id)}`, { method: 'DELETE', timeoutMs: 10000 });
+    return true;
+  } catch {
+    // A render that has already gone is the outcome we wanted anyway.
+    return false;
+  }
+}
+
+/* ========================================================================== *
  * Generation payload — SPEC §3a
  * ========================================================================== */
 
@@ -890,5 +957,6 @@ const api = {
   request, health, validateGeneration, generate, generateDual, generateStream,
   lyrics, coverArt, upload, cover, coverPreprocess, mediaUrl, errorText,
   openaiStatus, openaiAuthStart, openaiAuthPoll, openaiAuthLogout,
+  videoJobCreate, videoJobStatus, videoJobCancel,
 };
 export default api;

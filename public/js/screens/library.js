@@ -815,10 +815,88 @@ export function mount(root, ctx) {
               >${ctx.iconMarkup('more')}</button>`;
   }
 
+  /* ------------------------------------------------------------- video --- */
+
+  /** One render at a time from this screen — the server queues, but the UI
+      should not let someone fire ten off by accident. */
+  let videoJob = null;
+
+  /**
+   * Render a song to MP4 on the server and hand the file over when it lands.
+   *
+   * Polling is a chain of delayed single requests rather than an interval, the
+   * same shape the sign-in poll uses, so two are never in flight at once.
+   */
+  async function makeVideo(record) {
+    if (videoJob) {
+      ctx.toast('One video at a time — this one is still rendering.', { kind: 'info', title: 'Already working' });
+      return;
+    }
+    if (!record.url) {
+      ctx.toast('This song has no audio file to build a video from.', { kind: 'warn', title: 'Nothing to render' });
+      return;
+    }
+
+    const key = 'library:video';
+    ctx.toast('Starting the render…', { kind: 'info', title: 'Making a video', key, timeout: 0 });
+
+    try {
+      videoJob = await api.videoJobCreate({
+        trackUrl: record.url,
+        coverArtUrl: record.cover || null,
+        title: record.title,
+        artist: record.artist || '',
+        lyrics: record.isInstrumental ? '' : (record.lyrics || ''),
+        preset: 'square-1080',
+      });
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        await new Promise((r) => setTimeout(r, 1200));
+        if (!videoJob) return;                       // cancelled from elsewhere
+        const job = await api.videoJobStatus(videoJob.id);
+        videoJob = job;
+
+        if (job.status === 'completed') {
+          ctx.toast('Saving it to your downloads now.', { kind: 'success', title: 'Video ready', key });
+          // The file is fetched through the same origin the app is served
+          // from, so the download needs no cross-origin dance.
+          const a = document.createElement('a');
+          a.href = job.downloadUrl;
+          a.download = job.filename || 'song.mp4';
+          document.body.append(a);
+          a.click();
+          a.remove();
+          videoJob = null;
+          return;
+        }
+        if (job.status === 'failed' || job.status === 'cancelled') {
+          ctx.toast(job.error || 'The render stopped before it finished.', { kind: 'error', title: 'Video didn’t finish', key });
+          videoJob = null;
+          return;
+        }
+        const pct = Math.round((job.progress || 0) * 100);
+        ctx.toast(job.status === 'queued' ? 'Waiting for a free slot…' : `${pct}% rendered`,
+          { kind: 'info', title: 'Making a video', key, timeout: 0 });
+      }
+    } catch (err) {
+      const id = videoJob?.id;
+      videoJob = null;
+      if (id) api.videoJobCancel(id);
+      ctx.toast(api.errorText(err), { kind: 'error', title: 'Couldn’t make the video' });
+    }
+  }
+
   function menuItems(record) {
     const hasLyrics = Boolean(record.lyrics) && !record.isInstrumental;
     return [
       { label: 'Song details', icon: 'info', onSelect: () => openSheet(record.id, null) },
+      {
+        label: 'Make a video',
+        icon: 'wave',
+        disabled: !record.url,
+        onSelect: () => makeVideo(record),
+      },
       { label: 'Copy caption', icon: 'copy', disabled: !record.prompt, onSelect: () => copy(record.prompt, 'Caption') },
       { label: 'Copy lyrics', icon: 'copy', disabled: !hasLyrics, onSelect: () => copy(record.lyrics, 'Lyrics') },
       {
