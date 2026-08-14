@@ -65,9 +65,13 @@ code. Losers come back with one named gap.
 
 | Round | Result |
 |---|---|
-| 1 | **Lost 0 / 5**, four "obvious". Every judge identified the build the same way: we published engineering internals as product UI. |
+| 1 | **Won 0 of 5.** Every judge picked the real product, four of them calling it "obvious", and all identified our build the same way: we published engineering internals as product UI. |
 | 2 | Rebuilt all five screens against their named gaps. Build committed (`9d75dbf`). Its scoring pass was killed — a capture agent drifted into generating content instead of screenshotting. **Never scored.** |
-| 3 | Build work finished 14 Aug. Scored 14 Aug with 3 judges per screen: **lost 0 / 5, 15 / 15 judges**. But read the next section before acting on that number. |
+| 3 | Build work finished 14 Aug. Scored 14 Aug, 3 judges per screen: **won 0 of 5 — all 15 judges picked the real product.** But read the next section before acting on that number. |
+
+> **Reading the score.** "Won 0 of 5" means we lost every screen. A win is a judge mistaking
+> *our* screen for the real shipped product. Earlier notes said "Lost 0/5", which reads
+> backwards — it never meant we lost nothing.
 
 Round 1's verdicts are in `shots/round1-verdicts.json`, round 3's in `shots/round3-verdicts.json`
 (15 judges, every tell and gap recorded).
