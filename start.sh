@@ -4,6 +4,12 @@
 set -u
 cd "$(dirname "$0")"
 
+# The backend may run on this Mac or on the LAN box that hosts ComfyUI.
+# Override either of these to point somewhere else:
+#   BACKEND_HOST=192.168.1.100 ./start.sh
+export BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+export BACKEND_PORT="${BACKEND_PORT:-3010}"
+
 start() { # name port command...
   local name=$1 port=$2; shift 2
   if lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
@@ -24,11 +30,11 @@ echo "MaxMusic"
 start app     3020 node server.js
 start monitor 3021 node gauntlet-status.mjs
 
-printf '  backend :3010 '
-if curl -fsS -m 5 -o /dev/null http://localhost:3010/api/health 2>/dev/null; then
-  art=$(curl -fsS -m 5 http://localhost:3010/api/health 2>/dev/null \
-        | sed -n 's/.*"coverArt"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-  echo "up (cover art: ${art:-unknown})"
+printf '  backend %s:%s ' "$BACKEND_HOST" "$BACKEND_PORT"
+health="http://$BACKEND_HOST:$BACKEND_PORT/api/health"
+if body=$(curl -fsS -m 5 "$health" 2>/dev/null); then
+  field() { printf '%s' "$body" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^,\"}]*\)\"\{0,1\}.*/\1/p"; }
+  echo "up (comfy: $(field comfyReachable) · lyrics: $(field lyrics) · cover art: $(field coverArt))"
 else
   echo "DOWN — start it yourself; the app proxies /api to it and will 502 until you do"
 fi
