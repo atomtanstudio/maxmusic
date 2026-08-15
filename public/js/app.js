@@ -878,13 +878,41 @@ function wireChrome() {
     console.error('[shell] could not fold Create history into the library', err);
   }
 
+  /* How long a song is, according to the song.
+     The studio reports the length that was REQUESTED, and since the model
+     started choosing its own endings those are two different numbers — a
+     2:25 song was arriving labelled 3:00. The file itself is the only account
+     that cannot be wrong, so it is asked, quietly, once. */
+  function measureTrue(record) {
+    if (!record?.url || !record.id) return;
+    const probe = new Audio();
+    probe.preload = 'metadata';
+    probe.addEventListener('loadedmetadata', () => {
+      const real = Number(probe.duration);
+      if (!Number.isFinite(real) || real <= 0) return;
+      if (Math.abs(real - Number(record.duration || 0)) < 1.5) return;
+      try {
+        if (updateRecord(storage, record.id, { duration: real })) {
+          bus.emit('library:changed', { source: 'shell', count: loadRecords(storage).length, id: record.id });
+        }
+      } catch (err) {
+        console.error('[shell] could not correct a song’s length', err);
+      }
+    }, { once: true });
+    probe.addEventListener('error', () => { /* the row keeps the studio's number */ }, { once: true });
+    probe.src = record.url;
+  }
+
   // A finished song is recorded HERE, not by whichever screen happens to be
   // open — the Library screen used to keep this ledger and lost every song
   // born while it was unmounted.
   bus.on('track:new', (payload) => {
     try {
       const stored = storeTrack(storage, payload);
-      if (stored) bus.emit('library:changed', { source: 'shell', count: stored.count, id: stored.record.id });
+      if (stored) {
+        bus.emit('library:changed', { source: 'shell', count: stored.count, id: stored.record.id });
+        measureTrue(stored.record);
+      }
     } catch (err) {
       console.error('[shell] could not store a new track', err);
       toast(`A finished song could not be added to your library: ${err?.message || err}`, {
