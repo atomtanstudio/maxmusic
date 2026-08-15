@@ -45,7 +45,30 @@ symptoms, one cause.
 Leave `max_duration: duration` on node `'4'` exactly as it is. It becomes what
 it was always meant to be: a ceiling, not a target.
 
-Restart the backend afterwards.
+## Where to make it
+
+`~/Documents/coding/legion/maxmusic` on the Mac is the development copy — the
+backend that actually answers on `192.168.1.100:3010` runs from
+**`/srv/ai/maxmusic` on LEGION** (the tower with the 5090), as the systemd unit
+`maxmusic.service`. Editing the Mac copy changes nothing on its own.
+
+```bash
+ssh 192.168.1.100 'cd /srv/ai/maxmusic && cp local-comfy.js local-comfy.js.bak && sed -i "s/seconds: duration,/seconds: [\"4\", 1],/" local-comfy.js && node --check local-comfy.js && grep -n "seconds:" local-comfy.js'
+```
+
+`seconds: duration` appears exactly once in that file, and the backup sits
+beside it. Then restart — this needs the sudo password, so it is a hands-on
+step:
+
+```bash
+ssh -t 192.168.1.100 'sudo systemctl restart maxmusic'
+```
+
+Confirm it took, after making one song:
+
+```bash
+node render/check-workflow.mjs
+```
 
 ## The evidence
 
