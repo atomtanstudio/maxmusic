@@ -17,6 +17,7 @@
 
 import * as api from './api.js';
 import { createRouter } from './router.js';
+import { storeTrack, loadRecords } from './records.js';
 
 /* ========================================================================== *
  * Elements
@@ -828,6 +829,40 @@ function wireChrome() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && el.app.dataset.nav === 'open') setDrawer(false);
+  });
+
+  // Songs made before the shell kept the ledger exist only in Create's
+  // history. Fold them in once per boot — storeTrack dedupes by id, so this
+  // is idempotent and silent when there is nothing to do.
+  try {
+    const history = storage.get('create.history', []);
+    if (Array.isArray(history) && history.length) {
+      const known = new Set(loadRecords(storage).map((r) => r.id));
+      let last = null;
+      for (const rec of [...history].reverse()) {
+        if (rec && (rec.url || rec.id) && !known.has(String(rec.id || ''))) {
+          last = storeTrack(storage, rec) || last;
+        }
+      }
+      if (last) bus.emit('library:changed', { source: 'shell', count: last.count });
+    }
+  } catch (err) {
+    console.error('[shell] could not fold Create history into the library', err);
+  }
+
+  // A finished song is recorded HERE, not by whichever screen happens to be
+  // open — the Library screen used to keep this ledger and lost every song
+  // born while it was unmounted.
+  bus.on('track:new', (payload) => {
+    try {
+      const stored = storeTrack(storage, payload);
+      if (stored) bus.emit('library:changed', { source: 'shell', count: stored.count, id: stored.record.id });
+    } catch (err) {
+      console.error('[shell] could not store a new track', err);
+      toast(`A finished song could not be added to your library: ${err?.message || err}`, {
+        kind: 'error', title: 'Library',
+      });
+    }
   });
 
   // The song count has one home: the Library nav counter. It deliberately does

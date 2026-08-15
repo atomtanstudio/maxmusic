@@ -30,6 +30,9 @@
  * @module screens/library
  */
 
+import { toRecord, coerce, loadRecords, saveRecords } from '../records.js';
+import { downloadAudio, makeLyricVideo } from '../studio-actions.js';
+
 export const meta = {
   title: 'Library',
   subtitle: 'Everything you’ve made',
@@ -40,7 +43,7 @@ export const meta = {
  * Storage
  * ========================================================================== */
 
-const STORE_KEY = 'library.tracks';
+// Records themselves live in records.js — the shell keeps the ledger.
 const PREFS_KEY = 'library.prefs';
 
 const SORTS = [
@@ -467,77 +470,6 @@ function coverDataUri(record) {
  * Records
  * ========================================================================== */
 
-function titleFromPrompt(prompt) {
-  const text = String(prompt || '').replace(/\s+/g, ' ').trim();
-  if (!text) return '';
-  const m = text.match(/([A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){0,3})/);
-  const words = (m ? m[1] : text).split(' ').slice(0, 4).join(' ');
-  return words ? words.replace(/\b\w/g, (c) => c.toUpperCase()) : '';
-}
-
-/** Duration in seconds. `extra_info.music_duration` is milliseconds. */
-function durationOf(meta, extra) {
-  const ms = Number(extra?.music_duration);
-  if (Number.isFinite(ms) && ms > 0) return ms > 400 ? ms / 1000 : ms;
-  const d = Number(meta?.duration);
-  return Number.isFinite(d) && d > 0 ? d : null;
-}
-
-/**
- * Turn anything a producing lane emits on `track:new` into a stored record.
- * Tolerant on purpose: `{track, meta}`, a bare GenerationResult, or a record.
- */
-function toRecord(payload) {
-  const p = payload || {};
-  const track = (p.track && typeof p.track === 'object') ? p.track : p;
-  const m = (p.meta && typeof p.meta === 'object') ? p.meta : p;
-  const extra = m.extra_info || p.extra_info || track.extra_info || {};
-  const url = String(track.url || m.url || '');
-  const filename = String(track.filename || url.split('/').pop() || '');
-  const id = String(track.id || m.id || filename.replace(/\.[^.]+$/, '') || `t${Date.now().toString(36)}`);
-  const prompt = String(m.prompt ?? '');
-  const audio = m.audio_setting || {};
-  const format = String(m.format || audio.format || (filename.split('.').pop() || '')).toLowerCase();
-
-  return {
-    id,
-    url,
-    filename,
-    size: Number(track.size ?? m.size) || 0,
-    title: String(m.title || '').trim() || titleFromPrompt(prompt) || 'Untitled song',
-    prompt,
-    lyrics: String(m.lyrics ?? ''),
-    isInstrumental: Boolean(m.isInstrumental ?? m.is_instrumental),
-    duration: durationOf(m, extra),
-    seed: Number.isFinite(Number(m.seed)) && m.seed !== null && m.seed !== '' ? Number(m.seed) : null,
-    format: format && format !== 'undefined' ? format : '',
-    sampleRate: Number(m.sampleRate ?? m.sample_rate ?? audio.sample_rate ?? extra.music_sample_rate) || null,
-    bitrate: Number(m.bitrate ?? audio.bitrate ?? extra.bitrate) || null,
-    model: String(m.model || '') || null,
-    cover: String(m.cover || m.coverUrl || '') || null,
-    createdAt: Number(m.createdAt) || Date.now(),
-    source: String(m.source || '') || null,
-    parentId: String(m.parentId || '') || null,
-  };
-}
-
-function coerce(raw) {
-  const r = toRecord(raw);
-  // A stored record already has the right shape; keep its own createdAt.
-  r.createdAt = Number(raw?.createdAt) || r.createdAt;
-  return r;
-}
-
-function loadRecords(storage) {
-  const raw = storage.get(STORE_KEY, []);
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((r) => r && typeof r === 'object' && (r.url || r.id)).map(coerce);
-}
-
-function saveRecords(storage, list) {
-  return storage.set(STORE_KEY, list);
-}
-
 /* ========================================================================== *
  * Screen
  * ========================================================================== */
@@ -815,114 +747,26 @@ export function mount(root, ctx) {
               >${ctx.iconMarkup('more')}</button>`;
   }
 
-  /* ------------------------------------------------------------- studio --- */
-
-  /** One render at a time from this screen — the server queues, but the UI
-      should not let someone fire ten off by accident. */
-  let videoJob = null;
-
-  /** Save the song itself, as the original FLAC or a 320k MP3. */
-  function downloadAudio(record, format) {
-    const a = document.createElement('a');
-    a.href = api.audioDownloadUrl(record.url, format, record.title);
-    a.download = '';
-    document.body.append(a);
-    a.click();
-    a.remove();
-    ctx.toast(`Saving the ${format === 'mp3' ? 'MP3' : 'FLAC'} to your downloads.`, { kind: 'success', title: 'Downloading' });
-  }
-
-  /**
-   * Render a song to MP4 in the studio and hand the file over when it lands.
-   *
-   * Two kinds: a lyric scroll (the cover, softened, with the words gliding
-   * up in time) and a lyric film (a directed, animated piece). Both are
-   * built on this machine; a two-minute song takes a few minutes.
-   *
-   * Polling is a chain of delayed single requests rather than an interval,
-   * the same shape the sign-in poll uses, so two are never in flight.
-   */
-  async function makeVideo(record, mode) {
-    const noun = mode === 'film' ? 'lyric film' : 'lyric scroll';
-    if (videoJob) {
-      ctx.toast('One video at a time — this one is still rendering.', { kind: 'info', title: 'Already working' });
-      return;
-    }
-    if (!record.url) {
-      ctx.toast('This song has no audio file to build a video from.', { kind: 'warn', title: 'Nothing to render' });
-      return;
-    }
-
-    const key = 'library:video';
-    const title = mode === 'film' ? 'Making the lyric film' : 'Making the lyric scroll';
-    ctx.toast('Starting the render…', { kind: 'info', title, key, timeout: 0 });
-
-    try {
-      videoJob = await api.videoJobCreate({
-        trackUrl: record.url,
-        mode,
-        title: record.title,
-        artist: record.artist || '',
-        lyrics: record.isInstrumental ? '' : (record.lyrics || ''),
-        cover: record.cover || null,
-      });
-
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        await new Promise((r) => setTimeout(r, 1500));
-        if (!videoJob) return;                       // cancelled from elsewhere
-        const job = await api.videoJobStatus(videoJob.id);
-        videoJob = job;
-
-        if (job.status === 'completed') {
-          ctx.toast('Saving it to your downloads now.', { kind: 'success', title: `${noun[0].toUpperCase()}${noun.slice(1)} ready`, key });
-          // Same origin as the app, so the download needs no dance.
-          const a = document.createElement('a');
-          a.href = job.downloadUrl;
-          a.download = job.filename || 'song.mp4';
-          document.body.append(a);
-          a.click();
-          a.remove();
-          videoJob = null;
-          return;
-        }
-        if (job.status === 'failed' || job.status === 'cancelled') {
-          ctx.toast(job.error || 'The render stopped before it finished.', { kind: 'error', title: 'Video didn’t finish', key });
-          videoJob = null;
-          return;
-        }
-        const pct = Math.round((job.progress || 0) * 100);
-        const line = job.status === 'queued'
-          ? 'Waiting for a free slot…'
-          : `${job.step || 'Working'} — ${pct}%`;
-        ctx.toast(line, { kind: 'info', title, key, timeout: 0 });
-      }
-    } catch (err) {
-      const id = videoJob?.id;
-      videoJob = null;
-      if (id) api.videoJobCancel(id);
-      ctx.toast(api.errorText(err), { kind: 'error', title: 'Couldn’t make the video' });
-    }
-  }
+  /* The studio actions live in studio-actions.js, shared with Create. */
 
   function menuItems(record) {
     const hasLyrics = Boolean(record.lyrics) && !record.isInstrumental;
     return [
       { label: 'Song details', icon: 'info', onSelect: () => openSheet(record.id, null) },
       { separator: true },
-      { label: 'Download FLAC', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(record, 'flac') },
-      { label: 'Download MP3', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(record, 'mp3') },
+      { label: 'Download FLAC', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(ctx, record, 'flac') },
+      { label: 'Download MP3', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(ctx, record, 'mp3') },
       {
         label: 'Make a lyric scroll',
         icon: 'wave',
         disabled: !record.url,
-        onSelect: () => makeVideo(record, 'scroll'),
+        onSelect: () => makeLyricVideo(ctx, record, 'scroll'),
       },
       {
         label: 'Make a lyric film',
         icon: 'wave',
         disabled: !record.url,
-        onSelect: () => makeVideo(record, 'film'),
+        onSelect: () => makeLyricVideo(ctx, record, 'film'),
       },
       { separator: true },
       { label: 'Copy caption', icon: 'copy', disabled: !record.prompt, onSelect: () => copy(record.prompt, 'Caption') },
@@ -1658,17 +1502,12 @@ export function mount(root, ctx) {
 
   /* --------------------------------------------------------------- bus -- */
 
-  ctx.bus.on('track:new', (payload) => {
-    try {
-      const record = toRecord(payload);
-      if (!record.url && !record.id) return;
-      addRecords(record);
-    } catch (err) {
-      console.error('[library] could not store a new track', err);
-      ctx.toast(`A finished song could not be added to your library: ${err?.message || err}`, {
-        kind: 'error', title: 'Library',
-      });
-    }
+  // The shell stores finished tracks the moment they exist (records.js);
+  // this screen only re-reads the ledger when told it changed.
+  ctx.bus.on('library:changed', (payload) => {
+    if (payload?.source !== 'shell') return;
+    records = loadRecords(ctx.storage);
+    render();
   });
 
   /* Durations we stored are what the song was *asked* for. Once the player has

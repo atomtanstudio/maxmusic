@@ -19,6 +19,8 @@
  * Owned by the create lane: this file + public/css/screens/create.css.
  */
 
+import { downloadAudio, makeLyricVideo } from '../studio-actions.js';
+
 export const meta = {
   title: 'Create',
   subtitle: 'One idea in, one song out',
@@ -430,9 +432,9 @@ export function mount(root, ctx) {
       </footer>
     </section>
 
-    <section class="ws" aria-label="Your songs">
+    <section class="ws" aria-label="Songs made this sitting">
       <header class="ws__head">
-        <h2 class="ws__title">Your songs</h2>
+        <h2 class="ws__title">Just made</h2>
         <span class="ws__count" data-count></span>
       </header>
       <div class="wsbar" data-bar>
@@ -971,6 +973,9 @@ export function mount(root, ctx) {
             note: (rec.format || '').toUpperCase() || undefined,
             href: api.mediaUrl(rec.url || rec.filename),
           },
+          { label: 'Download MP3', icon: 'download', onSelect: () => downloadAudio(ctx, rec, 'mp3') },
+          { label: 'Make a lyric scroll', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'scroll') },
+          { label: 'Make a lyric film', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'film') },
           { label: 'Start a new song from this', icon: 'wand', onSelect: () => reuse(rec) },
           { separator: true },
           {
@@ -1475,18 +1480,6 @@ export function mount(root, ctx) {
 
       wrap.append(grid);
 
-      // SPEC §7b: the panel needs a floor. Four starters leave roughly half this
-      // column empty, and a region that simply stops reads as a failed render.
-      // This claims the rest of the space and says what it is being held for,
-      // so the emptiness is deliberate and labelled rather than just absent.
-      const end = document.createElement('div');
-      end.className = 'wsreserve';
-      end.append(ctx.icon('wave', 'icon wsreserve__icon'));
-      const endText = document.createElement('p');
-      endText.className = 'wsreserve__text';
-      endText.textContent = 'Your songs collect here as you make them — newest first, each one ready to play.';
-      end.append(endText);
-      wrap.append(end);
     } else {
       const b = document.createElement('button');
       b.className = 'btn btn--sm';
@@ -1518,10 +1511,12 @@ export function mount(root, ctx) {
     main.className = 'trk__main';
     const title = document.createElement('h3');
     title.className = 'trk__title trk__title--muted';
-    title.textContent = count === 1 ? 'That’s your only song so far' : 'That’s all of them';
+    title.textContent = count
+      ? `${count} ${count === 1 ? 'song' : 'songs'} in your Library`
+      : 'Your songs land in the Library';
     const desc = document.createElement('p');
     desc.className = 'trk__desc';
-    desc.textContent = `${count} ${count === 1 ? 'song' : 'songs'} in this workspace. The next one appears at the top.`;
+    desc.textContent = 'Ready to play, download, or turn into a lyric video.';
     main.append(title, desc);
 
     const acts = document.createElement('div');
@@ -1538,40 +1533,21 @@ export function mount(root, ctx) {
   }
 
   function paintWorkspace() {
-    const total = allRecords().filter((r) => !state.sessionIds.has(r.id)).length;
-    const list = visibleRecords();
+    // This panel holds only what this sitting produced. The collection —
+    // browsing, downloads, lyric videos — is the Library's job, and the
+    // floor below says so with a live count.
+    const collection = allRecords().length;
     const session = sessionBlock();
-    const grand = total + state.sessionIds.size;
+    const mine = state.sessionIds.size;
 
-    el.count.textContent = grand
-      ? `${grand} ${grand === 1 ? 'song' : 'songs'}`
-      : '';
-    el.bar.hidden = grand < 2;
-    el.sortLabel.textContent = SORTS.find((s) => s.value === prefs.sort)?.label || 'Newest first';
-    el.likedBtn.setAttribute('aria-pressed', String(prefs.liked));
-    el.likedBtn.classList.toggle('is-active', prefs.liked);
-    for (const b of el.viewBtns) {
-      const on = b.dataset.view === prefs.view;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('is-active', on);
-    }
+    el.count.textContent = mine ? `${mine} this sitting` : '';
+    el.bar.hidden = true;
 
     el.body.replaceChildren();
-    el.body.dataset.view = prefs.view;
+    el.body.dataset.view = 'list';
     if (session) el.body.append(session);
-
-    if (!list.length) {
-      if (total > 0) el.body.append(emptyPanel(total));       // filtered to nothing
-      else if (!session) el.body.append(emptyPanel(0));       // genuine first run
-      return;
-    }
-
-    const container = document.createElement('div');
-    container.className = prefs.view === 'grid' ? 'grid' : 'rows';
-    for (const rec of list) container.append(prefs.view === 'grid' ? gridCard(rec) : trackRow(rec));
-    el.body.append(container);
-
-    if (prefs.view === 'list' && !state.query && !prefs.liked) el.body.append(terminalRow(grand));
+    if (!session && !mine) el.body.append(emptyPanel(0));
+    el.body.append(terminalRow(collection));
   }
 
   function tick() {
