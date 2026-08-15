@@ -3,6 +3,7 @@
   "artist": "MaxMusic",
   "footer": "github.com/richgates/maxmusic",
   "note": "Canonical sheet. Wording reconciled from the authored lyric sheet visible in shots/showcase/premium-look.mp4 plus two whisper passes (base.en + small.en); where ASR and the authored sheet disagreed, the authored sheet won.",
+  "style": { "motion": 0.85 },
   "sections": [
     { "id": "chant-open", "kind": "chant", "lines": [
       { "text": "Open it up", "repeat": 4 }

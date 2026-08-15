@@ -79,7 +79,43 @@ the session that ran them.
 ## Adding a song
 
 1. Write `render/lyrics-<song>.json` — sections with `kind`
-   (chant/verse/pre/chorus/tag/instrumental), lines, optional `repeat`.
-   The engine needs no song-specific code; devices are data.
-2. Run the pipeline above. The director derives everything else from the
-   timing (which sections exist, where the drops are, what the outro is).
+   (chant/verse/mono/pre/chorus/tag/instrumental), lines, optional `repeat`
+   and per-line `device` hints. The engine needs no song-specific code;
+   devices are data.
+2. Run the pipeline above. The scenes derive from the timing (which
+   sections exist, where the drops are, what the outro is).
+
+## The director
+
+Outputs must not all look alike. The aesthetic is data — a `style` block
+in the lyric sheet — and something with taste has to write it per song.
+Today that is a human or Claude; in the app it is the broker's LLM. The
+contract:
+
+**Input** — `direct.mjs`'s profile (tempo, punch, brightness, vocal
+density, structure, a suggested motion value) plus the transcript:
+
+```bash
+node render/direct.mjs render/data/<song>-analysis.json render/data/<song>-timing.json
+```
+
+**Output** — the sheet's `style` block plus section kinds and devices:
+
+- `world` — where the song lives (`venue`, `horizon`, more as they are
+  built). A manifesto belongs in a room; a drive belongs under a sky.
+- `display` / `text` / `textStyle` — the type voices. An anthem takes a
+  condensed heavy; a mellow song can take an italic or a script face.
+- `ink`, `dim`, `verseAccents`, `chorusAccents`, `titleAccent` — the
+  palette, and its arc across the song if the verses travel.
+- `motion` — the dial, 0 calm to 1 punchy. Start from the profile's
+  suggestion, then listen: BPM alone calls a pounding half-time track
+  mellow. Everything scales with it — word arrival speed, bass pumps,
+  onset kicks, flash strength — so a slow jazz song must never pulse.
+- devices (`crack: false`, per-line `redact`/`vanish`) — ONLY where the
+  lyric earns them. A device firing on an unearned line reads as template.
+
+Rules of thumb: slow + sparse → low motion, soft faces, long fades.
+Bright/airy → cooler palette; bass-led → darker, warmer. Wall-to-wall
+vocals → the arc must come from treatments (no drops to lean on). Long
+instrumental stretches → the world carries them (drops, visualiser
+moments). Never reuse the previous song's pack unchanged.

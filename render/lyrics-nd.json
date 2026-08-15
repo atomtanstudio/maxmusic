@@ -6,6 +6,7 @@
   "style": {
     "world": "horizon",
     "crack": false,
+    "motion": 0.3,
     "display": "Futura",
     "text": "\"Avenir Next\"",
     "textStyle": "italic ",

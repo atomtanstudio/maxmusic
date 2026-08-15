@@ -97,6 +97,13 @@ export async function createStage(canvas, timing, analysis) {
   const CHORUS_ACCENTS = style.chorusAccents || [CYAN, MAGENTA];
   const WORLD = style.world || 'venue';               // 'venue' | 'horizon'
   const CRACK_OK = style.crack !== false;
+  /* The motion dial, 0 calm .. 1 punchy. The director sets it per song; the
+     fallback guesses from tempo. Scales pops, pumps, kicks and flashes so a
+     ballad never behaves like a banger. */
+  const M = style.motion ?? Math.max(0.25, Math.min(1, ((analysis.bpm || 100) - 60) / 90));
+  const POP_K = 1.5 - 0.7 * M;    // mellow songs let words arrive slower
+  const PUMP_K = 0.45 + 0.7 * M;  // and breathe less on the bass
+  const KICK_K = 0.5 + 0.6 * M;   // and shake less on onsets
   const FPS = analysis.fps;
   const DUR = analysis.duration;
   const frames = Math.ceil(DUR * FPS);
@@ -684,7 +691,7 @@ export async function createStage(canvas, timing, analysis) {
    */
   function paintWord(wd, t, o = {}) {
     const accent = o.accent || CYAN;
-    const popIn = o.popIn ?? 0.22;
+    const popIn = (o.popIn ?? 0.22) * POP_K;
     const u = span(t, wd.t0, wd.t0 + popIn);
     if (u <= 0) {
       if (!o.preview) return;
@@ -936,7 +943,7 @@ export async function createStage(canvas, timing, analysis) {
         ctx.restore();
       }
 
-      const pump = 1 + atSm('bass', t, 5) * 0.012;
+      const pump = 1 + atSm('bass', t, 5) * 0.012 * PUMP_K;
       ctx.save();
       ctx.translate(W / 2, H * 0.5);
       ctx.scale(pump, pump);
@@ -1002,8 +1009,8 @@ export async function createStage(canvas, timing, analysis) {
       section.lines.forEach((line, li) => {
         const next = section.lines[li + 1];
         const enter = span(t, line.t0 - 0.45, line.t0 + 0.1);
-        const exitStart = next ? next.t0 - 0.35 : line.t1 + 1.2;
-        const exit = span(t, exitStart, exitStart + 0.8);
+        const exitStart = next ? next.t0 - 0.55 : line.t1 + 1.0;
+        const exit = span(t, exitStart, exitStart + 0.55);
         // A line that has finished is GONE — it exits fading and never
         // parks. Remnants without a job read as debris, not memory; the
         // only accumulations left are the drop marquee and the outro
@@ -1016,7 +1023,7 @@ export async function createStage(canvas, timing, analysis) {
         const slideOut = easeInOutCubic(exit) * W * -0.1;
         const drop = easeInOutCubic(exit) * H * 0.02;
         ctx.translate(W / 2 + slideIn + slideOut, H * 0.5 + drop);
-        const pump = 1 + atSm('bass', t, 4) * 0.014;
+        const pump = 1 + atSm('bass', t, 4) * 0.014 * PUMP_K;
         ctx.scale(pump * lerp(1.03, 1, easeOutCubic(enter)), pump * lerp(1.03, 1, easeOutCubic(enter)));
         ctx.globalAlpha = easeOutCubic(enter) * (1 - easeInOutCubic(exit));
         for (const wd of lay.words) {
@@ -1072,7 +1079,7 @@ export async function createStage(canvas, timing, analysis) {
         if (!settled && t >= exitStart) return; // mid-flight: no number to point at
         // A read line lingers just long enough to feel like context, then
         // dissolves with its number — nothing camps on screen.
-        const dissolve = settled ? 1 - span(t, exitStart + 2.2, exitStart + 3.6) : 1;
+        const dissolve = settled ? 1 - span(t, exitStart + 1.4, exitStart + 2.6) : 1;
         if (dissolve <= 0) return;
         ctx.save();
         ctx.globalAlpha = dissolve;
@@ -1092,7 +1099,7 @@ export async function createStage(canvas, timing, analysis) {
         const settled = exit >= 1;
         // Read lines hold briefly as context, then dissolve — they do not
         // camp in the corner for the rest of the verse.
-        const dissolve = settled ? 1 - span(t, exitStart + 2.2, exitStart + 3.6) : 1;
+        const dissolve = settled ? 1 - span(t, exitStart + 1.4, exitStart + 2.6) : 1;
         if (dissolve <= 0) return;
         ctx.save();
         if (settled) {
@@ -1161,7 +1168,7 @@ export async function createStage(canvas, timing, analysis) {
       if (WORLD !== 'horizon') paintBeam(t, 0.55 + crack * 0.45, accent);
 
       const lay = layoutSlam(crackLine, { width: W * 0.66 });
-      const breathe = 1 + atSm('bass', t, 6) * 0.03 * (1 + crack);
+      const breathe = 1 + atSm('bass', t, 6) * 0.03 * PUMP_K * (1 + crack);
       // The gap scales with the glyphs — a hairline on a huge slam, still a
       // visible break on a long small line.
       const glyph = lay.words[0] ? lay.words[0].size : 120;
@@ -1216,7 +1223,7 @@ export async function createStage(canvas, timing, analysis) {
         const gap = bSize * 0.5;
         const widths = restWords.map((w) => textW(w.word.toUpperCase(), bFont));
         const total = widths.reduce((a, b) => a + b, 0) + gap * (restWords.length - 1);
-        const swell = 1 + atSm('bass', t, 5) * 0.09;
+        const swell = 1 + atSm('bass', t, 5) * 0.09 * PUMP_K;
         ctx.save();
         ctx.translate(W / 2, H * 0.66);
         ctx.scale(swell, swell);
@@ -1269,8 +1276,8 @@ export async function createStage(canvas, timing, analysis) {
 
       const isStamp = /fork/i.test(line.text);
       const lay = isStamp ? layoutSlamStamps(line) : layoutFor(line, 'chorus');
-      const pump = 1 + atSm('bass', t, 3) * 0.03;
-      const kick = onsetKick(t, 0.09);
+      const pump = 1 + atSm('bass', t, 3) * 0.03 * PUMP_K;
+      const kick = onsetKick(t, 0.09) * KICK_K;
       const preview = idx < 0; // before the first word: the plate waits in the dark
       // The stack composes at every moment: the landed rows' weighted centre
       // rides the frame centre, so a half-built plate is never top-anchored.
@@ -1435,7 +1442,7 @@ export async function createStage(canvas, timing, analysis) {
         const held = span(t, line.t0, line.t0 + 0.5);
         ctx.save();
         ctx.translate(W / 2, H / 2);
-        const pump = 1 + atSm('bass', t, 3) * 0.05;
+        const pump = 1 + atSm('bass', t, 3) * 0.05 * PUMP_K;
         ctx.scale(pump * lerp(0.96, 1, easeOutCubic(held)), pump * lerp(0.96, 1, easeOutCubic(held)));
         for (const wd of lay.words) {
           paintWord(wd, t, { accent: CYAN, slam: true, popIn: 0.14, shadow: true });
