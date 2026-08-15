@@ -4,10 +4,10 @@
 set -u
 cd "$(dirname "$0")"
 
-# The backend may run on this Mac or on the LAN box that hosts ComfyUI.
-# Override either of these to point somewhere else:
-#   BACKEND_HOST=192.168.1.100 ./start.sh
-export BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+# The backend lives on the LAN box that hosts ComfyUI (moved off this Mac,
+# 15 Aug 2026). Override either of these to point somewhere else:
+#   BACKEND_HOST=127.0.0.1 ./start.sh
+export BACKEND_HOST="${BACKEND_HOST:-192.168.1.100}"
 export BACKEND_PORT="${BACKEND_PORT:-3010}"
 
 start() { # name port command...
