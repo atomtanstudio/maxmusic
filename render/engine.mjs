@@ -1039,16 +1039,30 @@ export async function createStage(canvas, timing, analysis) {
         t1: Math.max(...ls.map((x) => x.t1)),
       });
     });
+    /* A gap only becomes an instrumental SECTION — its own world, its own
+       scene — when it is long enough to be an event in the song. Two seconds
+       between one verse and the next is a breath, not a break, and cutting to
+       the drop wall and back for it reads as a fault in the film: the frame
+       jumps somewhere else for a beat and returns. Those short gaps are left
+       to the scene already playing, which simply holds the frame through them.
+
+       The opening and the closing are different: the title card and the end
+       card are wanted even when they are brief, so they keep the low bar. */
+    const OPENING_GAP = 1.5;
+    const BREAK_GAP = 5;      // mid-song: a real instrumental passage
+    const CLOSING_GAP = 2.5;
+
     const stitched = [];
     let cursor = 0;
     for (const s of sections) {
-      if (s.t0 - cursor > 1.5) {
+      const gap = s.t0 - cursor;
+      if (gap > (cursor === 0 ? OPENING_GAP : BREAK_GAP)) {
         stitched.push({ id: `inst-${stitched.length}`, kind: 'instrumental', lines: [], t0: cursor, t1: s.t0 });
       }
       stitched.push(s);
       cursor = s.t1;
     }
-    if (DUR - cursor > 1.5) {
+    if (DUR - cursor > CLOSING_GAP) {
       stitched.push({ id: 'inst-final', kind: 'instrumental', lines: [], t0: cursor, t1: DUR });
     }
     sections.length = 0;

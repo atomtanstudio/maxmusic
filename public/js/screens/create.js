@@ -21,6 +21,7 @@
 
 import { downloadAudio, makeLyricVideo, downloadVideo } from '../studio-actions.js';
 import { redoCoverArt } from '../cover-redo.js';
+import { pacedPrompt, planSong, wordsFor } from '../pacing.js';
 
 export const meta = {
   title: 'Create',
@@ -263,6 +264,7 @@ export function mount(root, ctx) {
 
     /* run */
     song: null,           // { title, styleTags, lyrics }
+    plan: null,           // pacing: how the words and the running time were fitted
     lyricsOpen: true,
     editingLyrics: false,
     running: false,
@@ -625,6 +627,17 @@ export function mount(root, ctx) {
     return null;
   }
 
+  /** The words and the running time, fitted to each other. See pacing.js. */
+  function fit(lyrics, styleTags) {
+    return planSong({
+      lyrics,
+      duration: state.duration,
+      voice: `${state.idea} ${styleTags || ''}`,
+      min: LIMITS.DURATION_MIN,
+      max: LIMITS.DURATION_MAX,
+    });
+  }
+
   function buildInput(seedForRun) {
     const input = {
       prompt: buildCaption({
@@ -633,7 +646,9 @@ export function mount(root, ctx) {
         instrumental: state.instrumental,
       }, LIMITS.PROMPT_MAX),
       is_instrumental: state.instrumental,
-      duration: state.duration,
+      // The length the words actually want — see pacing.js. Identical to the
+      // chosen length whenever the sheet already fits it.
+      duration: state.plan?.duration ?? state.duration,
       audio_setting: state.format === 'mp3'
         ? { format: 'mp3', bitrate: state.bitrate }
         : { format: state.format },
@@ -1277,10 +1292,19 @@ export function mount(root, ctx) {
     const sub = document.createElement('span');
     sub.className = 'drawer__sub';
     const chars = state.song.lyrics.length;
-    // the ceiling is only worth naming when it is close enough to matter
+    const plan = state.plan;
+    // What matters about a sheet is whether it fits the song: how many words
+    // there are, and the length they come to. The character count only earns
+    // its place near the ceiling, where it becomes something to act on.
     sub.textContent = chars > LIMITS.LYRICS_MAX * 0.7
       ? `${chars.toLocaleString()} of ${LIMITS.LYRICS_MAX.toLocaleString()} characters`
-      : `${chars.toLocaleString()} characters`;
+      : plan
+        ? [
+          `${plan.words} words`,
+          plan.duration === plan.asked ? `paced to ${clock(plan.duration)}` : `paced to ${clock(plan.duration)}, not ${clock(plan.asked)}`,
+          plan.trimmed.length ? `${plan.trimmed.length} section${plan.trimmed.length > 1 ? 's' : ''} trimmed to fit` : '',
+        ].filter(Boolean).join(' · ')
+        : `${chars.toLocaleString()} characters`;
 
     const acts = document.createElement('div');
     acts.className = 'actionbar actionbar--end';
@@ -1600,6 +1624,7 @@ export function mount(root, ctx) {
     // lyrics would be a lie. The track stays in the list below either way.
     state.takes = [];
     state.facts = null;
+    state.plan = null;   // refitted below, from whichever sheet this run uses
 
     clearInterval(ticker);
     ticker = setInterval(tick, 1000);
@@ -1616,23 +1641,51 @@ export function mount(root, ctx) {
     try {
       /* ---- step 1 — the lyrics, written and shown ---------------------- */
       if (needLyrics) {
-        // The writer paces its words to the chosen length — that is how the
-        // song learns to end on purpose instead of running out or padding.
-        const res = await api.lyrics(
-          { mode: 'write_full_song', prompt: idea, title: '', duration: state.duration },
+        // The word budget rides in the brief: the writer is length-blind
+        // otherwise, and returns the same four hundred words for a one-minute
+        // song as for a five-minute one — which is how songs ended up cut off
+        // mid-line, or looping their last hook for a minute. See pacing.js.
+        const write = (opts) => api.lyrics(
+          { mode: 'write_full_song', prompt: pacedPrompt(idea, state.duration, opts), title: '', duration: state.duration },
           { signal },
         );
-        const written = String(res?.lyrics || '').trim();
+
+        let res = await write();
+        let written = String(res?.lyrics || '').trim();
         if (!written) {
           throw new api.ApiError(
             'No lyrics came back, and a song with vocals cannot render without them.',
             { status: 0, endpoint: '/api/lyrics' },
           );
         }
+
+        // Too thin to fill the take even shortened: ask once more, firmly.
+        // Padding it here would mean writing someone's song for them.
+        // A sheet that does not fit gets ONE more ask, told exactly what was
+        // wrong with the first. Rewriting beats cutting: an automatic trim can
+        // only delete whole sections, and a song with its second chorus
+        // deleted is a song without a chorus.
+        let plan = fit(written, res.style_tags);
+        const want = wordsFor(state.duration);
+        const missBy = (p) => Math.abs(p.raw - want);
+        if (plan.short || plan.trimmed.length) {
+          const again = await write(plan.short
+            ? { firmer: true, was: plan.raw }
+            : { shorter: true, was: plan.raw });
+          const redo = String(again?.lyrics || '').trim();
+          const replan = redo ? fit(redo, again.style_tags) : null;
+          if (replan && missBy(replan) < missBy(plan)) {
+            res = again;
+            written = redo;
+            plan = replan;
+          }
+        }
+
+        state.plan = plan;
         state.song = {
           title: String(res.song_title || '').trim() || titleFromIdea(idea),
           styleTags: String(res.style_tags || '').trim(),
-          lyrics: written,
+          lyrics: plan.lyrics,
         };
         paintWorkspace();
       }
@@ -1643,6 +1696,16 @@ export function mount(root, ctx) {
       }
 
       /* ---- step 2 — the render ---------------------------------------- */
+      // Re-fit, because the lyrics may have been edited by hand since they
+      // were written. Fitting an already-fitted sheet changes nothing.
+      state.plan = state.instrumental || !state.song?.lyrics
+        ? null
+        : fit(state.song.lyrics, state.song.styleTags);
+      if (state.plan) {
+        state.song.lyrics = state.plan.lyrics;
+        paintWorkspace();
+      }
+
       const seedForRun = state.dual && state.seedAuto
         ? null                                  // the backend rolls one per version
         : (state.seedAuto ? randomSeed() : state.seed);

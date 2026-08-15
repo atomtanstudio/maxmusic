@@ -15,7 +15,7 @@
  * The only writable settings are client-side defaults, persisted to
  * localStorage under the single key `maxmusic:defaults`:
  *   { duration: number, format: 'flac'|'mp3'|'wav', bitrate: number,
- *     startScreen: 'create'|'studio'|'library'|'lyrics'|'art'|'settings',
+ *     startScreen: 'create'|'studio'|'library'|'settings',
  *     artist: string }
  *
  * @module screens/settings
@@ -50,8 +50,6 @@ const START_SCREENS = [
   ['create', 'Create'],
   ['studio', 'Studio'],
   ['library', 'Library'],
-  ['lyrics', 'Lyrics'],
-  ['art', 'Art'],
   ['settings', 'Settings'],
 ];
 

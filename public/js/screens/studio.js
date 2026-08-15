@@ -13,6 +13,8 @@
  * @module screens/studio
  */
 
+import { RATE, wordsFor, secondsFor } from '../pacing.js';
+
 export const meta = {
   title: 'Studio',
   subtitle: 'Lyrics + description, full control',
@@ -25,11 +27,8 @@ export const meta = {
 
 const STORAGE_KEY = 'studio.draft';
 
-/** Words per 10 seconds of singing — SPEC §3d. */
-const WORDS_PER_10S = [12, 16];
-
-/** Midpoint of the band, in words per second, for the singing-time estimate. */
-const WORDS_PER_SEC = 1.4;
+/** Words a second while a voice is present. Measured on real renders — pacing.js. */
+const WORDS_PER_SEC = RATE.plain;
 
 /**
  * The three caption fields, each with the labelled sub-structure SPEC §3c
@@ -187,10 +186,16 @@ function debounce(fn, ms) {
   return wrapped;
 }
 
-/** Sung-word target for a duration — SPEC §3d. */
+/**
+ * Sung-word target for a duration — SPEC §3d, with the numbers corrected
+ * against four measured renders. The old band was a flat 12–16 words per ten
+ * seconds of the whole track, which quietly asked for a sheet a fifth too
+ * short: a song also has an intro, its breaks and an ending, and what fills
+ * the rest is the last hook sung over and over. See pacing.js.
+ */
 function wordTarget(duration) {
-  const d = Math.max(0, Number(duration) || 0);
-  return [Math.round((d / 10) * WORDS_PER_10S[0]), Math.round((d / 10) * WORDS_PER_10S[1])];
+  const want = wordsFor(duration);
+  return [Math.round(want * 0.85), Math.round(want * 1.15)];
 }
 
 /** Structure MM3 expects at this length — SPEC §3d. */
@@ -396,7 +401,7 @@ function analyse(text, { duration, instrumental }) {
         severity: 'warn',
         line: null,
         fixable: false,
-        message: `${sungWords} sung words is dense for ${clock(duration)} — aim for ${lo}–${hi}, or stretch the track to ${clock(Math.ceil(sungWords / WORDS_PER_10S[1] * 10))}.`,
+        message: `${sungWords} sung words is dense for ${clock(duration)} — aim for ${lo}–${hi}, or stretch the track to ${clock(Math.ceil(secondsFor(sungWords)))}.`,
       });
     }
   }

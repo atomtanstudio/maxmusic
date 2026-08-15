@@ -10,7 +10,7 @@
  */
 
 import * as api from './api.js';
-import { composeBrief } from './screens/art.js';
+import { composeBrief } from './art-brief.js';
 import { loadRecords, updateRecord } from './records.js';
 
 let open = false;

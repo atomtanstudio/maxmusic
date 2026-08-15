@@ -1004,14 +1004,16 @@ const ROUTES = [
   { name: 'create',   path: '/create',   load: () => import('./screens/create.js') },
   { name: 'studio',   path: '/studio',   load: () => import('./screens/studio.js') },
   { name: 'library',  path: '/library',  load: () => import('./screens/library.js') },
-  { name: 'lyrics',   path: '/lyrics',   load: () => import('./screens/lyrics.js') },
-  { name: 'art',      path: '/art',      load: () => import('./screens/art.js') },
   { name: 'settings', path: '/settings', load: () => import('./screens/settings.js') },
 ];
 
+/* Lyrics and Art had their own screens once. Both are now where the work
+   actually happens — lyrics are written and edited where a song is made, and
+   artwork is made from a song in the Library — so the two screens were rooms
+   nobody had a reason to walk into. The reading half of Art survives as
+   art-brief.js, which is what the cover-art dialog composes with. */
 const FALLBACK_TITLES = {
-  create: 'Create', studio: 'Studio', library: 'Library',
-  lyrics: 'Lyrics', art: 'Art', settings: 'Settings',
+  create: 'Create', studio: 'Studio', library: 'Library', settings: 'Settings',
 };
 
 const router = createRouter({

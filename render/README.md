@@ -120,6 +120,25 @@ vocals → the arc must come from treatments (no drops to lean on). Long
 instrumental stretches → the world carries them (drops, visualiser
 moments). Never reuse the previous song's pack unchanged.
 
+### When a gap becomes a scene
+
+Silence between two sung sections only earns its own scene — its own world,
+a cut away and a cut back — when it is long enough to be an event in the
+song. The thresholds live in `engine.mjs` where sections are stitched:
+
+| gap | threshold | what happens |
+|---|---|---|
+| before the first line | 1.5s | title card |
+| between sections | **5s** | drop / instrumental scene |
+| after the last line | 2.5s | end card |
+
+A mid-song gap under five seconds is a breath, not a break: the scene
+already playing simply holds the frame through it. This was a real defect
+— a song with 2.1–2.7s gaps between verses cut to the drop wall and back
+three times, each for about two seconds, which reads as a fault in the
+film rather than a choice. Raising only the mid-song number left every
+genuine break (6.5s, 12s, 25s in the reference cut) exactly as it was.
+
 ## The studio (in-app)
 
 The app server mounts `/studio` — audio export and video jobs, all on this

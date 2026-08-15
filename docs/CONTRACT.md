@@ -193,12 +193,21 @@ make your own wrapper `height: 100%; overflow: hidden` and scroll the columns in
 | create | `#/create` | `screens/create.js` | `css/screens/create.css` |
 | studio | `#/studio` | `screens/studio.js` | `css/screens/studio.css` |
 | library | `#/library` | `screens/library.js` | `css/screens/library.css` |
-| lyrics | `#/lyrics` | `screens/lyrics.js` | `css/screens/lyrics.css` |
-| art | `#/art` | `screens/art.js` | `css/screens/art.css` |
 | settings | `#/settings` | `screens/settings.js` | `css/screens/settings.css` |
 
 Query strings are supported and parsed for you: `#/library?track=ab12` →
 `ctx.route.query.track === 'ab12'`. Unknown hashes are rewritten to `#/create`.
+
+Lyrics and Art were routes of their own until Aug 2026. Both were removed
+because the work had moved to where the songs are: lyrics are written, shown
+and edited on Create and Studio, and artwork is made from a song through the
+cover-art dialog in the Library. What survived of Art is `art-brief.js`, the
+deterministic song → art-direction reader that dialog composes with.
+
+Non-screen modules screens may import: `records.js` (the song ledger),
+`studio-actions.js` (audio and video exports), `cover-redo.js` (the cover-art
+dialog), `art-brief.js`, and `pacing.js` (fitting a lyric sheet and a running
+time to each other — see the module header for the measured numbers).
 
 ---
 
