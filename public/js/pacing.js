@@ -9,40 +9,49 @@
  * The studio's lyric writer is length-blind on its own: asked for one minute it
  * returns the same four hundred words it returns for five.
  *
- * The model that fits four measured renders, to within a few seconds each:
+ * What six measured takes support is one number — how many sung words a second
+ * of running time can carry:
  *
- *     running time  ≈  sung words / 1.78  +  15s
+ *     running time  ≈  sung words / 1.65
  *
- * — the singer covers about 1.78 words a second while a voice is present, and
- * a song needs roughly a quarter-minute besides that for its intro, its breaks
- * and an ending. `LEAD_OUT` is that quarter-minute; `RATE` is the singing.
+ * and not much more precision than that. How fast the singer phrases is NOT
+ * predictable: two takes of the same sheet, at the same length, from the same
+ * brief, sang 1.39 and 2.28 words a second. So this module aims for the
+ * density that lands and lets the rest be the model's business.
  *
  * The writer is asked for the right size (`pacedPrompt`), but it is a writer,
  * not a calculator — one 3:00 request came back 40% long — so nothing
- * downstream trusts it. `planSong` is the guarantee: it moves the running time
- * to fit the words first, because a take twenty seconds longer costs nothing
- * and a deleted verse costs a verse, and trims only when no sane running time
- * could carry the sheet.
+ * downstream trusts it. `planSong` is the guarantee.
  *
  * @module pacing
  */
 
-/** Sung words a second while a voice is present. Measured, not guessed. */
-export const RATE = { slow: 1.55, plain: 1.78, fast: 1.95 };
+/**
+ * Sung words per second of TOTAL running time — the whole song, singing and
+ * silence together.
+ *
+ * Not words-per-second-while-singing, which was the first thing tried and is
+ * not a stable number: two takes of the same sheet, the same length and the
+ * same brief phrased it 1.39 and 2.28 words a second. That variance belongs to
+ * the model and no arithmetic here can remove it. What six measured takes DO
+ * agree on is the density that lands: at 1.71 and 1.60 songs ended cleanly, at
+ * 1.77 one was cut off mid-phrase, and at 1.38 another looped its last line for
+ * sixty-six seconds. So 1.65 is the middle of the band that works.
+ */
+export const DENSITY = { slow: 1.45, plain: 1.65, fast: 1.85 };
 
 /**
- * Seconds a song spends not singing: the intro, a break or two, and an ending.
+ * How far the running time may move from the length that was asked for.
  *
- * Twenty-two, not fifteen. Fifteen was read off the songs that happened to
- * land, and a controlled test then showed what happens when a sheet fills the
- * running time exactly: the singer never reaches the outro, loops two lines of
- * the bridge instead, and the recording stops mid-phrase with two tenths of a
- * second to spare. The extra seven seconds are the margin that failure bought.
+ * Barely upward, on purpose. Stretching the take was an early idea — keep every
+ * word the writer wrote — and the songs disagreed with it: the two that landed
+ * on their own wanted no extra time at all, and the take that was stretched to
+ * hold an overlong sheet sang everything by 2:43 and then played to nobody for
+ * a minute. Downward is where the room is: a thin sheet makes a shorter song,
+ * which is how a five-minute request stops being four minutes of song and one
+ * minute of the same line over and over.
  */
-const LEAD_OUT = 22;
-
-/** How far the running time may move from the length that was asked for. */
-const STRETCH = { min: 0.75, max: 1.25 };
+const STRETCH = { min: 0.75, max: 1.1 };
 
 /** A tail longer than this gets an explicit play-out rather than a loop. */
 const TAIL_MAX = 8;
@@ -56,31 +65,31 @@ export function clock(seconds) {
 }
 
 /**
- * A ballad and a punk song do not sing the same number of words in a minute —
- * the four measured renders ran 1.56 to 1.90 — so the brief is read for tempo
- * before the arithmetic. Only words unambiguously about pace count; a genre
- * alone is too weak a signal to move the number.
+ * A ballad and a punk song do not carry the same number of words in a minute,
+ * so the brief is read for tempo before the arithmetic. Only words that are
+ * unambiguously about pace count; a genre alone is too weak a signal to move
+ * the number.
  */
 const FAST = /\b(fast|uptempo|up-tempo|driving|frantic|breakneck|relentless|energetic|punk|thrash|metal|hardcore|drum ?(and|&|n) ?bass|dnb|jungle|techno|rave|hyperpop|speed|rap|hip ?hop|trap|drill|patter|anthem|stadium)\b/i;
 const SLOW = /\b(slow|slower|ballad|hymn|lullaby|elegy|dirge|funeral|ambient|drone|downtempo|meditative|mournful|sparse|hushed|gentle|tender|spacious|languid|half-?time)\b/i;
 
-/** Words a second this brief is likely to want sung. */
+/** Words per second of running time this brief is likely to carry. */
 export function rateFor(text) {
   const t = String(text || '');
   const fast = FAST.test(t);
   const slow = SLOW.test(t);
-  if (fast === slow) return RATE.plain;      // both, or neither
-  return fast ? RATE.fast : RATE.slow;
+  if (fast === slow) return DENSITY.plain;      // both, or neither
+  return fast ? DENSITY.fast : DENSITY.slow;
 }
 
 /** Sung words a recording of this length can hold. */
-export function wordsFor(seconds, rate = RATE.plain) {
-  return Math.max(1, Math.round(Math.max(0, (Number(seconds) || 0) - LEAD_OUT) * rate));
+export function wordsFor(seconds, density = DENSITY.plain) {
+  return Math.max(1, Math.round(Math.max(0, Number(seconds) || 0) * density));
 }
 
-/** Running time this many words wants. */
-export function secondsFor(words, rate = RATE.plain) {
-  return (Math.max(0, Number(words) || 0) / rate) + LEAD_OUT;
+/** Running time this many words want. */
+export function secondsFor(words, density = DENSITY.plain) {
+  return Math.max(0, Number(words) || 0) / density;
 }
 
 /**
@@ -246,24 +255,26 @@ export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }
     return { lyrics: String(lyrics || ''), words: 0, raw: 0, duration: asked, asked, trimmed: [], tail: 0, short: false };
   }
 
-  // The recording moves first: a take twenty seconds longer keeps every word
-  // the writer wrote, and words are the expensive thing here.
+  // A thin sheet shortens the take rather than being padded out to length:
+  // that is the difference between a four-minute song and four minutes of song
+  // followed by a minute of its last line. Growing is kept to a tenth, because
+  // the songs that landed wanted no extra time at all. Rounded DOWN to five
+  // seconds so the rounding can never push past the ceiling.
   const ideal = secondsFor(words, rate);
   const seconds = clamp(
-    Math.round(clamp(ideal, asked * STRETCH.min, asked * STRETCH.max) / 5) * 5,
+    Math.floor(clamp(ideal, asked * STRETCH.min, asked * STRETCH.max) / 5) * 5,
     min,
     max,
   );
 
   let out = String(lyrics || '');
   let trimmed = [];
-  // Words only come out when the take could NOT stretch far enough to hold
-  // them — when the chosen length, plus the quarter it is allowed to grow by,
-  // still is not enough. Trimming a sheet that already fits would be deleting
-  // someone's verse for nothing. What is cut goes a little past the line, so
-  // the song keeps a margin instead of ending exactly as the tape does.
-  if (seconds < ideal * 0.98) {
-    const r = trimToBudget(toBlocks(out), Math.floor(wordsFor(seconds, rate) * 0.95));
+  // Words only come out when the running time could NOT reach far enough to
+  // hold them. Trimming a sheet that already fits would be deleting someone's
+  // verse for nothing, so the comparison is loose enough that rounding the
+  // take down to a five-second mark cannot by itself cost a section.
+  if (seconds < ideal * 0.95) {
+    const r = trimToBudget(toBlocks(out), wordsFor(seconds, rate));
     if (r.dropped.length) {
       out = fromBlocks(r.keep);
       trimmed = r.dropped;
@@ -271,7 +282,7 @@ export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }
   }
 
   const finalWords = countSungWords(out);
-  const tail = Math.max(0, seconds - secondsFor(finalWords, RATE.fast));
+  const tail = Math.max(0, seconds - secondsFor(finalWords, DENSITY.fast));
 
   // Even a fast singer runs out of words before this tape does, so say so in
   // the sheet. Left unsaid, the model fills the gap by singing its last hook
@@ -289,6 +300,6 @@ export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }
     asked,
     trimmed,
     tail: Math.round(tail),
-    short: finalWords < wordsFor(seconds, RATE.slow) * 0.8,
+    short: finalWords < wordsFor(seconds, DENSITY.slow) * 0.8,
   };
 }

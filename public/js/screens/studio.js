@@ -13,7 +13,7 @@
  * @module screens/studio
  */
 
-import { RATE, wordsFor, secondsFor } from '../pacing.js';
+import { DENSITY, wordsFor, secondsFor } from '../pacing.js';
 
 export const meta = {
   title: 'Studio',
@@ -27,8 +27,8 @@ export const meta = {
 
 const STORAGE_KEY = 'studio.draft';
 
-/** Words a second while a voice is present. Measured on real renders — pacing.js. */
-const WORDS_PER_SEC = RATE.plain;
+/** Words a second of running time. Measured on real renders — pacing.js. */
+const WORDS_PER_SEC = DENSITY.plain;
 
 /**
  * The three caption fields, each with the labelled sub-structure SPEC §3c
