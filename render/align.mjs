@@ -17,9 +17,13 @@
 
 import fs from 'node:fs/promises';
 
-const [lyricsFile, segFile, wordFile, outFile] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+/** Studio jobs pass this: a written line the record never sings is dropped
+    with a warning instead of refusing the whole render. */
+const DROP_UNANCHORED = argv.includes('--drop-unanchored');
+const [lyricsFile, segFile, wordFile, outFile] = argv.filter((a) => !a.startsWith('--'));
 if (!lyricsFile || !segFile || !wordFile || !outFile) {
-  console.error('usage: node render/align.mjs <lyrics.json> <segments.json> <words.json> <out.json>');
+  console.error('usage: node render/align.mjs <lyrics.json> <segments.json> <words.json> <out.json> [--drop-unanchored]');
   process.exit(1);
 }
 
@@ -96,6 +100,44 @@ for (const section of sheet.sections) {
   }
 }
 
+/**
+ * Whisper often hears several short consecutive lines as ONE segment
+ * ("Turn it on, turn it over, turn it loose"). If a segment's text is
+ * exactly a run of consecutive sheet lines, split it back into them,
+ * time shared out by character count.
+ */
+function splitConcats() {
+  const flats = lines.map((l) => l.norm.replace(/ /g, ''));
+  const out = [];
+  for (const seg of segments) {
+    const flat = seg.text.replace(/ /g, '');
+    let found = null;
+    for (let i = 0; i < flats.length && !found; i++) {
+      let acc = '';
+      const parts = [];
+      for (let j = i; j < flats.length && parts.length < 12; j++) {
+        if (!flats[j]) break;
+        acc += flats[j];
+        parts.push(j);
+        if (acc.length === flat.length) {
+          if (acc === flat && parts.length > 1) found = parts;
+          break;
+        }
+        if (acc.length > flat.length) break;
+      }
+    }
+    if (!found) { out.push(seg); continue; }
+    const total = found.reduce((a, j) => a + flats[j].length, 0);
+    let t = seg.t0;
+    for (const j of found) {
+      const dt = (seg.t1 - seg.t0) * (flats[j].length / total);
+      out.push({ text: lines[j].norm, t0: t, t1: t + dt });
+      t += dt;
+    }
+  }
+  segments = out;
+}
+splitConcats();
 segments = splitRepeats([...new Set(lines.map((l) => l.norm))]);
 
 /* ------------------------------------------------------- string similarity */
@@ -150,6 +192,22 @@ function alignLines() {
 }
 
 const lineSeg = alignLines();
+
+if (DROP_UNANCHORED) {
+  const missing = lines.map((l, i) => (lineSeg[i] === null ? l : null)).filter(Boolean);
+  if (missing.length === lines.length) {
+    console.error('None of the written lyrics could be heard in this song\'s audio.');
+    process.exit(1);
+  }
+  if (missing.length) {
+    console.error(`Dropped ${missing.length} written line(s) the record never sings:`);
+    for (const l of missing) console.error(`  [${l.section}] ${l.text}`);
+    const kept = lines.map((l, i) => [l, lineSeg[i]]).filter(([, s]) => s !== null);
+    lines.length = 0;
+    lineSeg.length = 0;
+    for (const [l, s] of kept) { lines.push(l); lineSeg.push(s); }
+  }
+}
 
 /* ------------------------- stage 2: words within each line's time window -- */
 

@@ -768,6 +768,11 @@ export function mount(root, ctx) {
         disabled: !record.url,
         onSelect: () => makeLyricVideo(ctx, record, 'film'),
       },
+      {
+        label: 'Redo the cover art',
+        icon: 'wand',
+        onSelect: () => ctx.navigate('art', { query: { track: record.id } }),
+      },
       { separator: true },
       { label: 'Copy caption', icon: 'copy', disabled: !record.prompt, onSelect: () => copy(record.prompt, 'Caption') },
       { label: 'Copy lyrics', icon: 'copy', disabled: !hasLyrics, onSelect: () => copy(record.lyrics, 'Lyrics') },

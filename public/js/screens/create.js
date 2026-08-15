@@ -976,6 +976,7 @@ export function mount(root, ctx) {
           { label: 'Download MP3', icon: 'download', onSelect: () => downloadAudio(ctx, rec, 'mp3') },
           { label: 'Make a lyric scroll', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'scroll') },
           { label: 'Make a lyric film', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'film') },
+          { label: 'Redo the cover art', icon: 'wand', onSelect: () => ctx.navigate('art', { query: { track: rec.id } }) },
           { label: 'Start a new song from this', icon: 'wand', onSelect: () => reuse(rec) },
           { separator: true },
           {

@@ -215,6 +215,7 @@ async function work(job, backend) {
   job.step = 'Timing the lyrics';
   await runCancellable(job, process.execPath, [
     path.join(RENDER_DIR, 'align.mjs'), sheet, path.join(d, 'seg.json'), path.join(d, 'words.json'), dataTiming,
+    '--drop-unanchored',
   ]);
 
   job.step = 'Rendering';
@@ -252,7 +253,9 @@ function pump(backend) {
     .catch((err) => {
       if (job.status !== 'cancelled') {
         job.status = 'failed';
-        job.error = err.message === 'cancelled' ? 'Cancelled.' : err.message;
+        job.error = err.message === 'cancelled'
+          ? 'Cancelled.'
+          : `${job.step || 'The render'} stopped: ${err.message}`;
         job.finishedAt = Date.now();
       }
     })

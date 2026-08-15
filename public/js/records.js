@@ -98,3 +98,16 @@ export function storeTrack(storage, payload) {
   saveRecords(storage, list);
   return { record, count: list.length };
 }
+
+/**
+ * Patch one stored record — the shell uses this to attach freshly made
+ * cover art to its song. Returns the updated record, or null.
+ */
+export function updateRecord(storage, id, patch) {
+  const list = loadRecords(storage);
+  const i = list.findIndex((r) => r.id === String(id));
+  if (i < 0) return null;
+  list[i] = { ...list[i], ...patch };
+  saveRecords(storage, list);
+  return list[i];
+}

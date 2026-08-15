@@ -636,9 +636,13 @@ export async function mount(root, ctx) {
   const saved = ctx.storage.get(DRAFT_KEY, null) || {};
   const tracks = loadTracks();
 
+  // "Redo the cover art" on a song lands here with ?track=<id>: that song
+  // becomes the source and the brief recomposes for it, on purpose.
+  const asked = String(ctx.route.query.track || '');
+  const askedTrack = asked && tracks.some((t) => t.id === asked);
   const state = {
-    source: saved.source === 'track' && tracks.length ? 'track' : 'scratch',
-    trackId: String(saved.trackId || ''),
+    source: askedTrack ? 'track' : (saved.source === 'track' && tracks.length ? 'track' : 'scratch'),
+    trackId: askedTrack ? asked : String(saved.trackId || ''),
     title: String(ctx.route.query.title || saved.title || ''),
     style: String(ctx.route.query.prompt || saved.style || ''),
     lyrics: String(saved.lyrics || ''),
@@ -647,7 +651,7 @@ export async function mount(root, ctx) {
     useLyrics: saved.useLyrics !== false,
     useTitle: saved.useTitle !== false,
     prompt: String(saved.prompt || ''),
-    edited: Boolean(saved.edited),
+    edited: askedTrack ? false : Boolean(saved.edited),
     plan: null,
     undo: null,
     health: null,
@@ -1556,7 +1560,10 @@ export async function mount(root, ctx) {
       state.selected = record;
       state.history = [record, ...state.history.filter((c) => c.id !== record.id)].slice(0, HISTORY_MAX);
       ctx.storage.set(HISTORY_KEY, state.history);
-      ctx.bus.emit('art:new', { cover: record, meta: { ...body } });
+      ctx.bus.emit('art:new', {
+        cover: record,
+        meta: { ...body, sourceTrackId: state.source === 'track' ? state.trackId : null },
+      });
       ctx.toast(`“${record.title}” is ready.`, { kind: 'success', title: 'Cover art' });
     } catch (err) {
       if (err?.name === 'AbortError') {
@@ -1624,6 +1631,10 @@ export async function mount(root, ctx) {
     state.auth = a;
     renderForm();
   });
+
+  // A deep-linked song ("Redo the cover art") takes the composer over: its
+  // fields load and the brief recomposes for it, same as picking it by hand.
+  if (askedTrack) applyTrack(tracks.find((t) => t.id === asked));
 
   resuggest({ silent: true });
   renderForm();

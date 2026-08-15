@@ -17,7 +17,7 @@
 
 import * as api from './api.js';
 import { createRouter } from './router.js';
-import { storeTrack, loadRecords } from './records.js';
+import { storeTrack, loadRecords, updateRecord } from './records.js';
 
 /* ========================================================================== *
  * Elements
@@ -862,6 +862,20 @@ function wireChrome() {
       toast(`A finished song could not be added to your library: ${err?.message || err}`, {
         kind: 'error', title: 'Library',
       });
+    }
+  });
+
+  // Fresh cover art made FOR a song becomes that song's cover everywhere —
+  // the Library, the player, and both video kinds.
+  bus.on('art:new', (payload) => {
+    const id = payload?.meta?.sourceTrackId;
+    const url = payload?.cover?.url;
+    if (!id || !url) return;
+    try {
+      const updated = updateRecord(storage, id, { cover: url });
+      if (updated) bus.emit('library:changed', { source: 'shell', count: loadRecords(storage).length, id });
+    } catch (err) {
+      console.error('[shell] could not attach the new cover', err);
     }
   });
 
