@@ -233,7 +233,7 @@ async function work(job, backend) {
     try {
       await runCancellable(job, process.execPath, [
         path.join(RENDER_DIR, 'align.mjs'), sheet, path.join(d, 'seg.json'), path.join(d, 'words.json'), dataTiming,
-        '--drop-unanchored',
+        '--drop-unanchored', '--analysis', dataAnalysis,
       ]);
     } catch (err) {
       if (!/None of the written lyrics/.test(err.message)) throw err;

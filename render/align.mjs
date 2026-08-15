@@ -21,13 +21,52 @@ const argv = process.argv.slice(2);
 /** Studio jobs pass this: a written line the record never sings is dropped
     with a warning instead of refusing the whole render. */
 const DROP_UNANCHORED = argv.includes('--drop-unanchored');
-const [lyricsFile, segFile, wordFile, outFile] = argv.filter((a) => !a.startsWith('--'));
+/** Optional: the song's analysis JSON. With it, windows are trimmed to
+    where vocal-band energy actually lives, and no line may be timed into
+    a stretch the record left silent. */
+const analysisIdx = argv.indexOf('--analysis');
+const analysisFile = analysisIdx >= 0 ? argv[analysisIdx + 1] : null;
+const positional = argv.filter((x, i) => !x.startsWith('--') && argv[i - 1] !== '--analysis');
+const [lyricsFile, segFile, wordFile, outFile] = positional;
 if (!lyricsFile || !segFile || !wordFile || !outFile) {
   console.error('usage: node render/align.mjs <lyrics.json> <segments.json> <words.json> <out.json> [--drop-unanchored]');
   process.exit(1);
 }
 
 const sheet = JSON.parse(await fs.readFile(lyricsFile, 'utf8'));
+const analysis = analysisFile ? JSON.parse(await fs.readFile(analysisFile, 'utf8')) : null;
+
+/** Mean of the analysis 'mid' band (the voice lives there) over [t0,t1]. */
+function midEnergy(t0, t1) {
+  if (!analysis) return null;
+  const arr = analysis.series.mid;
+  const f0 = Math.max(0, Math.floor(t0 * analysis.fps));
+  const f1 = Math.min(arr.length - 1, Math.ceil(t1 * analysis.fps));
+  if (f1 < f0) return 0;
+  let s = 0;
+  for (let f = f0; f <= f1; f++) s += arr[f];
+  return s / (f1 - f0 + 1);
+}
+
+/** Trim a window to where the vocal band actually carries energy — ASR
+    segments are padded with silence at their edges. */
+function trimToEnergy(t0, t1) {
+  if (!analysis) return { t0, t1 };
+  const arr = analysis.series.mid;
+  const f0 = Math.max(0, Math.floor(t0 * analysis.fps));
+  const f1 = Math.min(arr.length - 1, Math.ceil(t1 * analysis.fps));
+  let peak = 0;
+  for (let f = f0; f <= f1; f++) peak = Math.max(peak, arr[f]);
+  if (peak <= 0.02) return { t0, t1 };
+  const bar = peak * 0.3;
+  let a = f0;
+  while (a < f1 && arr[a] < bar) a++;
+  let b = f1;
+  while (b > a && arr[b] < bar) b--;
+  const nt0 = a / analysis.fps;
+  const nt1 = Math.max(nt0 + 0.4, b / analysis.fps + 0.15);
+  return { t0: Math.max(t0, nt0 - 0.12), t1: Math.min(Math.max(t1, t0 + 0.4), nt1) };
+}
 const segPass = JSON.parse(await fs.readFile(segFile, 'utf8'));
 const wordPass = JSON.parse(await fs.readFile(wordFile, 'utf8'));
 
@@ -38,12 +77,16 @@ const norm = (s) => s.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').replace(/\s+/g,
 
 /** Sung segments: text plus window, music/noise annotations dropped. */
 let segments = segPass.transcription
+  // An ASR annotation — "(upbeat rock music)", "(applause)" — is not a
+  // vocal. It must be dropped while its parentheses still exist, because
+  // norm() strips them and the leak hands lyrics to instrumental passages.
+  .filter((s) => !/^\s*[\(\[].*[\)\]]\s*$/.test(String(s.text || '').trim()))
   .map((s) => ({
     text: norm(s.text.replace(/♪/g, '')),
     t0: s.offsets.from / 1000,
     t1: s.offsets.to / 1000,
   }))
-  .filter((s) => s.text && !/^\(.*\)$/.test(s.text) && !/^upbeat music$/.test(s.text));
+  .filter((s) => s.text);
 
 /**
  * A chanted phrase comes back as ONE segment holding several repeats
@@ -217,43 +260,89 @@ function rescueUnanchored() {
   };
 
   // Pass 1: weak matches against unclaimed segments in the right stretch.
+  // Order is enforced — a rescued line may never sit before the previous
+  // line's audio — and the bar is high enough that a wrong claim loses to
+  // an honest drop. A rescue put "Turn it loose" on top of somebody else's
+  // vocal once; that is the bug this shape prevents.
+  let lastStart = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (lineSeg[i] !== null) continue;
+    if (lineSeg[i] !== null) { lastStart = segments[lineSeg[i]].t0; continue; }
     const { t0, t1 } = neighbours(i);
     let best = -1;
-    let bestSim = 0.22;
+    let bestSim = 0.3;
     for (let s = 0; s < segments.length; s++) {
       if (claimed.has(s)) continue;
-      if (segments[s].t0 < t0 - 0.3 || segments[s].t1 > t1 + 0.3) continue;
+      if (segments[s].t0 < Math.max(t0 - 0.3, lastStart) || segments[s].t1 > t1 + 0.3) continue;
       const v = sim(lines[i].norm, segments[s].text);
       if (v > bestSim) { bestSim = v; best = s; }
     }
     if (best >= 0) {
       lineSeg[i] = best;
       claimed.add(best);
+      lastStart = segments[best].t0;
     }
   }
 
-  // Pass 2: a run of still-unanchored lines between neighbours shares the
-  // silence between them, if there is enough of it to have been sung in.
+  // Pass 2: a still-unanchored run may take the stretch between its
+  // neighbours ONLY where the record demonstrably sings — an unclaimed
+  // textual segment in the gap, or sustained vocal-band energy when the
+  // analysis is on hand. Silence is never given words: that is how lyrics
+  // ended up popping up before the song reached them.
+  const vocalRef = (() => {
+    if (!analysis) return null;
+    const vals = [];
+    for (const s of segments) {
+      const e = midEnergy(s.t0, s.t1);
+      if (e !== null) vals.push(e);
+    }
+    vals.sort((x, y) => x - y);
+    return vals.length ? vals[Math.floor(vals.length / 2)] : null;
+  })();
+
   let i = 0;
   while (i < lines.length) {
     if (lineSeg[i] !== null) { i++; continue; }
     let j = i;
     while (j < lines.length && lineSeg[j] === null) j++;
     const { t0, t1 } = neighbours(i);
-    const gap = t1 - t0;
+    const free = segments
+      .map((s, idx) => ({ s, idx }))
+      .filter(({ s, idx }) => !claimed.has(idx) && s.t0 >= t0 - 0.3 && s.t1 <= t1 + 0.3)
+      .sort((x, y) => x.s.t0 - y.s.t0);
     const run = [];
     for (let k = i; k < j; k++) run.push(k);
-    const chars = run.reduce((a, k) => a + lines[k].norm.length, 0) || 1;
-    if (gap > Math.max(1.2, 0.28 * chars * 0.35)) {
-      let t = t0 + 0.15;
-      const usable = Math.min(gap - 0.3, chars * 0.42);
+
+    if (free.length) {
+      // The ASR heard vocals here it could not name; order suggests the
+      // names, but only plausible ones stick — a line pinned to audio whose
+      // heard text shares nothing with it would highlight the wrong words.
+      let r = 0;
       for (const k of run) {
-        const dt = usable * (lines[k].norm.length / chars);
-        segments.push({ text: lines[k].norm, t0: t, t1: t + dt });
-        lineSeg[k] = segments.length - 1;
-        t += dt;
+        if (r >= free.length) break;
+        const cand = free[r];
+        const plaus = sim(lines[k].norm, cand.s.text) >= 0.2
+          || (lines[k].norm.length >= 6 && cand.s.text.includes(lines[k].norm))
+          || (cand.s.text.length >= 6 && lines[k].norm.includes(cand.s.text));
+        if (plaus) {
+          lineSeg[k] = cand.idx;
+          claimed.add(cand.idx);
+          r++;
+        }
+      }
+    } else if (vocalRef !== null) {
+      const gap = t1 - t0;
+      const sung = midEnergy(t0 + 0.1, t1 - 0.1);
+      if (gap > 1.2 && sung !== null && sung >= vocalRef * 0.55) {
+        const trimmed = trimToEnergy(t0 + 0.1, t1 - 0.1);
+        const chars = run.reduce((a, k) => a + lines[k].norm.length, 0) || 1;
+        let t = trimmed.t0;
+        const usable = Math.max(0.5, trimmed.t1 - trimmed.t0);
+        for (const k of run) {
+          const dt = usable * (lines[k].norm.length / chars);
+          segments.push({ text: lines[k].norm, t0: t, t1: t + dt });
+          lineSeg[k] = segments.length - 1;
+          t += dt;
+        }
       }
     }
     i = j;
@@ -295,8 +384,11 @@ function windowFor(idx) {
 
 for (let idx = 0; idx < lines.length; idx++) {
   const line = lines[idx];
-  const win = windowFor(idx);
-  if (!win) continue;
+  const rawWin = windowFor(idx);
+  if (!rawWin) continue;
+  // ASR segments carry silent padding at their edges; the vocal-band
+  // energy says where the singing actually is.
+  const win = trimToEnergy(rawWin.t0, rawWin.t1);
   line.t0 = win.t0;
   line.t1 = win.t1;
 
@@ -338,6 +430,15 @@ for (let idx = 0; idx < lines.length; idx++) {
   // line begins when its first word does.
   line.t0 = Math.min(...line.words.map((w) => w.t0));
   line.t1 = Math.max(line.t1, ...line.words.map((w) => w.t1));
+  // And a line's span stays singable — an ad-lib that the ASR heard as one
+  // long stretch must not own the screen for it all.
+  const capped = line.t0 + 2.2 + line.words.length * 0.7;
+  if (line.t1 > capped) {
+    line.t1 = capped;
+    for (const w of line.words) {
+      if (w.t1 > capped) { w.t1 = capped; w.t0 = Math.min(w.t0, capped - MIN_WORD_S); }
+    }
+  }
 }
 
 const unanchored = lines.filter((l) => l.t0 === undefined);

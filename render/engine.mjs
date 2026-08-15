@@ -1822,7 +1822,14 @@ export async function createStage(canvas, timing, analysis) {
       const lay = isStamp ? layoutSlamStamps(line) : layoutFor(line, 'chorus');
       const pump = 1 + atSm('bass', t, 3) * 0.03 * PUMP_K;
       const kick = onsetKick(t, 0.09) * KICK_K;
-      const preview = idx < 0; // before the first word: the plate waits in the dark
+      // Before the first word nothing is drawn — a plate faintly on screen
+      // before anything is sung reads as words arriving early, because it is.
+      if (idx < 0) {
+        paintGrain(f, 0.05);
+        paintVignette(0.9);
+        return;
+      }
+      const preview = false;
       // The stack composes at every moment: the landed rows' weighted centre
       // rides the frame centre, so a half-built plate is never top-anchored.
       let sumW = 0;
@@ -2054,7 +2061,11 @@ export async function createStage(canvas, timing, analysis) {
 
   /** Instrumental drop, flavour A: the wall of lights owns the frame. */
   function dropWallScene(section) {
-    const GHOSTS = ['OPEN', 'FORK', 'SHIP'];
+    // The breathing watermark speaks this song's own name — hardcoded
+    // words from another song read as lyrics that never arrive.
+    const GHOSTS = (timing.title || 'MUSIC').toUpperCase().split(/\s+/)
+      .filter((w) => w.replace(/[^A-Z]/g, '').length >= 3).slice(0, 3);
+    if (!GHOSTS.length) GHOSTS.push((timing.artist || 'MUSIC').toUpperCase());
     return (t, f) => {
       paintBackdrop();
       const u = span(t, section.t0, section.t0 + 1.2);
