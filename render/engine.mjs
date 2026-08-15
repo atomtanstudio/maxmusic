@@ -846,23 +846,11 @@ export async function createStage(canvas, timing, analysis) {
         const enter = span(t, line.t0 - 0.45, line.t0 + 0.1);
         const exitStart = next ? next.t0 - 0.35 : line.t1 + 1.2;
         const exit = span(t, exitStart, exitStart + 0.8);
-        if (enter <= 0 || exit >= 1) {
-          // Passed lines park deep in the room as ghosts — the wall remembers.
-          if (exit >= 1) {
-            const lay = layoutFor(line);
-            const slot = li % 3;
-            const gx = W * (0.16 + 0.06 * slot);
-            const gy = H * (0.2 + slot * 0.26);
-            const settle = easeOutCubic(span(t, exitStart + 0.7, exitStart + 1.5));
-            ctx.save();
-            ctx.translate(gx, gy);
-            ctx.scale(0.15, 0.15);
-            ctx.globalAlpha = 0.11 * settle;
-            for (const wd of lay.words) paintWord(wd, wd.t1 + 1, { ghost: true, alpha: 1 });
-            ctx.restore();
-          }
-          return;
-        }
+        // A line that has finished is GONE — it exits fading and never
+        // parks. Remnants without a job read as debris, not memory; the
+        // only accumulations left are the drop marquee and the outro
+        // constellation, which are composed for it.
+        if (enter <= 0 || exit >= 1) return;
         const lay = layoutFor(line);
         const device = /never shown/i.test(line.text) ? 'redact' : null;
         ctx.save();
@@ -919,8 +907,15 @@ export async function createStage(canvas, timing, analysis) {
         const exitStart = next ? next.t0 - 0.25 : line.t1 + 1.1;
         const settled = span(t, exitStart, exitStart + 0.7) >= 1;
         if (!settled && t >= exitStart) return; // mid-flight: no number to point at
+        // A read line lingers just long enough to feel like context, then
+        // dissolves with its number — nothing camps on screen.
+        const dissolve = settled ? 1 - span(t, exitStart + 2.2, exitStart + 3.6) : 1;
+        if (dissolve <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = dissolve;
         const y = settled ? H * (0.18 + li * 0.075) : H * 0.5;
         ctx.fillText(String(li + 1), GUTTER - 28, y + 12);
+        ctx.restore();
       });
       ctx.restore();
 
@@ -932,12 +927,16 @@ export async function createStage(canvas, timing, analysis) {
         if (enter <= 0) return;
         const lay = layoutFor(line, 'mono');
         const settled = exit >= 1;
+        // Read lines hold briefly as context, then dissolve — they do not
+        // camp in the corner for the rest of the verse.
+        const dissolve = settled ? 1 - span(t, exitStart + 2.2, exitStart + 3.6) : 1;
+        if (dissolve <= 0) return;
         ctx.save();
         if (settled) {
           // Read lines stack up small, left-aligned to the gutter.
           ctx.translate(GUTTER + (lay.w * 0.42) / 2, H * (0.18 + li * 0.075));
           ctx.scale(0.42, 0.42);
-          ctx.globalAlpha = 0.34;
+          ctx.globalAlpha = 0.34 * dissolve;
         } else {
           const ex = easeInOutCubic(exit);
           const sc = lerp(1, 0.62, ex);
