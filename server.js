@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { handleStudio } from './render/jobs.mjs';
+import { enforceLength, clock } from './public/js/pacing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,14 +39,20 @@ const MIME = {
 };
 
 /** Pipe a request straight through to the backend, preserving streaming. */
-function proxy(req, res) {
+function proxy(req, res, body = null) {
+  const headers = { ...req.headers, host: `${BACKEND_HOST}:${BACKEND_PORT}` };
+  if (body !== null) {
+    delete headers['transfer-encoding'];
+    headers['content-length'] = Buffer.byteLength(body);
+  }
+
   const upstream = http.request(
     {
       host: BACKEND_HOST,
       port: BACKEND_PORT,
       method: req.method,
       path: req.url,
-      headers: { ...req.headers, host: `${BACKEND_HOST}:${BACKEND_PORT}` },
+      headers,
     },
     (up) => {
       res.writeHead(up.statusCode || 502, up.headers);
@@ -64,7 +71,76 @@ function proxy(req, res) {
     );
   });
 
+  if (body !== null) {
+    upstream.end(body);
+    return;
+  }
   req.pipe(upstream);
+}
+
+/* -------------------------------------------------------------------------- *
+ * The length floor
+ *
+ * A lyric sheet longer than the running time can sing does not get sung fast —
+ * it gets cut off in the middle of a line, which is the single worst thing this
+ * app can hand somebody. The screens already fit the words to the take before
+ * asking for a song, but a screen can be bypassed: a tab left open on
+ * yesterday's JavaScript, the Studio screen, a script posting to the API. One
+ * song was truncated for exactly that reason after the screen-side fix shipped.
+ *
+ * So every generation is checked here on the way past, where nothing can miss
+ * it. This only ever removes surplus sections; it never changes the length that
+ * was asked for, and a request that already fits is forwarded untouched.
+ * -------------------------------------------------------------------------- */
+
+const PACED_ROUTE = /^\/api\/generate(-dual|-stream)?(\?|$)/;
+const MAX_BODY = 2 * 1024 * 1024;
+
+function paceRequest(req, res) {
+  const chunks = [];
+  let size = 0;
+  let tooBig = false;
+
+  req.on('data', (c) => {
+    size += c.length;
+    if (size > MAX_BODY) { tooBig = true; return; }
+    chunks.push(c);
+  });
+
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    // Anything unexpected — oversized, not JSON, no words to weigh — is not
+    // this function's business. Forward it exactly as it arrived.
+    if (tooBig) return proxy(req, res, raw);
+
+    let body;
+    try { body = JSON.parse(raw); } catch { return proxy(req, res, raw); }
+    if (!body || typeof body !== 'object' || body.is_instrumental || !body.lyrics || !body.duration) {
+      return proxy(req, res, raw);
+    }
+
+    let fitted;
+    try {
+      fitted = enforceLength({
+        lyrics: String(body.lyrics),
+        duration: Number(body.duration),
+        voice: String(body.prompt || ''),
+      });
+    } catch (err) {
+      console.error('[length] could not weigh this sheet, sending it as it came —', err.message);
+      return proxy(req, res, raw);
+    }
+
+    if (!fitted.trimmed.length) return proxy(req, res, raw);
+
+    console.log(
+      `[length] ${clock(body.duration)} can sing about ${fitted.limit} words; this sheet had `
+      + `${fitted.raw}. Dropped ${fitted.trimmed.join(', ')} so the song can reach its ending.`,
+    );
+    proxy(req, res, JSON.stringify({ ...body, lyrics: fitted.lyrics }));
+  });
+
+  req.on('error', () => { if (!res.headersSent) res.writeHead(400).end('Bad request'); });
 }
 
 function serveStatic(req, res) {
@@ -92,16 +168,56 @@ function serveStatic(req, res) {
       });
     }
     const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+    // `no-cache` still lets a browser hold the file and revalidate; a fix that
+    // has shipped should never be one stale copy away from not existing. Code
+    // and markup are never stored, media still is.
+    const code = /\.(html|js|mjs|css|json|map)$/i.test(filePath);
     res.writeHead(200, {
       'content-type': type,
-      'cache-control': 'no-cache',
+      'cache-control': code ? 'no-store, must-revalidate' : 'no-cache',
       'content-length': stat.size,
     });
     fs.createReadStream(filePath).pipe(res);
   });
 }
 
+/* -------------------------------------------------------------------------- *
+ * Build stamp
+ *
+ * A tab left open keeps running the JavaScript it loaded, however many times
+ * the files underneath it change — no cache header reaches code that is already
+ * in memory. That cost a real afternoon: a fix shipped, the open tab carried on
+ * without it, and the song failed exactly as before. So the app can ask what it
+ * is running against and say when it has gone stale.
+ * -------------------------------------------------------------------------- */
+
+let stampCache = { at: 0, value: '' };
+
+function buildStamp() {
+  if (Date.now() - stampCache.at < 5000) return stampCache.value;
+  let newest = 0;
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(html|js|mjs|css)$/i.test(entry.name)) continue;
+      const m = fs.statSync(full).mtimeMs;
+      if (m > newest) newest = m;
+    }
+  };
+  try { walk(path.join(__dirname, 'public')); } catch { /* keep the old stamp */ }
+  stampCache = { at: Date.now(), value: String(Math.round(newest)) };
+  return stampCache.value;
+}
+
 const server = http.createServer((req, res) => {
+  if (req.url === '/app-version') {
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ stamp: buildStamp() }));
+    return;
+  }
+
   // The studio — audio export and video rendering — lives on this machine,
   // not on the backend, because this machine has ffmpeg, whisper and the
   // renderer.
@@ -111,7 +227,10 @@ const server = http.createServer((req, res) => {
   const isProxied = PROXY_PREFIXES.some(
     (p) => req.url === p || req.url.startsWith(p + '/') || req.url.startsWith(p + '?')
   );
-  if (isProxied) return proxy(req, res);
+  if (isProxied) {
+    if (req.method === 'POST' && PACED_ROUTE.test(req.url)) return paceRequest(req, res);
+    return proxy(req, res);
+  }
   serveStatic(req, res);
 });
 

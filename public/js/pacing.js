@@ -31,14 +31,19 @@
  * silence together.
  *
  * Not words-per-second-while-singing, which was the first thing tried and is
- * not a stable number: two takes of the same sheet, the same length and the
- * same brief phrased it 1.39 and 2.28 words a second. That variance belongs to
- * the model and no arithmetic here can remove it. What six measured takes DO
- * agree on is the density that lands: at 1.71 and 1.60 songs ended cleanly, at
- * 1.77 one was cut off mid-phrase, and at 1.38 another looped its last line for
- * sixty-six seconds. So 1.65 is the middle of the band that works.
+ * not a stable number: takes of the same sheet, at the same length, from the
+ * same brief have sung anywhere from 1.56 to 2.32 words a second. That variance
+ * belongs to the model and no arithmetic here can remove it.
+ *
+ * So the number is chosen against the SLOWEST singer seen, not the average.
+ * Nine measured takes put the line between landing and being cut off at about
+ * 1.75: sheets at 1.85, 1.77 and 2.30 were all truncated mid-phrase, and 1.71
+ * only survived because that take happened to sing quickly. 1.5 sits clear of
+ * it. The cost is that a fast take runs out of words early and plays out
+ * instrumentally, which is a musical ending; the cost of being wrong the other
+ * way is a song that stops in the middle of a line, which is not.
  */
-export const DENSITY = { slow: 1.45, plain: 1.65, fast: 1.85 };
+export const DENSITY = { slow: 1.35, plain: 1.5, fast: 1.7 };
 
 /**
  * How far the running time may move from the length that was asked for.
@@ -175,6 +180,20 @@ const blockWords = (b) => countSungWords(b.lines.join('\n'));
 const blockKey = (b) => b.lines.join(' ').toLowerCase()
   .replace(/[^\p{L}\p{N} ]/gu, '').replace(/\s+/g, ' ').trim();
 
+/** `[chorus 2]` and `[chorus]` are the same kind of thing. */
+const blockKind = (b) => String(b.tag || '').toLowerCase().replace(/[^a-z]/g, '');
+
+/**
+ * How many of each kind a song has to keep.
+ *
+ * One of most things is enough. A chorus is different: sung once it is not a
+ * chorus, it is a verse with a tune. Matching on the TAG rather than the words
+ * matters — two choruses that differ by a single word are still the chorus,
+ * and an earlier rule that compared the text let exactly that case through.
+ */
+const MIN_OF_KIND = { chorus: 2, refrain: 2, hook: 2 };
+const minOfKind = (kind) => MIN_OF_KIND[kind] || 1;
+
 /**
  * Drop whole sections until the sheet fits — the last resort, after the take
  * has been stretched and the writer has been asked twice.
@@ -193,17 +212,25 @@ function trimToBudget(blocks, budget) {
   let total = keep.reduce((n, b) => n + blockWords(b), 0);
 
   const copies = (key) => keep.filter((b) => blockKey(b) === key).length;
+  const ofKind = (kind) => keep.filter((b) => blockKind(b) === kind).length;
 
   /**
-   * Middle sections only — and a section that appears exactly twice is what
-   * makes a song have a refrain at all, so it is left alone. That leaves the
-   * surplus copies of anything sung three times or more, and the one-off
-   * sections, as the only things this is allowed to take.
+   * Middle sections only, and never the last of anything.
+   *
+   * Three rules, each of them a bug that shipped. Word-for-word repeats are
+   * safe to thin only while more than two remain, because a sheet whose
+   * "duplicate" chorus was deleted is a sheet with no chorus. Every kind keeps
+   * its minimum — two choruses, one of everything else — after a cut produced
+   * a song with two choruses and no verse. And the opening and the last two
+   * sections are never touched at all: that is where a song ends, and an
+   * ending is the thing this whole module exists to protect.
    */
   const droppable = (i) => {
     if (i < 1 || i > keep.length - 3) return false;
     const key = blockKey(keep[i]);
-    return !key || copies(key) !== 2;
+    if (key && copies(key) === 2) return false;
+    const kind = blockKind(keep[i]);
+    return !kind || ofKind(kind) > minOfKind(kind);
   };
 
   while (total > budget && keep.length > 3) {
@@ -224,7 +251,72 @@ function trimToBudget(blocks, budget) {
     total -= blockWords(keep[victim]);
     keep.splice(victim, 1);
   }
+
+  // Whole sections have run out and the sheet is still too long. Rather than
+  // start taking the last verse or the ending, shorten what is left: whole
+  // lines off the end of the longest section, in pairs so a rhyme is not left
+  // hanging, never below two lines, and never out of a refrain — both copies
+  // of a chorus have to stay the same words.
+  while (total > budget) {
+    let victim = -1;
+    let best = 0;
+    for (let i = 0; i < keep.length; i++) {
+      const key = blockKey(keep[i]);
+      if (key && copies(key) > 1) continue;
+      const body = keep[i].lines.filter((l) => l.trim());
+      if (body.length < 4) continue;
+      const w = blockWords(keep[i]);
+      if (w > best) { best = w; victim = i; }
+    }
+    if (victim < 0) break;
+    const body = keep[victim].lines.filter((l) => l.trim());
+    keep[victim] = { ...keep[victim], lines: body.slice(0, body.length - 2) };
+    total = keep.reduce((n, b) => n + blockWords(b), 0);
+    const name = (keep[victim].tag || '[section]').replace(/[[\]]/g, '');
+    if (!dropped.includes(`lines from the ${name}`)) dropped.push(`lines from the ${name}`);
+  }
+
   return { keep, dropped };
+}
+
+/**
+ * The hard floor: cut a sheet down to what this running time can sing, and
+ * change nothing else.
+ *
+ * `planSong` is the considered version of this — it moves the running time,
+ * asks the writer again, and explains itself in the UI. This one exists
+ * because that version lives in a screen, and a screen can be bypassed: an
+ * open tab still running yesterday's JavaScript, the Studio screen, a script
+ * posting to the API. A song was cut off mid-phrase for exactly that reason.
+ * So the server puts every generation through this on the way past, where
+ * nothing can miss it.
+ *
+ * Only ever removes words, never adds time, so applying it twice does nothing
+ * the second time.
+ *
+ * @param {{lyrics: string, duration: number, voice?: string}} input
+ * @returns {{lyrics: string, words: number, raw: number, limit: number, trimmed: string[]}}
+ *          `raw` is the count as it arrived, `words` what is left.
+ */
+export function enforceLength({ lyrics, duration, voice = '' }) {
+  const words = countSungWords(lyrics);
+  const seconds = Math.max(0, Number(duration) || 0);
+  const limit = wordsFor(seconds, rateFor(voice));
+  const out = { lyrics: String(lyrics || ''), words, raw: words, limit, trimmed: [] };
+  // The floor sits at the boundary the songs themselves drew, not at the
+  // comfortable target: nine measured takes put every truncation at 1.77
+  // density or worse and every clean ending at 1.71 or better, so 1.5 × 1.15
+  // separates them exactly. Below it nothing is touched. Above it the sheet
+  // comes all the way down to the comfortable number, not just back over the
+  // line — by then the take is already known to be in trouble.
+  if (!words || !seconds || words <= limit * 1.15) return out;
+
+  const r = trimToBudget(toBlocks(out.lyrics), limit);
+  if (!r.dropped.length) return out;
+  out.lyrics = fromBlocks(r.keep);
+  out.words = countSungWords(out.lyrics);
+  out.trimmed = r.dropped;
+  return out;
 }
 
 /**
@@ -269,12 +361,14 @@ export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }
 
   let out = String(lyrics || '');
   let trimmed = [];
-  // Words only come out when the running time could NOT reach far enough to
-  // hold them. Trimming a sheet that already fits would be deleting someone's
-  // verse for nothing, so the comparison is loose enough that rounding the
-  // take down to a five-second mark cannot by itself cost a section.
-  if (seconds < ideal * 0.95) {
-    const r = trimToBudget(toBlocks(out), wordsFor(seconds, rate));
+  // Words only come out when the running time could not reach far enough to
+  // hold them. The test is on the words themselves rather than on the two
+  // durations, because comparing durations put this on a knife edge: rounding
+  // the take down to a five-second mark was enough, by itself, to cost a song
+  // a whole section.
+  const budget = wordsFor(seconds, rate);
+  if (words > budget * 1.1) {
+    const r = trimToBudget(toBlocks(out), budget);
     if (r.dropped.length) {
       out = fromBlocks(r.keep);
       trimmed = r.dropped;

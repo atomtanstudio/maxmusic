@@ -389,10 +389,38 @@ function onAuth(fn) {
   return off;
 }
 
+/* A tab that has been open across an update keeps running the code it started
+   with — no cache header can reach a module already in memory. That is not a
+   theoretical problem: a fix shipped, this screen carried on without it, and
+   the same song failed again in exactly the same way. So the app watches for
+   the files changing underneath it and offers the one thing that fixes it. */
+let bootStamp = null;
+let updateAnnounced = false;
+
+async function checkForUpdate() {
+  let stamp;
+  try {
+    const res = await fetch('/app-version', { cache: 'no-store' });
+    stamp = (await res.json())?.stamp;
+  } catch { return; }
+  if (!stamp) return;
+  if (bootStamp === null) { bootStamp = stamp; return; }
+  if (stamp === bootStamp || updateAnnounced) return;
+  updateAnnounced = true;
+  toast('This page is still running the version it opened with.', {
+    kind: 'info',
+    title: 'MaxMusic has been updated',
+    timeout: 0,
+    key: 'shell:update',
+    action: { label: 'Reload', onClick: () => location.reload() },
+  });
+}
+
 function startHealthPolling() {
   refreshHealth();
   refreshAuth();
-  healthTimer = setInterval(refreshHealth, HEALTH_INTERVAL);
+  checkForUpdate();
+  healthTimer = setInterval(() => { refreshHealth(); checkForUpdate(); }, HEALTH_INTERVAL);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     if (!state.health || Date.now() - state.health.checkedAt > 15_000) refreshHealth();
