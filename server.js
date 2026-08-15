@@ -3,6 +3,7 @@
 // the ComfyUI (MiniMax Music 3) and local OpenAI wiring. Nothing here talks to
 // ComfyUI directly, so the backend repo stays untouched.
 
+import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -152,14 +153,30 @@ function noteDeliveredLength(asked, delivered) {
   }
 }
 
-/** The delivered length, wherever this shape of response happens to carry it. */
+/**
+ * How long the song that came back actually is.
+ *
+ * Measured off the audio, not read from the reply: the backend fills in
+ * `music_duration` from the length that was REQUESTED, so it says 3:00 for a
+ * 2:52 song and would hide the very thing this is watching for.
+ */
 function deliveredSeconds(payload) {
-  const takes = [payload, payload?.takes?.A, payload?.takes?.B].filter(Boolean);
-  for (const t of takes) {
-    const ms = Number(t?.extra_info?.music_duration);
-    if (Number.isFinite(ms) && ms > 0) return ms > 400 ? ms / 1000 : ms;
-  }
-  return 0;
+  const track = [payload, payload?.takes?.A, payload?.takes?.B]
+    .map((t) => t?.track?.url || t?.url)
+    .find((u) => typeof u === 'string' && u.startsWith('/'));
+  if (!track) return Promise.resolve(0);
+
+  return new Promise((resolve) => {
+    const probe = spawn('ffprobe', [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      `http://${BACKEND_HOST}:${BACKEND_PORT}${track}`,
+    ]);
+    let out = '';
+    probe.stdout.on('data', (c) => { out += c; });
+    probe.on('error', () => resolve(0));
+    probe.on('close', () => resolve(Number(out.trim()) || 0));
+  });
 }
 
 function paceRequest(req, res) {
@@ -186,7 +203,13 @@ function paceRequest(req, res) {
     }
 
     // Watch what comes back, whether or not anything is trimmed on the way out.
-    const watch = (payload) => noteDeliveredLength(Number(body.duration), deliveredSeconds(payload));
+    // This runs after the customer already has their response, so measuring the
+    // audio cannot hold a render up.
+    const watch = (payload) => {
+      Promise.resolve(deliveredSeconds(payload))
+        .then((seconds) => noteDeliveredLength(Number(body.duration), seconds))
+        .catch(() => {});
+    };
 
     if (modelSetsLength) return proxy(req, res, raw, watch);
 
