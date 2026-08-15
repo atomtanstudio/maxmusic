@@ -115,6 +115,28 @@ export async function createStage(canvas, timing, analysis) {
   const frames = Math.ceil((DUR + (timing.style?.tail || 0)) * FPS);
   const DUR2 = DUR + (timing.style?.tail || 0);
 
+  /* The scroll world's backdrop: the cover, softened once at init. */
+  let coverCanvas = null;
+  if ((style.world === 'scroll') && timing.cover) {
+    try {
+      const img = new Image();
+      img.src = timing.cover;
+      await img.decode();
+      coverCanvas = document.createElement('canvas');
+      coverCanvas.width = W;
+      coverCanvas.height = H;
+      const g = coverCanvas.getContext('2d');
+      const scale = Math.max(W / img.width, H / img.height) * 1.06;
+      const dw = img.width * scale;
+      const dh = img.height * scale;
+      g.filter = 'blur(26px) saturate(0.85)';
+      g.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      g.filter = 'none';
+      g.fillStyle = 'rgba(5,5,9,0.66)';
+      g.fillRect(0, 0, W, H);
+    } catch { coverCanvas = null; /* no cover, no problem — the dark holds */ }
+  }
+
   /* Fonts must be resolved before any measurement happens. */
   await Promise.all([
     document.fonts.load(`900 100px ${DISPLAY}`),
@@ -946,9 +968,114 @@ export async function createStage(canvas, timing, analysis) {
     sections.push(...stitched);
   }
 
+  /**
+   * The scroll: the whole song as one gliding column over the softened
+   * cover. The column eases from line to line on the sung timing, the
+   * active line holds full ink with the sung word carrying the accent,
+   * and the film closes on a title card. A reading aid, done properly.
+   */
+  function scrollScene() {
+    const colW = W * 0.6;
+    const size = 56;
+    const lineGap = size * 0.62;
+    const stanzaGap = size * 1.4;
+    // Lay the whole column out once: wrapped rows per line, stacked anchors.
+    const blocks = [];
+    let y = 0;
+    lines.forEach((line, li) => {
+      const prev = lines[li - 1];
+      if (prev && (line.section !== prev.section)) y += stanzaGap;
+      const lay = layoutStack(line, { width: colW, size });
+      blocks.push({ line, lay, y: y + lay.h / 2 });
+      y += lay.h + lineGap;
+    });
+    const totalH = y;
+    const anchor = H * 0.44;
+    const accent = (style.verseAccents || [CYAN])[0];
+
+    return (t, f) => {
+      paintBackdrop();
+      if (coverCanvas) ctx.drawImage(coverCanvas, 0, 0);
+
+      // Where is the reading head? Glide between line anchors on sung time.
+      let idx = -1;
+      for (let i = 0; i < lines.length; i++) if (t >= lines[i].t0) idx = i;
+      let scrollY;
+      if (idx < 0) {
+        scrollY = blocks[0].y - anchor * 1.6; // column waits below the fold
+      } else {
+        // Hold on the line being sung; glide only in the moment before the
+        // next one arrives, so a long line never drifts off mid-word.
+        const cur = blocks[idx];
+        const next = blocks[idx + 1];
+        const u = next ? easeInOutCubic(span(t, lines[idx + 1].t0 - 0.85, lines[idx + 1].t0)) : 0;
+        scrollY = lerp(cur.y, next ? next.y : cur.y, u) - anchor;
+      }
+
+      const lastEnd = lines[lines.length - 1].t1;
+      const columnFade = 1 - easeInOutCubic(span(t, lastEnd + 0.6, lastEnd + 1.6));
+
+      if (columnFade > 0) {
+        ctx.save();
+        ctx.globalAlpha = columnFade;
+        ctx.translate(W / 2, -scrollY);
+        blocks.forEach((b, bi) => {
+          const dy = b.y - scrollY - anchor;         // distance from the head
+          if (b.y - scrollY < -80 || b.y - scrollY > H + 80) return;
+          const active = bi === idx;
+          const past = bi < idx;
+          ctx.save();
+          ctx.translate(0, b.y);
+          const em = active ? 1.04 : 1;
+          ctx.scale(em, em);
+          ctx.globalAlpha = columnFade * (active ? 1 : past ? 0.3 : 0.48);
+          for (const wd of b.lay.words) {
+            // The active line is fully readable — unsung words sit at half
+            // ink and each word lifts to full with the accent as it is sung.
+            paintWord(wd, active ? t : (past ? wd.t1 + 1 : t), {
+              accent,
+              singingAccent: active,
+              popIn: 0.14,
+              preview: true,
+              previewAlpha: active ? 0.55 : 1,
+            });
+          }
+          ctx.restore();
+        });
+        ctx.restore();
+      }
+
+      // The close: title card once the last line has been read.
+      const card = easeOutCubic(span(t, lastEnd + 1.2, lastEnd + 2.2));
+      if (card > 0) {
+        ctx.save();
+        ctx.globalAlpha = card;
+        ctx.textAlign = 'center';
+        ctx.font = `${DW} 64px ${DISPLAY}`;
+        ctx.letterSpacing = '6px';
+        ctx.fillStyle = INK;
+        ctx.fillText(timing.title.toUpperCase(), W / 2, H * 0.47);
+        ctx.font = `500 28px ${TEXTY}`;
+        ctx.letterSpacing = '12px';
+        ctx.fillStyle = DIM;
+        ctx.fillText(timing.artist.toUpperCase(), W / 2, H * 0.55);
+        ctx.letterSpacing = '0px';
+        if (timing.footer) {
+          ctx.font = `400 24px ${MONO}`;
+          ctx.fillText(timing.footer, W / 2, H * 0.61);
+        }
+        ctx.restore();
+      }
+      paintGrain(f, 0.04);
+      paintVignette(0.9);
+    };
+  }
+
   /* The scene list: contiguous spans, each owning the frame while active.
      Scenes get generous handoff overlap via their own enter/exit ramps. */
-  const scenes = buildScenes();
+  const scenes = style.world === 'scroll'
+    ? [{ name: 'scroll', t0: 0, t1: DUR2, paint: scrollScene() }]
+    : buildScenes();
 
   function buildScenes() {
     const out = [];

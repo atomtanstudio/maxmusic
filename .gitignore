@@ -4,3 +4,5 @@ node_modules/
 shots/
 shots/showcase/
 render/out/
+render/models/
+render/data/job-*

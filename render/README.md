@@ -119,3 +119,20 @@ Bright/airy → cooler palette; bass-led → darker, warmer. Wall-to-wall
 vocals → the arc must come from treatments (no drops to lean on). Long
 instrumental stretches → the world carries them (drops, visualiser
 moments). Never reuse the previous song's pack unchanged.
+
+## The studio (in-app)
+
+The app server mounts `/studio` — audio export and video jobs, all on this
+machine. The Library's per-song menu drives it:
+
+- **Download FLAC / Download MP3** — `GET /studio/audio?track=…&format=…`,
+  streamed; MP3 is transcoded on the way out at 320k.
+- **Make a lyric scroll** — the song's cover, softened, with the words
+  gliding up on the sung timing and each word lifting to the accent as it
+  is sung.
+- **Make a lyric film** — the directed kinetic engine; `auto-direct.mjs`
+  writes the sheet when no hand-authored one exists.
+
+Jobs run one at a time (`POST /studio/video`, poll `GET /studio/video/:id`,
+fetch `…/:id/file`). First video on a fresh machine downloads the
+transcription model (~460 MB) into `render/models/` and keeps it.

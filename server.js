@@ -8,6 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { handleStudio } from './render/jobs.mjs';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.PORT || 3020);
@@ -100,6 +102,12 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  // The studio — audio export and video rendering — lives on this machine,
+  // not on the backend, because this machine has ffmpeg, whisper and the
+  // renderer.
+  if (req.url.startsWith('/studio/')) {
+    if (handleStudio(req, res, { host: BACKEND_HOST, port: BACKEND_PORT })) return;
+  }
   const isProxied = PROXY_PREFIXES.some(
     (p) => req.url === p || req.url.startsWith(p + '/') || req.url.startsWith(p + '?')
   );

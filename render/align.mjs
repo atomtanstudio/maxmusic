@@ -244,6 +244,7 @@ await fs.writeFile(outFile, JSON.stringify({
   artist: sheet.artist,
   footer: sheet.footer,
   ...(sheet.style ? { style: sheet.style } : {}),
+  ...(sheet.cover ? { cover: sheet.cover } : {}),
   lines: outLines,
 }, null, 1));
 

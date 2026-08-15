@@ -470,7 +470,8 @@ export async function openaiAuthLogout(opts = {}) {
 /**
  * @typedef {Object} VideoJob
  * @property {string} id
- * @property {'queued'|'rendering'|'completed'|'failed'|'cancelled'} status
+ * @property {'queued'|'working'|'completed'|'failed'|'cancelled'} status
+ * @property {string} [step]   What the studio is doing right now, in words.
  * @property {number} progress 0..1
  * @property {string} statusUrl
  * @property {string} [downloadUrl]
@@ -479,23 +480,24 @@ export async function openaiAuthLogout(opts = {}) {
  */
 
 /**
- * Queue a render.
+ * Queue a video render in the studio — this app's own server, which has the
+ * renderer, ffmpeg and the transcriber on hand.
  *
- * @param {{trackUrl: string, coverArtUrl?: ?string, title?: string,
- *          artist?: string, lyrics?: string, preset?: string}} input
+ * @param {{trackUrl: string, mode: 'scroll'|'film', title?: string,
+ *          artist?: string, lyrics?: string, cover?: ?string}} input
  * @param {{signal?: AbortSignal}} [opts]
  * @returns {Promise<VideoJob>}
  */
 export function videoJobCreate(input, opts = {}) {
-  return request('/api/video-jobs', {
+  return request('/studio/video', {
     method: 'POST',
     body: {
       trackUrl: input.trackUrl,
-      coverArtUrl: input.coverArtUrl || null,
+      mode: input.mode,
       title: input.title || 'Untitled',
       artist: input.artist || '',
       lyrics: input.lyrics || '',
-      preset: input.preset || 'square-1080',
+      cover: input.cover || null,
     },
     signal: opts.signal,
     timeoutMs: 20000,
@@ -508,7 +510,7 @@ export function videoJobCreate(input, opts = {}) {
  * @returns {Promise<VideoJob>}
  */
 export function videoJobStatus(id, opts = {}) {
-  return request(`/api/video-jobs/${encodeURIComponent(id)}`, {
+  return request(`/studio/video/${encodeURIComponent(id)}`, {
     signal: opts.signal,
     timeoutMs: 15000,
   });
@@ -517,12 +519,22 @@ export function videoJobStatus(id, opts = {}) {
 /** Stop a render and let the server drop its files. */
 export async function videoJobCancel(id) {
   try {
-    await request(`/api/video-jobs/${encodeURIComponent(id)}`, { method: 'DELETE', timeoutMs: 10000 });
+    await request(`/studio/video/${encodeURIComponent(id)}`, { method: 'DELETE', timeoutMs: 10000 });
     return true;
   } catch {
     // A render that has already gone is the outcome we wanted anyway.
     return false;
   }
+}
+
+/**
+ * The download link for a song's audio, as the original FLAC or a 320k MP3
+ * transcoded on the way out. A plain link — the browser downloads, the
+ * server streams.
+ */
+export function audioDownloadUrl(trackUrl, format, title) {
+  const q = new URLSearchParams({ track: trackUrl, format, name: title || 'song' });
+  return `/studio/audio?${q}`;
 }
 
 /* ========================================================================== *
@@ -957,6 +969,6 @@ const api = {
   request, health, validateGeneration, generate, generateDual, generateStream,
   lyrics, coverArt, upload, cover, coverPreprocess, mediaUrl, errorText,
   openaiStatus, openaiAuthStart, openaiAuthPoll, openaiAuthLogout,
-  videoJobCreate, videoJobStatus, videoJobCancel,
+  videoJobCreate, videoJobStatus, videoJobCancel, audioDownloadUrl,
 };
 export default api;
