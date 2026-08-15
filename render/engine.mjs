@@ -706,12 +706,14 @@ export async function createStage(canvas, timing, analysis) {
         }
         const kick = onsetKick(t, 0.1);
         const shake = isCold ? 0 : kick * 7;
-        // Every slam LANDS: a sharp 3-frame overshoot snapped by an expo settle.
-        const land = 1 + 0.15 * (1 - easeOutExpo(span(t, flips[idx], flips[idx] + 0.1)));
+        // Every slam LANDS: an overshoot-and-drop envelope wide enough to
+        // read at any sampling — six frames of settle, not a one-frame blip.
+        const hit = 1 - easeOutCubic(span(t, flips[idx], flips[idx] + 0.2));
+        const land = 1 + 0.16 * hit;
         ctx.save();
         ctx.translate(
           W / 2 + (idx % 3 - 1) * W * 0.02 + shake * Math.sin(f * 2.1),
-          H / 2 + (idx % 2 ? H * 0.04 : -H * 0.03) + shake * Math.cos(f * 1.7),
+          H / 2 + (idx % 2 ? H * 0.04 : -H * 0.03) + shake * Math.cos(f * 1.7) + hit * 16,
         );
         ctx.scale(grow * land, grow * land);
         for (const wd of lay.words) {
@@ -727,9 +729,9 @@ export async function createStage(canvas, timing, analysis) {
           });
         }
         ctx.restore();
-        // One-frame white pop right on the slam.
-        if (t - flips[idx] < 1 / FPS) {
-          ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        // A two-frame white pop right on the slam.
+        if (t - flips[idx] < 2 / FPS) {
+          ctx.fillStyle = `rgba(255,255,255,${t - flips[idx] < 1 / FPS ? 0.18 : 0.1})`;
           ctx.fillRect(0, 0, W, H);
         }
       }
