@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- The lyric-video stage. A deterministic function of frame number: the
+     driver seeks, screenshots, and nothing here depends on wall-clock time.
+     Open with ?song=osmw for a live scrub bar when developing by hand. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>MaxMusic — video stage</title>
+<style>
+  html, body { margin: 0; background: #050508; height: 100%; overflow: hidden; }
+  canvas { display: block; }
+  /* Dev scrub bar — hidden unless ?dev is in the URL. */
+  #dev { position: fixed; left: 12px; right: 12px; bottom: 10px; display: none; }
+  #dev input { width: 100%; }
+  #dev.on { display: block; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<div id="dev"><input id="scrub" type="range" min="0" max="3599" value="0"></div>
+<script type="module">
+  import { createStage } from './engine.mjs';
+
+  const params = new URLSearchParams(location.search);
+  const song = params.get('song') || 'osmw';
+
+  const [timing, analysis] = await Promise.all([
+    fetch(`./data/${song}-timing.json`).then((r) => r.json()),
+    fetch(`./data/${song}-analysis.json`).then((r) => r.json()),
+  ]);
+
+  const canvas = document.getElementById('stage');
+  const stage = await createStage(canvas, timing, analysis);
+
+  window.__meta = { frames: stage.frames, fps: analysis.fps, w: canvas.width, h: canvas.height };
+  window.__seek = (f) => { stage.paint(f); return true; };
+  window.__ready = true;
+
+  if (params.has('dev')) {
+    const dev = document.getElementById('dev');
+    const scrub = document.getElementById('scrub');
+    dev.className = 'on';
+    scrub.max = stage.frames - 1;
+    scrub.addEventListener('input', () => stage.paint(Number(scrub.value)));
+    const fit = () => {
+      const s = Math.min(innerWidth / canvas.width, (innerHeight - 40) / canvas.height);
+      canvas.style.transformOrigin = '0 0';
+      canvas.style.transform = `scale(${s})`;
+    };
+    addEventListener('resize', fit);
+    fit();
+  }
+  stage.paint(0);
+</script>
+</body>
+</html>

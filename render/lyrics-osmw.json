@@ -1,0 +1,54 @@
+{
+  "title": "Open Source Must Win",
+  "artist": "MaxMusic",
+  "footer": "github.com/richgates/maxmusic",
+  "note": "Canonical sheet. Wording reconciled from the authored lyric sheet visible in shots/showcase/premium-look.mp4 plus two whisper passes (base.en + small.en); where ASR and the authored sheet disagreed, the authored sheet won.",
+  "sections": [
+    { "id": "chant-open", "kind": "chant", "lines": [
+      { "text": "Open it up", "repeat": 4 }
+    ]},
+    { "id": "build", "kind": "instrumental" },
+    { "id": "verse-1", "kind": "verse", "lines": [
+      { "text": "They built the walls, they sold you the key" },
+      { "text": "Locked the door on what should have been free" },
+      { "text": "Every line you were never shown was a promise" },
+      { "text": "someone made on your behalf" }
+    ]},
+    { "id": "pre", "kind": "pre", "lines": [
+      { "text": "Crack it open, let it breathe" }
+    ]},
+    { "id": "chorus-1", "kind": "chorus", "lines": [
+      { "text": "Open source must win" },
+      { "text": "Open source must win" },
+      { "text": "Fork it, ship it, let them in" },
+      { "text": "Open source must win" }
+    ]},
+    { "id": "verse-2", "kind": "verse", "lines": [
+      { "text": "No permission, no gatekeeper" },
+      { "text": "Every hand that builds it deeper" },
+      { "text": "Read the source, the truth is in it" },
+      { "text": "Nothing hidden, nothing rented" }
+    ]},
+    { "id": "chorus-2", "kind": "chorus", "lines": [
+      { "text": "Open source must win" },
+      { "text": "Open source must win" },
+      { "text": "Fork it, ship it, let them in" },
+      { "text": "Open source must win" }
+    ]},
+    { "id": "tag-1", "kind": "tag", "lines": [
+      { "text": "Open it up" }
+    ]},
+    { "id": "drop-1", "kind": "instrumental" },
+    { "id": "echo-1", "kind": "tag", "lines": [
+      { "text": "Open it up" }
+    ]},
+    { "id": "drop-2", "kind": "instrumental" },
+    { "id": "chant-2", "kind": "chant", "lines": [
+      { "text": "Open it up", "repeat": 6 }
+    ]},
+    { "id": "outro", "kind": "instrumental" },
+    { "id": "echo-2", "kind": "tag", "lines": [
+      { "text": "Open it up" }
+    ]}
+  ]
+}
