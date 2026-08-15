@@ -1,0 +1,107 @@
+--- a/local-providers.js	2026-08-15 04:16:02
++++ b/local-providers.js	2026-08-15 04:16:02
+@@ -79,8 +79,27 @@
+   };
+ }
+ 
+-function lyricsInstruction({ mode, prompt, lyrics, title }) {
++function lyricsInstruction({ mode, prompt, lyrics, title, duration }) {
+   const operation = mode === 'edit' ? 'edit or continue the supplied lyrics' : 'write a complete song';
++
++  // Pacing. Measured from finished MiniMax renders: the model sings roughly
++  // 1.4-1.8 words per second. A sheet longer than that gets truncated and
++  // the tail becomes an aimless instrumental vamp; a sheet shorter than
++  // that gets padded by looping earlier hooks until the time runs out.
++  // Both read as the song going off the rails at the end, so when the
++  // requested duration is known the word budget is stated outright.
++  const seconds = Number(duration);
++  const paced = Number.isFinite(seconds) && seconds >= 20;
++  const lo = paced ? Math.round(seconds * 1.4) : null;
++  const hi = paced ? Math.round(seconds * 1.8) : null;
++  const structure = !paced
++    ? 'For a short song, use one verse and one chorus. For a longer song, add a pre-chorus, second verse, bridge, and outro as appropriate.'
++    : seconds <= 75
++      ? 'Structure for this length: an optional short [intro], one [verse], one [chorus], and a short [outro]. Nothing more.'
++      : seconds <= 165
++        ? 'Structure for this length: [verse], [chorus], [verse], [chorus], then a short [outro]. Add a [bridge] or [pre-chorus] only if the total stays inside the word budget.'
++        : 'Structure for this length: two or three verse/chorus rounds, one [bridge], [instrumental] passages where the arrangement should breathe, and a written [outro].';
++
+   return [
+     'You are a private local songwriting assistant for a music-generation app.',
+     `Your task is to ${operation}.`,
+@@ -90,14 +109,19 @@
+     'This output will be sent to MiniMax Music 3. Keep the lyrics under 3500 characters.',
+     'Use only these section tags, each alone on its own line: [intro], [verse], [pre-chorus], [chorus], [post-chorus], [bridge], [instrumental], [solo], [outro].',
+     'Use lowercase tags exactly as written. Never put words on the same line as a tag.',
+-    'For a short song, use one verse and one chorus. For a longer song, add a pre-chorus, second verse, bridge, and outro as appropriate.',
+-    'Aim for roughly 12 to 16 sung words per 10 seconds. Keep production directions out of lyrics; use [instrumental] or [solo] for non-vocal passages.',
++    structure,
++    paced
++      ? `The finished recording is ${Math.round(seconds)} seconds long. Write ${lo} to ${hi} sung words in total — count them before answering — so the words fill the song without rushing and without running out early.`
++      : 'Aim for roughly 12 to 16 sung words per 10 seconds.',
++    'Pace the song to LAND, not to fill: it must end with an [outro] of one or two closing lines that resolves the song. Never pad the tail by repeating earlier hooks or choruses. If time remains after the outro, end the sheet with [instrumental] so the arrangement closes deliberately.',
++    'Keep production directions out of lyrics; use [instrumental] or [solo] for non-vocal passages.',
+     '',
+     `Requested mode: ${mode || 'write_full_song'}`,
+     `Requested title: ${(title || '').slice(0, 120)}`,
++    paced ? `Requested length: ${Math.round(seconds)} seconds` : '',
+     `Theme or direction: ${(prompt || '').slice(0, 2000)}`,
+     `Existing lyrics to edit or continue: ${(lyrics || '').slice(0, 3500)}`,
+-  ].join('\n');
++  ].filter(Boolean).join('\n');
+ }
+ 
+ async function runCodexLyrics(config, input, outputFile) {
+@@ -169,13 +193,13 @@
+   });
+ }
+ 
+-export async function generateLocalLyrics({ mode, prompt, lyrics = '', title = '' } = {}) {
++export async function generateLocalLyrics({ mode, prompt, lyrics = '', title = '', duration = null } = {}) {
+   const broker = configuredOpenAIBroker();
+   if (broker.configured) {
+     const result = await brokerFetch(broker, '/v1/lyrics', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ mode, prompt, lyrics, title }),
++      body: JSON.stringify({ mode, prompt, lyrics, title, duration }),
+     }, broker.timeoutMs);
+     return {
+       ...result.data,
+@@ -199,7 +223,7 @@
+   try {
+     await runCodexLyrics(config, {
+       schemaFile,
+-      instruction: lyricsInstruction({ mode, prompt, lyrics, title }),
++      instruction: lyricsInstruction({ mode, prompt, lyrics, title, duration }),
+     }, outputFile);
+     const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
+     const outputLyrics = String(result.lyrics || '').trim().slice(0, 3500);
+--- a/server.js	2026-08-15 04:16:02
++++ b/server.js	2026-08-15 04:16:02
+@@ -624,7 +624,15 @@
+   const apiKey = getApiKey(req);
+   if (!apiKey) return res.status(401).json({ error: 'No API key.' });
+ 
+-  const { mode = 'write_full_song', prompt = '', lyrics = '', title = '' } = req.body || {};
++  const { mode = 'write_full_song', prompt = '', lyrics = '', title = '', duration = null } = req.body || {};
++  // The hosted endpoint takes no duration field, so the pacing rides inside
++  // the prompt: a word budget (~1.4-1.8 sung words/second, measured from
++  // finished renders) and an instruction to end on a written outro instead
++  // of padding the tail.
++  const seconds = Number(duration);
++  const pacedPrompt = Number.isFinite(seconds) && seconds >= 20
++    ? `${prompt}\n\nPacing: the finished recording is ${Math.round(seconds)} seconds long. Write ${Math.round(seconds * 1.4)} to ${Math.round(seconds * 1.8)} sung words in total. End with a short [outro] that resolves the song; never pad the tail by repeating earlier hooks. If time remains after the outro, close with [instrumental].`
++    : prompt;
+   try {
+     const r = await fetch(`${API_BASE}/v1/lyrics_generation`, {
+       method: 'POST',
+@@ -632,7 +640,7 @@
+         'Content-Type': 'application/json',
+         Authorization: `Bearer ${apiKey}`,
+       },
+-      body: JSON.stringify({ mode, prompt, lyrics, title }),
++      body: JSON.stringify({ mode, prompt: pacedPrompt, lyrics, title }),
+     });
+     const json = await r.json();
+     const err = apiError(json);

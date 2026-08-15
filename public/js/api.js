@@ -778,7 +778,9 @@ export async function generateStream(input, opts = {}) {
  * Ask the local Codex CLI to write or edit lyrics. This is step one of the
  * two-step "idea → song" flow: the music backend will not write lyrics itself.
  *
- * @param {{ mode?: 'write_full_song'|'edit', prompt?: string, lyrics?: string, title?: string }} input
+ * @param {{ mode?: 'write_full_song'|'edit', prompt?: string, lyrics?: string, title?: string,
+ *           duration?: number }} input  `duration` is the song length in seconds the
+ *           lyrics must pace to — the writer budgets its words from it.
  * @param {{ signal?: AbortSignal }} [opts]
  * @returns {Promise<{ok: boolean, song_title: string, style_tags: string, lyrics: string,
  *                    provider?: string, model?: string}>}
@@ -789,6 +791,7 @@ export function lyrics(input = {}, opts = {}) {
     prompt: String(input.prompt ?? ''),
     lyrics: String(input.lyrics ?? ''),
     title: String(input.title ?? ''),
+    ...(Number.isFinite(Number(input.duration)) ? { duration: Number(input.duration) } : {}),
   };
   return request('/api/lyrics', { method: 'POST', body, signal: opts.signal });
 }

@@ -1616,7 +1616,12 @@ export function mount(root, ctx) {
     try {
       /* ---- step 1 — the lyrics, written and shown ---------------------- */
       if (needLyrics) {
-        const res = await api.lyrics({ mode: 'write_full_song', prompt: idea, title: '' }, { signal });
+        // The writer paces its words to the chosen length — that is how the
+        // song learns to end on purpose instead of running out or padding.
+        const res = await api.lyrics(
+          { mode: 'write_full_song', prompt: idea, title: '', duration: state.duration },
+          { signal },
+        );
         const written = String(res?.lyrics || '').trim();
         if (!written) {
           throw new api.ApiError(
