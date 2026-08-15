@@ -1,0 +1,212 @@
+{
+  "title": "Silver Flame",
+  "artist": "MaxMusic",
+  "footer": "github.com/atomtanstudio/maxmusic",
+  "note": "Canonical sheet for track 877ddf025543501dbf4c (gothic hymn, 2:00 take). Directed cold from the profile: slow, sparse, dark spectrum. Style: the sanctum pack — one candle in the dark, born in the intro, guttering on 'when the final candle darkens' and dying after the final line, exactly as the lyric scripts. Didot display over Baskerville, near-monochrome bone and silver with one candle-gold verse, motion 0.2, no inversions, no crack. Devices only where the words earn them: 'Leave behind your name' lets go of its words; the candle lines drive the flame.",
+  "style": {
+    "world": "sanctum",
+    "crack": false,
+    "chorusInvert": false,
+    "motion": 0.2,
+    "display": "Didot",
+    "displayWeight": 700,
+    "text": "Baskerville",
+    "textWeightNormal": 400,
+    "textWeightEmph": 700,
+    "ink": "#EAE6DA",
+    "dim": "#77715F",
+    "titleAccent": "#D9A85C",
+    "verseAccents": [
+      "#C9CFDA",
+      "#AEB8CC",
+      "#D9A85C",
+      "#BFC6D4"
+    ],
+    "chorusAccents": [
+      "#D3D9E4"
+    ],
+    "tail": 4,
+    "textCenterY": 0.42,
+    "plateMaxH": 0.5
+  },
+  "sections": [
+    {
+      "id": "intro",
+      "kind": "instrumental"
+    },
+    {
+      "id": "invocation",
+      "kind": "verse",
+      "lines": [
+        {
+          "text": "O silver flame, remain unseen"
+        },
+        {
+          "text": "Beneath the storm, beneath the dream"
+        }
+      ]
+    },
+    {
+      "id": "verse-bells",
+      "kind": "verse",
+      "lines": [
+        {
+          "text": "The bells are still in the hollow tower"
+        },
+        {
+          "text": "The ivy sleeps on the nameless door"
+        },
+        {
+          "text": "We bear no crown, we speak no hour"
+        },
+        {
+          "text": "We cross where shadows cross before"
+        }
+      ]
+    },
+    {
+      "id": "verse-candle",
+      "kind": "verse",
+      "lines": [
+        {
+          "text": "A single candle bends in warning"
+        },
+        {
+          "text": "A blackened mirror holds the sky"
+        },
+        {
+          "text": "The earth is cold with ancient mourning"
+        },
+        {
+          "text": "The stars have closed their many eyes"
+        }
+      ]
+    },
+    {
+      "id": "verse-enter",
+      "kind": "verse",
+      "lines": [
+        {
+          "text": "Enter without footsteps"
+        },
+        {
+          "text": "Leave behind your name",
+          "device": "vanish"
+        },
+        {
+          "text": "What waits below remembers"
+        },
+        {
+          "text": "Neither mercy nor blame"
+        }
+      ]
+    },
+    {
+      "id": "refrain",
+      "kind": "chorus",
+      "lines": [
+        {
+          "text": "Carry me down through the veil of night"
+        },
+        {
+          "text": "Where the roots drink deep from the buried light"
+        },
+        {
+          "text": "Lay my sorrow in the circle"
+        },
+        {
+          "text": "Drawn till the old dark breaks into solemn dawn"
+        },
+        {
+          "text": "O silent ones, receive this breath"
+        },
+        {
+          "text": "Guard the gate between sleep and death"
+        },
+        {
+          "text": "Carry me down where the pale winds moan"
+        },
+        {
+          "text": "To the hour beneath the stone"
+        }
+      ]
+    },
+    {
+      "id": "verse-piano",
+      "kind": "verse",
+      "lines": [
+        {
+          "text": "The piano falls like winter water"
+        },
+        {
+          "text": "One note upon the chapel floor"
+        },
+        {
+          "text": "A choir of dust, a vanished daughter"
+        },
+        {
+          "text": "Sings from behind the sealed-up door"
+        }
+      ]
+    },
+    {
+      "id": "verse-vow",
+      "kind": "verse",
+      "lines": [
+        {
+          "text": "No hand is raised, no vow is spoken"
+        },
+        {
+          "text": "Yet every heart becomes aflame"
+        },
+        {
+          "text": "The thread of time is cut and broken"
+        },
+        {
+          "text": "And something answers without a name"
+        }
+      ]
+    },
+    {
+      "id": "verse-circle",
+      "kind": "verse",
+      "lines": [
+        {
+          "text": "The circle is not a prison"
+        },
+        {
+          "text": "The silence is not peace"
+        },
+        {
+          "text": "When the final candle darkens",
+          "device": "gutter"
+        },
+        {
+          "text": "The listening will cease"
+        }
+      ]
+    },
+    {
+      "id": "refrain-final",
+      "kind": "chorus",
+      "lines": [
+        {
+          "text": "Carry me down through the veil of night"
+        },
+        {
+          "text": "Where the roots drink deep from the buried light"
+        }
+      ]
+    },
+    {
+      "id": "coda",
+      "kind": "tag",
+      "lines": [
+        {
+          "text": "Lay my sorrow in the circle drawn till the old dark breaks into dawn",
+          "device": "extinguish"
+        }
+      ]
+    }
+  ]
+}

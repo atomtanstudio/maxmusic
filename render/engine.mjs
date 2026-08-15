@@ -100,13 +100,20 @@ export async function createStage(canvas, timing, analysis) {
   /* The motion dial, 0 calm .. 1 punchy. The director sets it per song; the
      fallback guesses from tempo. Scales pops, pumps, kicks and flashes so a
      ballad never behaves like a banger. */
+  const DW = style.displayWeight || 900;           // serif displays want 700
+  const TW_N = style.textWeightNormal || 600;
+  const TW_E = style.textWeightEmph || 800;
+  const INVERT_OK = style.chorusInvert !== false;
+  const TAIL = style.tail || 0;                    // seconds of film after the song
+  const TXC = style.textCenterY || 0.5;            // where lockups centre vertically
   const M = style.motion ?? Math.max(0.25, Math.min(1, ((analysis.bpm || 100) - 60) / 90));
   const POP_K = 1.5 - 0.7 * M;    // mellow songs let words arrive slower
   const PUMP_K = 0.45 + 0.7 * M;  // and breathe less on the bass
   const KICK_K = 0.5 + 0.6 * M;   // and shake less on onsets
   const FPS = analysis.fps;
   const DUR = analysis.duration;
-  const frames = Math.ceil(DUR * FPS);
+  const frames = Math.ceil((DUR + (timing.style?.tail || 0)) * FPS);
+  const DUR2 = DUR + (timing.style?.tail || 0);
 
   /* Fonts must be resolved before any measurement happens. */
   await Promise.all([
@@ -406,10 +413,166 @@ export async function createStage(canvas, timing, analysis) {
     ctx.restore();
   }
 
+  /* The sanctum world: darkness, one candle. The flame is born in the
+     intro, breathes with the record, gutters where a line carries
+     device:"gutter", and dies for good after a line carrying
+     device:"extinguish" — the lyric scripts the light. */
+  const flameCues = { gutters: [], deathT: null };
+  for (const l of timing.lines) {
+    if (l.device === 'gutter') flameCues.gutters.push([l.t0 - 0.2, l.t1 + 1.4]);
+    if (l.device === 'extinguish') flameCues.deathT = l.t1 + 0.5;
+  }
+  const smokes = Array.from({ length: 5 }, (_, i) => ({
+    phase: i * 1.7,
+    speed: 0.05 + (i % 3) * 0.02,
+    amp: 26 + (i * 31) % 40,
+  }));
+  const ashes = Array.from({ length: 60 }, (_, i) => ({
+    x: ((i * 761) % 1000) / 1000,
+    y: ((i * 383) % 1000) / 1000,
+    r: 0.8 + ((i * 131) % 12) / 8,
+    vy: 0.008 + ((i * 53) % 10) / 700,
+    drift: ((i * 97) % 20 - 10) / 900,
+    tw: ((i * 41) % 63) / 10,
+  }));
+
+  function flameLife(t) {
+    let life = easeOutCubic(span(t, 0.5, 2.4)); // the flame is lit in the intro
+    for (const [g0, g1] of flameCues.gutters) {
+      if (t > g0 && t < g1) {
+        const mid = clamp01(Math.min(t - g0, g1 - t) / 0.7);
+        life = Math.min(life, 1 - 0.72 * mid);
+      }
+    }
+    if (flameCues.deathT !== null) {
+      if (t >= flameCues.deathT) life = 0;
+      else life = Math.min(life, clamp01((flameCues.deathT - t) / 1.2));
+    }
+    return life;
+  }
+
+  function paintSanctum(t, o = {}) {
+    const life = flameLife(t);
+    const bass = atSm('bass', t, 6);
+    const fx = W / 2;
+    const fy = H * 0.845;
+
+    // The room: near-black, faintly warm where the flame lives.
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#050407');
+    g.addColorStop(0.72, mixHex('#0A0810', '#141018', life * 0.5));
+    g.addColorStop(1, mixHex('#070609', '#1A130E', life));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Ash drifts down for ever.
+    ctx.save();
+    for (const a of ashes) {
+      const y = ((a.y + t * a.vy) % 1.06) - 0.03;
+      const x = a.x + Math.sin(a.tw + t * 0.5) * a.drift * 8;
+      const al = 0.05 + 0.07 * Math.sin(a.tw + t * 1.1) ** 2;
+      ctx.fillStyle = `rgba(200,195,185,${al.toFixed(3)})`;
+      ctx.fillRect(x * W, y * H, a.r, a.r);
+    }
+    ctx.restore();
+
+    if (life > 0.005) {
+      const flick = 1
+        + 0.1 * Math.sin(t * 11.3) * (0.4 + at('flux', t))
+        + 0.06 * Math.sin(t * 23.7 + 1.3);
+      const fh = H * 0.115 * life * (0.82 + 0.18 * bass * PUMP_K) * flick;
+      const sway = Math.sin(t * 1.9) * fh * 0.07 + Math.sin(t * 0.61) * fh * 0.05;
+
+      // Halo — the room breathes with the flame.
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const halo = ctx.createRadialGradient(fx, fy - fh * 0.5, 0, fx, fy - fh * 0.5, H * 0.62);
+      halo.addColorStop(0, `rgba(255,180,90,${(0.16 * life * flick).toFixed(3)})`);
+      halo.addColorStop(0.45, `rgba(200,120,60,${(0.05 * life).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(0, 0, W, H);
+
+      // The flame: three nested teardrops.
+      const drop = (hh, ww, color, alpha, dx) => {
+        ctx.fillStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.moveTo(fx + dx, fy);
+        ctx.bezierCurveTo(fx + dx - ww, fy - hh * 0.25, fx + dx - ww * 0.5, fy - hh * 0.8, fx + dx + sway, fy - hh);
+        ctx.bezierCurveTo(fx + dx + ww * 0.5, fy - hh * 0.8, fx + dx + ww, fy - hh * 0.25, fx + dx, fy);
+        ctx.fill();
+      };
+      drop(fh, fh * 0.30, '#E8862E', 0.55, 0);
+      drop(fh * 0.72, fh * 0.20, '#FFB347', 0.75, 0);
+      drop(fh * 0.42, fh * 0.11, '#FFE9C8', 0.9, 0);
+      ctx.globalAlpha = 1;
+
+      // Wick and a small pool of light on the floor.
+      ctx.fillStyle = 'rgba(30,22,18,0.9)';
+      ctx.fillRect(fx - 2, fy - 2, 4, 10);
+      const pool = ctx.createRadialGradient(fx, fy + 14, 0, fx, fy + 14, fh * 1.5);
+      pool.addColorStop(0, `rgba(255,170,90,${(0.1 * life).toFixed(3)})`);
+      pool.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = pool;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy + 16, fh * 1.6, fh * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Smoke rises from the tip once the flame weakens.
+      if (life < 0.75) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(180,178,175,${(0.14 * (1 - life)).toFixed(3)})`;
+        ctx.lineWidth = 2;
+        for (const s of smokes) {
+          ctx.beginPath();
+          const x0 = fx + sway;
+          const y0 = fy - fh - 6;
+          ctx.moveTo(x0, y0);
+          for (let k = 1; k <= 12; k++) {
+            const u = k / 12;
+            ctx.lineTo(
+              x0 + Math.sin(s.phase + t * s.speed * 9 + u * 5) * s.amp * u,
+              y0 - u * H * 0.3,
+            );
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    } else if (flameCues.deathT !== null && t > flameCues.deathT) {
+      // After the light: an ember, and the smoke of what was.
+      const since = t - flameCues.deathT;
+      const ember = Math.max(0, 0.5 - since * 0.1) * (0.6 + 0.4 * Math.sin(t * 5.1));
+      if (ember > 0.02) {
+        ctx.fillStyle = `rgba(255,120,50,${ember.toFixed(3)})`;
+        ctx.fillRect(fx - 2, fy - 4, 4, 4);
+      }
+      ctx.save();
+      ctx.strokeStyle = `rgba(170,168,165,${Math.max(0, 0.2 - since * 0.03).toFixed(3)})`;
+      ctx.lineWidth = 2;
+      for (const s of smokes) {
+        ctx.beginPath();
+        ctx.moveTo(fx, fy - 8);
+        for (let k = 1; k <= 12; k++) {
+          const u = k / 12;
+          ctx.lineTo(fx + Math.sin(s.phase + t * s.speed * 9 + u * 5) * s.amp * u * 1.6, fy - 8 - u * H * 0.4);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   /** One switch for the scenes: venue panels+beam, or the horizon. */
   function paintWorld(t, o = {}) {
     if (WORLD === 'horizon') {
       if (!o.inverted) paintHorizon(t, o);
+      return;
+    }
+    if (WORLD === 'sanctum') {
+      if (!o.inverted) paintSanctum(t, o);
       return;
     }
     paintPanels(t, o.panels ?? 0.35, o.live ?? 0.6, o.cam || { x: 0, y: 0, scale: 1 });
@@ -481,7 +644,7 @@ export async function createStage(canvas, timing, analysis) {
     line.words.forEach((wd, i) => {
       const scale = emph[i] ? 1.5 : 1;
       const size = base * scale;
-      const weight = emph[i] ? 800 : 600;
+      const weight = emph[i] ? TW_E : TW_N;
       const font = `${TEXT_STYLE}${weight} ${size}px ${TEXTY}`;
       const ww = textW(wd.word.toUpperCase(), font);
       if (row.w > 0 && row.w + gapX + ww > budget) {
@@ -538,7 +701,7 @@ export async function createStage(canvas, timing, analysis) {
    */
   function layoutPlate(line, opts = {}) {
     const budget = opts.width || W * 0.72;
-    const maxH = opts.maxH || H * 0.78;
+    const maxH = opts.maxH || H * (style.plateMaxH || 0.78);
 
     let rows;
     if (line.words.length <= 4) {
@@ -561,7 +724,7 @@ export async function createStage(canvas, timing, analysis) {
     }
 
     const texts = rows.map((r) => r.map((w) => w.word.toUpperCase()).join(' '));
-    let sizes = texts.map((text) => fitSize(text, budget, DISPLAY, 900));
+    let sizes = texts.map((text) => fitSize(text, budget, DISPLAY, DW));
     let rowH = sizes.map((s) => s * 0.86);
     const totalH = rowH.reduce((a, b) => a + b, 0);
     const fit = Math.min(1, maxH / totalH);
@@ -573,7 +736,7 @@ export async function createStage(canvas, timing, analysis) {
     rows.forEach((row, ri) => {
       y += rowH[ri] / 2;
       const size = sizes[ri];
-      const font = `900 ${size}px ${DISPLAY}`;
+      const font = `${DW} ${size}px ${DISPLAY}`;
       const gap = size * 0.24;
       const widths = row.map((wd) => textW(wd.word.toUpperCase(), font));
       const total = widths.reduce((a, b) => a + b, 0) + gap * (row.length - 1);
@@ -587,7 +750,7 @@ export async function createStage(canvas, timing, analysis) {
           y,
           size,
           family: DISPLAY,
-          weight: 900,
+          weight: DW,
           rot: 0,
           role: wd === line.words[line.words.length - 1] ? 'accent' : 'ink',
         });
@@ -602,9 +765,9 @@ export async function createStage(canvas, timing, analysis) {
   function layoutSlam(line, opts = {}) {
     const budget = opts.width || W * 0.78;
     const text = line.text.toUpperCase();
-    const size = fitSize(text, budget, DISPLAY, 900);
+    const size = fitSize(text, budget, DISPLAY, DW);
     const gap = size * 0.24;
-    const widths = line.words.map((wd) => textW(wd.word.toUpperCase(), `900 ${size}px ${DISPLAY}`));
+    const widths = line.words.map((wd) => textW(wd.word.toUpperCase(), `${DW} ${size}px ${DISPLAY}`));
     const total = widths.reduce((a, b) => a + b, 0) + gap * (line.words.length - 1);
     let x = -total / 2;
     const out = line.words.map((wd, i) => {
@@ -618,7 +781,7 @@ export async function createStage(canvas, timing, analysis) {
         y: 0,
         size,
         family: DISPLAY,
-        weight: 900,
+        weight: DW,
         rot: 0,
         role: 'ink',
       };
@@ -693,7 +856,7 @@ export async function createStage(canvas, timing, analysis) {
     const accent = o.accent || CYAN;
     const popIn = (o.popIn ?? 0.22) * POP_K;
     const u = span(t, wd.t0, wd.t0 + popIn);
-    if (u <= 0) {
+    if (t < wd.t0) {
       if (!o.preview) return;
       ctx.save();
       ctx.globalAlpha = o.previewAlpha ?? 0.13;
@@ -797,7 +960,7 @@ export async function createStage(canvas, timing, analysis) {
       const s = sections[i];
       const prev = out[out.length - 1];
       const start = prev ? prev.t1 : 0;
-      const end = i + 1 < sections.length ? sections[i + 1].t0 : DUR;
+      const end = i + 1 < sections.length ? sections[i + 1].t0 : DUR2;
 
       if (s.kind === 'chant') {
         out.push({ name: `chant-${s.id}`, t0: start, t1: end, paint: chantScene(s) });
@@ -915,7 +1078,7 @@ export async function createStage(canvas, timing, analysis) {
     const mid = Math.ceil(words.length / 2);
     const rowsText = [words.slice(0, mid).join(' '), words.slice(mid).join(' ')].filter(Boolean);
     const size = Math.min(
-      ...rowsText.map((r) => fitSize(r, W * 0.62, DISPLAY, 900)),
+      ...rowsText.map((r) => fitSize(r, W * 0.62, DISPLAY, DW)),
       H * 0.21,
     );
     // A short intro compresses the whole reveal schedule to fit.
@@ -955,25 +1118,25 @@ export async function createStage(canvas, timing, analysis) {
         ctx.globalAlpha = e;
         ctx.translate(0, (ri - (rowsText.length - 1) / 2) * size * 0.98);
         ctx.scale(lerp(1.06, 1, e), lerp(1.06, 1, e));
-        ctx.font = `900 ${size}px ${DISPLAY}`;
+        ctx.font = `${DW} ${size}px ${DISPLAY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.shadowColor = `rgba(${rgb(CYAN)},0.5)`;
+        ctx.shadowColor = `rgba(${rgb(style.titleAccent || CYAN)},0.5)`;
         ctx.shadowBlur = size * 0.14;
         // The last word of the title carries the accent.
         if (ri === rowsText.length - 1) {
           const parts = row.split(' ');
           const last = parts.pop();
           const head = parts.join(' ');
-          const headW = head ? textW(head, `900 ${size}px ${DISPLAY}`) : 0;
-          const lastW = textW(last, `900 ${size}px ${DISPLAY}`);
+          const headW = head ? textW(head, `${DW} ${size}px ${DISPLAY}`) : 0;
+          const lastW = textW(last, `${DW} ${size}px ${DISPLAY}`);
           const gap = head ? size * 0.22 : 0;
           const total = headW + gap + lastW;
           if (head) {
             ctx.fillStyle = INK;
             ctx.fillText(head, -total / 2 + headW / 2, 0);
           }
-          ctx.fillStyle = CYAN;
+          ctx.fillStyle = style.titleAccent || CYAN;
           ctx.fillText(last, total / 2 - lastW / 2, 0);
         } else {
           ctx.fillStyle = INK;
@@ -1019,10 +1182,10 @@ export async function createStage(canvas, timing, analysis) {
         const lay = layoutFor(line);
         const device = line.device || null;
         ctx.save();
+        // A line arrives with a little travel, but it LEAVES in place — a
+        // finished line fades where it stands, it does not slide off.
         const slideIn = (1 - easeOutCubic(enter)) * W * 0.06;
-        const slideOut = easeInOutCubic(exit) * W * -0.1;
-        const drop = easeInOutCubic(exit) * H * 0.02;
-        ctx.translate(W / 2 + slideIn + slideOut, H * 0.5 + drop);
+        ctx.translate(W / 2 + slideIn, H * TXC);
         const pump = 1 + atSm('bass', t, 4) * 0.014 * PUMP_K;
         ctx.scale(pump * lerp(1.03, 1, easeOutCubic(enter)), pump * lerp(1.03, 1, easeOutCubic(enter)));
         ctx.globalAlpha = easeOutCubic(enter) * (1 - easeInOutCubic(exit));
@@ -1180,7 +1343,7 @@ export async function createStage(canvas, timing, analysis) {
       if (crack > 0.01) {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.translate(W / 2, H / 2);
+        ctx.translate(W / 2, H * TXC);
         ctx.rotate(SEAM);
         const g = ctx.createLinearGradient(0, -halfGap * 3, 0, halfGap * 3);
         g.addColorStop(0, 'rgba(0,0,0,0)');
@@ -1195,7 +1358,7 @@ export async function createStage(canvas, timing, analysis) {
 
       for (const half of (CRACK_OK ? [-1, 1] : [0])) {
         ctx.save();
-        ctx.translate(W / 2, H / 2);
+        ctx.translate(W / 2, H * TXC);
         if (half !== 0) {
           ctx.rotate(SEAM);
           // Push the half away FIRST, then clip in the moved space — the
@@ -1262,7 +1425,7 @@ export async function createStage(canvas, timing, analysis) {
       for (let i = 0; i < flips.length; i++) if (t >= flips[i]) idx = i;
       const line = section.lines[Math.max(0, idx)];
       // Alternate slams invert the frame — the panel's favourite move.
-      const inverted = idx >= 0 && idx % 2 === 1;
+      const inverted = INVERT_OK && idx >= 0 && idx % 2 === 1;
       const accent = CHORUS_ACCENTS[Math.min(which - 1, CHORUS_ACCENTS.length - 1)];
 
       paintBackdrop();
@@ -1293,7 +1456,7 @@ export async function createStage(canvas, timing, analysis) {
       }
       const recentre = sumW > 0 ? -(sumWY / sumW) : 0;
       ctx.save();
-      ctx.translate(W / 2 + kick * 4 * Math.sin(f * 2.3), H / 2 + kick * 4 * Math.cos(f * 1.9));
+      ctx.translate(W / 2 + kick * 4 * Math.sin(f * 2.3), H * TXC + kick * 4 * Math.cos(f * 1.9));
       ctx.scale(pump, pump);
       ctx.translate(0, recentre);
       for (const wd of lay.words) {
@@ -1313,7 +1476,7 @@ export async function createStage(canvas, timing, analysis) {
       }
       ctx.restore();
       if (idx >= 0 && t - flips[idx] < 2 / FPS) {
-        ctx.fillStyle = `rgba(255,255,255,${idx === 0 ? 0.2 : 0.12})`;
+        ctx.fillStyle = `rgba(255,255,255,${((idx === 0 ? 0.24 : 0.15) * M).toFixed(3)})`;
         ctx.fillRect(0, 0, W, H);
       }
       paintGrain(f, 0.06 + onsetKick(t) * 0.04);
@@ -1332,7 +1495,7 @@ export async function createStage(canvas, timing, analysis) {
         }
       }
       const texts = phrases.map((ph) => ph.map((w) => w.word.replace(/,/g, '').toUpperCase()).join(' '));
-      let sizes = texts.map((text) => fitSize(text, W * 0.5, DISPLAY, 900));
+      let sizes = texts.map((text) => fitSize(text, W * 0.5, DISPLAY, DW));
       const fitH = Math.min(1, (H * 0.7) / sizes.reduce((a, s) => a + s * 1.04, 0));
       sizes = sizes.map((s) => s * fitH);
       const out = [];
@@ -1379,23 +1542,46 @@ export async function createStage(canvas, timing, analysis) {
         const a = easeOutCubic(span(t, line.t0 - 0.2, line.t0 + 0.6));
         ctx.save();
         ctx.globalAlpha = a;
-        ctx.font = `${TEXT_STYLE}600 44px ${TEXTY}`;
-        ctx.letterSpacing = '10px';
+        // Fit the closing line to the frame — a long coda must not bleed.
+        ctx.letterSpacing = '6px';
         ctx.textAlign = 'center';
         ctx.fillStyle = INK;
-        ctx.fillText(line.text.toUpperCase(), W / 2, H * 0.42);
+        let closeSize = 44;
+        ctx.font = `${TEXT_STYLE}600 ${closeSize}px ${TEXTY}`;
+        const cw = ctx.measureText(line.text.toUpperCase()).width;
+        if (cw <= W * 0.88) {
+          ctx.fillText(line.text.toUpperCase(), W / 2, H * 0.42);
+        } else {
+          // Two balanced rows beat one illegible sliver.
+          const words = line.text.toUpperCase().split(/\s+/);
+          let split = Math.ceil(words.length / 2);
+          for (let k = Math.ceil(words.length / 2); k < words.length; k++) {
+            if (ctx.measureText(words.slice(0, k).join(' ')).width <= W * 0.88) split = k; else break;
+          }
+          const rows = [words.slice(0, split).join(' '), words.slice(split).join(' ')];
+          const wide = Math.max(...rows.map((r) => ctx.measureText(r).width));
+          closeSize = Math.min(44, Math.floor((44 * W * 0.86) / wide));
+          ctx.font = `${TEXT_STYLE}600 ${closeSize}px ${TEXTY}`;
+          rows.forEach((r, ri) => {
+            ctx.fillText(r, W / 2, H * (0.385 + ri * 0.062));
+          });
+        }
         ctx.letterSpacing = '0px';
         const a2c = span(t, line.t0 + 0.7, line.t0 + 1.4);
         if (a2c > 0) {
           ctx.globalAlpha = a * a2c;
+          ctx.font = `${DW} 34px ${DISPLAY}`;
+          ctx.letterSpacing = '8px';
+          ctx.fillStyle = INK;
+          ctx.fillText(timing.title.toUpperCase(), W / 2, H * 0.505);
           ctx.font = `500 28px ${TEXTY}`;
           ctx.letterSpacing = '12px';
           ctx.fillStyle = DIM;
-          ctx.fillText(timing.artist.toUpperCase(), W / 2, H * 0.52);
+          ctx.fillText(timing.artist.toUpperCase(), W / 2, H * 0.565);
           ctx.letterSpacing = '0px';
           if (timing.footer) {
             ctx.font = `400 24px ${MONO}`;
-            ctx.fillText(timing.footer, W / 2, H * 0.58);
+            ctx.fillText(timing.footer, W / 2, H * 0.615);
           }
         }
         ctx.restore();
@@ -1422,16 +1608,20 @@ export async function createStage(canvas, timing, analysis) {
         if (a > 0) {
           ctx.save();
           ctx.globalAlpha = a;
+          ctx.font = `${DW} 36px ${DISPLAY}`;
+          ctx.letterSpacing = '8px';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = INK;
+          ctx.fillText(timing.title.toUpperCase(), W / 2, H * 0.60);
           ctx.font = `500 30px ${TEXTY}`;
           ctx.letterSpacing = '12px';
-          ctx.textAlign = 'center';
           ctx.fillStyle = DIM;
-          ctx.fillText(timing.artist.toUpperCase(), W / 2, H * 0.62);
+          ctx.fillText(timing.artist.toUpperCase(), W / 2, H * 0.66);
           ctx.letterSpacing = '0px';
           if (timing.footer) {
             ctx.font = `400 24px ${MONO}`;
             ctx.fillStyle = `rgba(${rgb(DIM)},0.8)`;
-            ctx.fillText(timing.footer, W / 2, H * 0.68);
+            ctx.fillText(timing.footer, W / 2, H * 0.72);
           }
           ctx.restore();
         }
@@ -1681,7 +1871,7 @@ export async function createStage(canvas, timing, analysis) {
       paintBackdrop();
       paintBeam(t, 0.15, AMBER);
       const a = easeOutCubic(span(t, section.t0, section.t0 + 1));
-      const fade = 1 - easeInOutCubic(span(t, DUR - 1.2, DUR - 0.2));
+      const fade = 1 - easeInOutCubic(span(t, DUR2 - 1.2, DUR2 - 0.2));
       ctx.save();
       ctx.globalAlpha = a * fade;
       ctx.font = `500 34px ${TEXTY}`;
@@ -1703,6 +1893,30 @@ export async function createStage(canvas, timing, analysis) {
 
   /* -------------------------------------------------------------- painter */
 
+  /** The broadcast credit: song and artist, lower-left, early in the film. */
+  function paintCredit(t) {
+    const a = Math.min(span(t, 1.6, 2.6), 1 - span(t, 8.6, 10.2));
+    if (a <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = easeOutCubic(clamp01(a));
+    ctx.textAlign = 'left';
+    ctx.font = `${DW} 34px ${DISPLAY}`;
+    ctx.letterSpacing = '6px';
+    ctx.fillStyle = INK;
+    ctx.fillText(timing.title.toUpperCase(), W * 0.055, H * 0.875);
+    ctx.font = `500 24px ${TEXTY}`;
+    ctx.letterSpacing = '8px';
+    ctx.fillStyle = DIM;
+    ctx.fillText(timing.artist.toUpperCase(), W * 0.055, H * 0.915);
+    ctx.letterSpacing = '0px';
+    if (timing.footer) {
+      ctx.font = `400 20px ${MONO}`;
+      ctx.fillStyle = `rgba(${rgb(DIM)},0.8)`;
+      ctx.fillText(timing.footer, W * 0.055, H * 0.948);
+    }
+    ctx.restore();
+  }
+
   function paint(f) {
     const t = f / FPS;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1710,6 +1924,12 @@ export async function createStage(canvas, timing, analysis) {
     ctx.globalCompositeOperation = 'source-over';
     const scene = scenes.find((s) => t >= s.t0 && t < s.t1) || scenes[scenes.length - 1];
     scene.paint(t, f);
+    paintCredit(t);
+    const out = span(t, DUR2 - 0.8, DUR2 - 0.05);
+    if (out > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${easeInOutCubic(out).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
   }
 
   return { paint, frames, scenes };

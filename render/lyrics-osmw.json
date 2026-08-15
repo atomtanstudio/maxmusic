@@ -1,7 +1,7 @@
 {
   "title": "Open Source Must Win",
   "artist": "MaxMusic",
-  "footer": "github.com/richgates/maxmusic",
+  "footer": "github.com/atomtanstudio/maxmusic",
   "note": "Canonical sheet. Wording reconciled from the authored lyric sheet visible in shots/showcase/premium-look.mp4 plus two whisper passes (base.en + small.en); where ASR and the authored sheet disagreed, the authored sheet won.",
   "style": { "motion": 0.85 },
   "sections": [
