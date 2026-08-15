@@ -31,7 +31,8 @@
  */
 
 import { toRecord, coerce, loadRecords, saveRecords } from '../records.js';
-import { downloadAudio, makeLyricVideo } from '../studio-actions.js';
+import { downloadAudio, makeLyricVideo, downloadVideo } from '../studio-actions.js';
+import { redoCoverArt } from '../cover-redo.js';
 
 export const meta = {
   title: 'Library',
@@ -757,21 +758,26 @@ export function mount(root, ctx) {
       { label: 'Download FLAC', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(ctx, record, 'flac') },
       { label: 'Download MP3', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(ctx, record, 'mp3') },
       {
-        label: 'Make a lyric scroll',
-        icon: 'wave',
-        disabled: !record.url,
-        onSelect: () => makeLyricVideo(ctx, record, 'scroll'),
-      },
-      {
-        label: 'Make a lyric film',
+        label: 'Make a lyric video',
         icon: 'wave',
         disabled: !record.url,
         onSelect: () => makeLyricVideo(ctx, record, 'film'),
       },
       {
+        label: 'Make a visualizer video',
+        icon: 'wave',
+        disabled: !record.url,
+        onSelect: () => makeLyricVideo(ctx, record, 'visualizer'),
+      },
+      ...(record.videos || []).map((v) => ({
+        label: { film: 'Download the lyric video', scroll: 'Download the lyric scroll', visualizer: 'Download the visualizer video' }[v.mode] || 'Download the video',
+        icon: 'download',
+        onSelect: () => downloadVideo(ctx, record, v.mode),
+      })),
+      {
         label: 'Redo the cover art',
         icon: 'wand',
-        onSelect: () => ctx.navigate('art', { query: { track: record.id } }),
+        onSelect: () => redoCoverArt(ctx, record),
       },
       { separator: true },
       { label: 'Copy caption', icon: 'copy', disabled: !record.prompt, onSelect: () => copy(record.prompt, 'Caption') },

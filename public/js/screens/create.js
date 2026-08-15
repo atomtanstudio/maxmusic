@@ -19,7 +19,8 @@
  * Owned by the create lane: this file + public/css/screens/create.css.
  */
 
-import { downloadAudio, makeLyricVideo } from '../studio-actions.js';
+import { downloadAudio, makeLyricVideo, downloadVideo } from '../studio-actions.js';
+import { redoCoverArt } from '../cover-redo.js';
 
 export const meta = {
   title: 'Create',
@@ -974,9 +975,14 @@ export function mount(root, ctx) {
             href: api.mediaUrl(rec.url || rec.filename),
           },
           { label: 'Download MP3', icon: 'download', onSelect: () => downloadAudio(ctx, rec, 'mp3') },
-          { label: 'Make a lyric scroll', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'scroll') },
-          { label: 'Make a lyric film', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'film') },
-          { label: 'Redo the cover art', icon: 'wand', onSelect: () => ctx.navigate('art', { query: { track: rec.id } }) },
+          { label: 'Make a lyric video', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'film') },
+          { label: 'Make a visualizer video', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'visualizer') },
+          ...(((ctx.storage.get(LIBRARY_KEY, []) || []).find((r) => r && r.id === rec.id)?.videos) || []).map((v) => ({
+            label: { film: 'Download the lyric video', scroll: 'Download the lyric scroll', visualizer: 'Download the visualizer' }[v.mode] || 'Download the video',
+            icon: 'download',
+            onSelect: () => downloadVideo(ctx, { videos: [v] }, v.mode),
+          })),
+          { label: 'Redo the cover art', icon: 'wand', onSelect: () => redoCoverArt(ctx, rec) },
           { label: 'Start a new song from this', icon: 'wand', onSelect: () => reuse(rec) },
           { separator: true },
           {

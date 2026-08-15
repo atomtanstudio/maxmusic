@@ -60,6 +60,7 @@ export function toRecord(payload) {
     bitrate: Number(m.bitrate ?? audio.bitrate ?? extra.bitrate) || null,
     model: String(m.model || '') || null,
     cover: String(m.cover || m.coverUrl || '') || null,
+    videos: Array.isArray(m.videos) ? m.videos.filter((v) => v && v.url && v.mode) : [],
     createdAt: Number(m.createdAt) || Date.now(),
     source: String(m.source || '') || null,
     parentId: String(m.parentId || '') || null,

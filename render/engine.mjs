@@ -587,6 +587,89 @@ export async function createStage(canvas, timing, analysis) {
     }
   }
 
+  /* The downpour world: rain falling past a dim skyline, a flooded floor
+     that ripples where drops land. For the songs that ask for it. */
+  const drops = Array.from({ length: 220 }, (_, i) => ({
+    x: ((i * 761) % 1000) / 1000,
+    y: ((i * 383) % 1000) / 1000,
+    v: 0.55 + ((i * 131) % 45) / 100,
+    len: 14 + ((i * 53) % 26),
+    a: 0.1 + ((i * 17) % 22) / 100,
+  }));
+  const towers = Array.from({ length: 14 }, (_, i) => ({
+    x: (i / 14) + (((i * 97) % 13) - 6) / 260,
+    w: 0.035 + ((i * 41) % 22) / 700,
+    h: 0.12 + ((i * 71) % 30) / 130,
+  }));
+
+  function paintDownpour(t, o = {}) {
+    const bass = atSm('bass', t, 5);
+    const floorY = H * 0.86;
+
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#05070C');
+    g.addColorStop(0.7, '#0A0F1A');
+    g.addColorStop(1, '#0D1420');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // A skyline more implied than drawn, a few windows barely awake.
+    ctx.save();
+    for (const tw of towers) {
+      const th = tw.h * H * (1 + bass * 0.03);
+      ctx.fillStyle = 'rgba(8,11,18,0.9)';
+      ctx.fillRect(tw.x * W, floorY - th, tw.w * W, th);
+      const wins = 3 + Math.floor(tw.h * 14);
+      for (let k = 0; k < wins; k++) {
+        const wx = tw.x * W + ((k * 37) % Math.max(4, tw.w * W - 6)) + 2;
+        const wy = floorY - th + ((k * 53) % Math.max(6, th - 8)) + 3;
+        const on = Math.sin(t * 0.11 + k * 3.7 + tw.x * 40) > 0.86;
+        if (on) {
+          ctx.fillStyle = `rgba(${rgb(style.titleAccent || '#9FC3E8')},0.16)`;
+          ctx.fillRect(wx, wy, 3, 4);
+        }
+      }
+    }
+    ctx.restore();
+
+    // Rain, in two depths; the near layer leans with a slow wind.
+    const wind = Math.sin(t * 0.22) * 0.12;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(190,205,225,1)';
+    for (const dpt of drops) {
+      const speed = dpt.v * (0.9 + at('flux', t) * 0.25);
+      const y = ((dpt.y + t * speed) % 1.08) - 0.04;
+      const x = (dpt.x + wind * y * 0.4 + 2) % 1;
+      ctx.globalAlpha = dpt.a * (0.5 + bass * 0.4);
+      ctx.lineWidth = dpt.len > 28 ? 1.6 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x * W, y * H);
+      ctx.lineTo(x * W + wind * dpt.len, y * H + dpt.len);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // The flooded floor: a faint mirror with onset ripples.
+    ctx.save();
+    ctx.fillStyle = 'rgba(14,20,32,0.85)';
+    ctx.fillRect(0, floorY, W, H - floorY);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let r = 0; r < 7; r++) {
+      const seedT = Math.floor(t * 1.6) + r * 61;
+      const rx = ((seedT * 7919) % 997) / 997;
+      const age = (t * 1.6) % 1;
+      const rr = age * 60 + 6;
+      const ra = Math.max(0, (0.14 + bass * 0.1) * (1 - age)) * (0.4 + 0.6 * ((seedT % 7) / 7));
+      if (ra <= 0.01) continue;
+      ctx.strokeStyle = `rgba(170,195,225,${ra.toFixed(3)})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(rx * W, floorY + 8 + ((seedT % 5) / 5) * (H - floorY - 16), rr, rr * 0.22, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   /** One switch for the scenes: venue panels+beam, or the horizon. */
   function paintWorld(t, o = {}) {
     if (WORLD === 'horizon') {
@@ -595,6 +678,10 @@ export async function createStage(canvas, timing, analysis) {
     }
     if (WORLD === 'sanctum') {
       if (!o.inverted) paintSanctum(t, o);
+      return;
+    }
+    if (WORLD === 'downpour') {
+      if (!o.inverted) paintDownpour(t, o);
       return;
     }
     paintPanels(t, o.panels ?? 0.35, o.live ?? 0.6, o.cam || { x: 0, y: 0, scale: 1 });
@@ -1071,11 +1158,178 @@ export async function createStage(canvas, timing, analysis) {
     };
   }
 
+  /**
+   * The visualizer: a full-frame instrument for songs with no words to
+   * show — and the fallback when a lyric video finds none. Three forms
+   * (ring, bars, waves), chosen per song by the director, all driven by
+   * the measured bands and lit on onsets. Title and artist ride a quiet
+   * translucent strip at the foot, with a thin progress line under it.
+   */
+  function visualizerScene() {
+    const form = style.visForm || 'ring';
+    const palette = style.verseAccents || RAMP;
+    const spin = (style.visSpin === -1 ? -1 : 1);
+    const cx = W / 2;
+    const cy = H * 0.46;
+
+    const col = (i, n) => palette[i % palette.length];
+
+    function lowerThird(t) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(4,5,9,0.42)';
+      ctx.fillRect(0, H - 110, W, 110);
+      ctx.fillStyle = 'rgba(242,245,250,0.08)';
+      ctx.fillRect(0, H - 110, W, 1.5);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = `${DW} 34px ${DISPLAY}`;
+      ctx.letterSpacing = '4px';
+      ctx.fillStyle = `rgba(${rgb(INK)},0.92)`;
+      ctx.fillText(timing.title.toUpperCase(), W * 0.045, H - 58);
+      ctx.font = `500 20px ${TEXTY}`;
+      ctx.letterSpacing = '7px';
+      ctx.fillStyle = `rgba(${rgb(DIM)},0.95)`;
+      ctx.fillText(timing.artist.toUpperCase(), W * 0.045, H - 28);
+      ctx.letterSpacing = '0px';
+      if (timing.footer) {
+        ctx.textAlign = 'right';
+        ctx.font = `400 18px ${MONO}`;
+        ctx.fillText(timing.footer, W * 0.955, H - 32);
+      }
+      // The progress line: how far into the song we are.
+      ctx.fillStyle = `rgba(${rgb(style.titleAccent || palette[0])},0.85)`;
+      ctx.fillRect(0, H - 3, W * clamp01(t / DUR), 3);
+      ctx.restore();
+    }
+
+    /** Recent onsets as expanding, fading rings. */
+    function onsetRings(t, maxR) {
+      for (const o of analysis.onsets) {
+        if (o > t) break;
+        const age = t - o;
+        if (age > 0.7) continue;
+        const a = (1 - age / 0.7) * 0.22;
+        ctx.strokeStyle = `rgba(${rgb(palette[Math.floor(o * 7) % palette.length])},${a.toFixed(3)})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, maxR * (0.55 + age * 1.1), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    return (t, f) => {
+      const bass = atSm('bass', t, 3);
+      const mid = at('mid', t);
+      const high = at('high', t);
+      const kick = onsetKick(t, 0.14) * KICK_K;
+
+      // Ground: near-black with a breathing wash where the form lives.
+      ctx.fillStyle = '#05060A';
+      ctx.fillRect(0, 0, W, H);
+      const wash = ctx.createRadialGradient(cx, cy, 0, cx, cy, H * 0.72);
+      wash.addColorStop(0, `rgba(${rgb(palette[0])},${(0.05 + bass * 0.05).toFixed(3)})`);
+      wash.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = wash;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+
+      if (form === 'ring') {
+        const R0 = H * 0.2 * (1 + bass * 0.1 * PUMP_K + kick * 0.05);
+        const spokes = 72;
+        const rot = t * 0.14 * spin;
+        for (let i = 0; i < spokes; i++) {
+          const ang = rot + (i / spokes) * Math.PI * 2;
+          // Low bands live at the foot of the ring, highs at the crown.
+          const pos = (Math.sin(ang) + 1) / 2;
+          const e = pos < 0.34 ? atSm('bass', t, 1) : pos < 0.72 ? mid : high;
+          const jitter = 0.65 + 0.35 * Math.sin(i * 37.7 + t * 2.2);
+          const len = H * 0.04 + e * H * 0.17 * jitter + kick * H * 0.02;
+          const r1 = R0;
+          const r2 = R0 + len;
+          ctx.strokeStyle = `rgba(${rgb(col(i, spokes))},0.8)`;
+          ctx.lineWidth = 4.4;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+          ctx.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2);
+          ctx.stroke();
+        }
+        const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R0 * 0.92);
+        core.addColorStop(0, `rgba(${rgb(palette[0])},${(0.2 + bass * 0.3).toFixed(3)})`);
+        core.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R0 * 0.92, 0, Math.PI * 2);
+        ctx.fill();
+        onsetRings(t, R0 + H * 0.2);
+      }
+
+      if (form === 'bars') {
+        const n = 56;
+        const bw = (W * 0.82) / n;
+        const x0 = W * 0.09;
+        const base = cy + H * 0.02;
+        for (let i = 0; i < n; i++) {
+          const pos = i / n;
+          const e = pos < 0.3 ? atSm('bass', t, 1) : pos < 0.7 ? at('mid', t) : at('high', t);
+          const jitter = 0.6 + 0.4 * Math.sin(i * 91.3 + t * 1.9);
+          const h = 8 + e * H * 0.3 * jitter + kick * H * 0.02;
+          ctx.fillStyle = `rgba(${rgb(col(i, n))},0.75)`;
+          ctx.fillRect(x0 + i * bw + 1.5, base - h, bw - 3, h);
+          ctx.fillStyle = `rgba(${rgb(col(i, n))},0.3)`;
+          ctx.fillRect(x0 + i * bw + 1.5, base + 4, bw - 3, h * 0.4);
+          // The cap: where this bar peaked over the last third of a second.
+          let peak = 0;
+          const f0 = Math.max(0, Math.round((t - 0.35) * FPS));
+          const f1 = Math.min(S.bass.length - 1, Math.round(t * FPS));
+          const arr = pos < 0.3 ? S.bass : pos < 0.7 ? S.mid : S.high;
+          for (let k = f0; k <= f1; k++) peak = Math.max(peak, arr[k]);
+          const ph = 8 + peak * H * 0.3 * jitter;
+          ctx.fillStyle = `rgba(${rgb(INK)},0.5)`;
+          ctx.fillRect(x0 + i * bw + 1.5, base - ph - 5, bw - 3, 2.5);
+        }
+      }
+
+      if (form === 'waves') {
+        const ribbons = 4;
+        for (let r = 0; r < ribbons; r++) {
+          const e = r === 0 ? bass : r === 1 ? mid : r === 2 ? high : at('rms', t);
+          const amp = H * (0.03 + e * 0.13) * (1 + kick * 0.3);
+          const yBase = H * (0.3 + r * 0.11);
+          const k = 2.2 + r * 1.3;
+          const speed = (r % 2 ? -1 : 1) * spin * (0.8 + r * 0.35);
+          ctx.strokeStyle = `rgba(${rgb(col(r, ribbons))},0.7)`;
+          ctx.lineWidth = 3.2 - r * 0.4;
+          ctx.beginPath();
+          for (let x = 0; x <= W; x += 8) {
+            const u = x / W;
+            const env = Math.sin(u * Math.PI); // quiet at the edges
+            const y = yBase
+              + Math.sin(u * Math.PI * 2 * k + t * speed * 2.6) * amp * env
+              + Math.sin(u * Math.PI * 2 * (k * 2.7) + t * speed * 1.7) * amp * 0.3 * env;
+            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        onsetRings(t, H * 0.3);
+      }
+
+      ctx.restore();
+      lowerThird(t);
+      paintGrain(f, 0.045 + kick * 0.02);
+      paintVignette(0.8);
+    };
+  }
+
   /* The scene list: contiguous spans, each owning the frame while active.
      Scenes get generous handoff overlap via their own enter/exit ramps. */
   const scenes = style.world === 'scroll'
     ? [{ name: 'scroll', t0: 0, t1: DUR2, paint: scrollScene() }]
-    : buildScenes();
+    : style.world === 'visualizer'
+      ? [{ name: 'visualizer', t0: 0, t1: DUR2, paint: visualizerScene() }]
+      : buildScenes();
 
   function buildScenes() {
     const out = [];
@@ -2051,7 +2305,7 @@ export async function createStage(canvas, timing, analysis) {
     ctx.globalCompositeOperation = 'source-over';
     const scene = scenes.find((s) => t >= s.t0 && t < s.t1) || scenes[scenes.length - 1];
     scene.paint(t, f);
-    paintCredit(t);
+    if (style.world !== 'visualizer') paintCredit(t);
     const out = span(t, DUR2 - 0.8, DUR2 - 0.05);
     if (out > 0) {
       ctx.fillStyle = `rgba(0,0,0,${easeInOutCubic(out).toFixed(3)})`;

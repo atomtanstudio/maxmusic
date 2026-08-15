@@ -193,7 +193,75 @@ function alignLines() {
 
 const lineSeg = alignLines();
 
+/**
+ * Rescue passes before anything is dropped. The ASR mishears effected
+ * vocals hard enough that a sung line can miss the 0.45 similarity bar, and
+ * sometimes it hears nothing at all where something was clearly sung. So:
+ * first, unanchored lines take the best UNCLAIMED segment between their
+ * anchored neighbours at a forgiving threshold; second, lines with no
+ * segment but a real gap of time between neighbours get that gap, shared
+ * by character count. Only lines that fail both are dropped.
+ */
+function rescueUnanchored() {
+  const claimed = new Set(lineSeg.filter((s) => s !== null));
+
+  const neighbours = (i) => {
+    let p = i - 1;
+    while (p >= 0 && lineSeg[p] === null) p--;
+    let n = i + 1;
+    while (n < lines.length && lineSeg[n] === null) n++;
+    const t0 = p >= 0 ? segments[lineSeg[p]].t1 - 0.2 : 0;
+    const t1 = n < lines.length ? segments[lineSeg[n]].t0 + 0.2
+      : (segments.length ? segments[segments.length - 1].t1 + 6 : t0 + 6);
+    return { t0, t1 };
+  };
+
+  // Pass 1: weak matches against unclaimed segments in the right stretch.
+  for (let i = 0; i < lines.length; i++) {
+    if (lineSeg[i] !== null) continue;
+    const { t0, t1 } = neighbours(i);
+    let best = -1;
+    let bestSim = 0.22;
+    for (let s = 0; s < segments.length; s++) {
+      if (claimed.has(s)) continue;
+      if (segments[s].t0 < t0 - 0.3 || segments[s].t1 > t1 + 0.3) continue;
+      const v = sim(lines[i].norm, segments[s].text);
+      if (v > bestSim) { bestSim = v; best = s; }
+    }
+    if (best >= 0) {
+      lineSeg[i] = best;
+      claimed.add(best);
+    }
+  }
+
+  // Pass 2: a run of still-unanchored lines between neighbours shares the
+  // silence between them, if there is enough of it to have been sung in.
+  let i = 0;
+  while (i < lines.length) {
+    if (lineSeg[i] !== null) { i++; continue; }
+    let j = i;
+    while (j < lines.length && lineSeg[j] === null) j++;
+    const { t0, t1 } = neighbours(i);
+    const gap = t1 - t0;
+    const run = [];
+    for (let k = i; k < j; k++) run.push(k);
+    const chars = run.reduce((a, k) => a + lines[k].norm.length, 0) || 1;
+    if (gap > Math.max(1.2, 0.28 * chars * 0.35)) {
+      let t = t0 + 0.15;
+      const usable = Math.min(gap - 0.3, chars * 0.42);
+      for (const k of run) {
+        const dt = usable * (lines[k].norm.length / chars);
+        segments.push({ text: lines[k].norm, t0: t, t1: t + dt });
+        lineSeg[k] = segments.length - 1;
+        t += dt;
+      }
+    }
+    i = j;
+  }
+}
+
 if (DROP_UNANCHORED) {
+  rescueUnanchored();
   const missing = lines.map((l, i) => (lineSeg[i] === null ? l : null)).filter(Boolean);
   if (missing.length === lines.length) {
     console.error('None of the written lyrics could be heard in this song\'s audio.');

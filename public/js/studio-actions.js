@@ -11,6 +11,25 @@
  */
 
 import * as api from './api.js';
+import { loadRecords, updateRecord } from './records.js';
+
+/** A same-origin download, when the user asks for one. */
+function saveFile(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || '';
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+/** Download a song's kept video (latest of the given kind). */
+export function downloadVideo(ctx, record, mode) {
+  const v = (record.videos || []).find((x) => x.mode === mode);
+  if (!v) return;
+  saveFile(v.url, v.filename);
+  ctx.toast('Saving it to your downloads.', { kind: 'success', title: 'Downloading' });
+}
 
 /** The one active render, whichever screen started it. */
 let activeJob = null;
@@ -50,7 +69,7 @@ export function downloadAudio(ctx, record, format) {
  * the same shape the sign-in poll uses, so two are never in flight.
  */
 export async function makeLyricVideo(ctx, record, mode) {
-  const noun = mode === 'film' ? 'lyric film' : 'lyric scroll';
+  const noun = { film: 'lyric video', scroll: 'lyric scroll', visualizer: 'visualizer video' }[mode];
   if (activeJob) {
     ctx.toast('One video at a time — this one is still rendering.', { kind: 'info', title: 'Already working' });
     return;
@@ -62,7 +81,7 @@ export async function makeLyricVideo(ctx, record, mode) {
   }
 
   const key = 'studio:video';
-  const title = mode === 'film' ? 'Making the lyric film' : 'Making the lyric scroll';
+  const title = `Making the ${noun}`;
   ctx.toast('Starting the render…', { kind: 'info', title, key, timeout: 0 });
 
   try {
@@ -83,14 +102,26 @@ export async function makeLyricVideo(ctx, record, mode) {
       activeJob = job;
 
       if (job.status === 'completed') {
-        ctx.toast('Saving it to your downloads now.', { kind: 'success', title: `${noun[0].toUpperCase()}${noun.slice(1)} ready`, key });
-        // Same origin as the app, so the download needs no dance.
-        const a = document.createElement('a');
-        a.href = job.downloadUrl;
-        a.download = job.filename || 'song.mp4';
-        document.body.append(a);
-        a.click();
-        a.remove();
+        // The video joins the song in the Library; nothing is forced into
+        // the downloads folder. The toast offers the shortcut anyway.
+        try {
+          const existing = loadRecords(ctx.storage).find((r) => r.id === record.id);
+          const videos = [
+            { mode, url: job.downloadUrl, filename: job.filename || 'video.mp4', at: Date.now() },
+            ...(existing?.videos || []).filter((v) => v.mode !== mode),
+          ];
+          updateRecord(ctx.storage, record.id, { videos });
+          ctx.bus.emit('library:changed', { source: 'shell', count: loadRecords(ctx.storage).length, id: record.id });
+        } catch (err) {
+          console.error('[studio] could not attach the video to its song', err);
+        }
+        ctx.toast(`It’s on “${record.title}” in your Library, ready to download any time.`, {
+          kind: 'success',
+          title: `${noun[0].toUpperCase()}${noun.slice(1)} ready`,
+          key,
+          timeout: 9000,
+          action: { label: 'Download now', onClick: () => saveFile(job.downloadUrl, job.filename) },
+        });
         activeJob = null;
         return;
       }

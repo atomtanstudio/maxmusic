@@ -25,7 +25,9 @@ for (let i = 2; i < process.argv.length; i += 2) {
 }
 
 const A = JSON.parse(await fs.readFile(args.analysis, 'utf8'));
-const segPass = JSON.parse(await fs.readFile(args.segments, 'utf8'));
+const segPass = args.segments
+  ? JSON.parse(await fs.readFile(args.segments, 'utf8'))
+  : { transcription: [] };
 const authored = args.lyrics ? await fs.readFile(args.lyrics, 'utf8') : null;
 
 /* ------------------------------------------------------------------ lines */
@@ -63,8 +65,8 @@ function stanzasFrom() {
   return out.filter((s) => s.length);
 }
 
-const stanzas = stanzasFrom();
-if (!stanzas.length) {
+const stanzas = args.mode === 'visualizer' ? [] : stanzasFrom();
+if (!stanzas.length && args.mode !== 'visualizer') {
   console.error('No lyrics to direct — nothing sung and nothing authored.');
   process.exit(1);
 }
@@ -100,6 +102,33 @@ const seed = String(args.seed || args.title || 'song');
 let h = 0;
 for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
 
+/**
+ * Read what the song is about, when it is obvious. Keyword families are
+ * scored against the full text (title + authored or heard lyrics); a world
+ * needs a clear lead to be chosen on subject, otherwise tempo and the hash
+ * decide. Nothing here is clever — it is a librarian, not a poet.
+ */
+const fullText = [
+  args.title || '',
+  authored || '',
+  ...segPass.transcription.map((s) => s.text || ''),
+].join(' ').toLowerCase();
+
+const FAMILIES = {
+  horizon: ['road', 'drive', 'driving', 'highway', 'car', 'wheel', 'mile', 'dawn', 'sunrise', 'engine', 'motorway', 'lane', 'ride', 'street'],
+  downpour: ['rain', 'storm', 'thunder', 'water', 'river', 'ocean', 'tears', 'cry', 'drown', 'flood', 'sea', 'wave'],
+  sanctum: ['candle', 'flame', 'prayer', 'ghost', 'grave', 'soul', 'silence', 'shadow', 'bone', 'stone', 'hymn', 'sleep', 'death'],
+  // 'night' and 'light' appear in every second lyric ever written — they
+  // identify nothing and are deliberately absent.
+  venue: ['dance', 'club', 'floor', 'neon', 'city', 'party', 'bass', 'signal', 'static', 'wire', 'radio'],
+};
+const scores = {};
+for (const [world, words] of Object.entries(FAMILIES)) {
+  scores[world] = words.reduce((a, w) => a + (fullText.match(new RegExp(`\\b${w}`, 'g')) || []).length, 0);
+}
+const ranked = Object.entries(scores).sort((x, y) => y[1] - x[1]);
+const subjectWorld = ranked[0][1] >= 3 && ranked[0][1] >= ranked[1][1] * 1.5 ? ranked[0][0] : null;
+
 const WORLDS = [
   { world: 'venue' },
   {
@@ -133,14 +162,72 @@ const WORLDS = [
   },
 ];
 
+/* Palette rotations per world, chosen by hash — two songs in the same
+   world still do not twin. */
+const ACCENT_SETS = {
+  venue: [
+    { verseAccents: ['#00C0E0', '#7060F0', '#B040F0', '#E0A040'], chorusAccents: ['#00C0E0', '#B040F0'] },
+    { verseAccents: ['#B040F0', '#F04060', '#E0A040', '#00C0E0'], chorusAccents: ['#F04060'] },
+    { verseAccents: ['#0090F0', '#00C0E0', '#7060F0', '#B040F0'], chorusAccents: ['#0090F0'] },
+  ],
+  horizon: [
+    { verseAccents: ['#5FD3F0', '#8F7BF0', '#F06AAE', '#FFB347'], chorusAccents: ['#FF6FA8'] },
+    { verseAccents: ['#FFB347', '#F06AAE', '#8F7BF0', '#5FD3F0'], chorusAccents: ['#FFB347'] },
+  ],
+  sanctum: [
+    { verseAccents: ['#C9CFDA', '#AEB8CC', '#D9A85C', '#BFC6D4'], chorusAccents: ['#D3D9E4'] },
+    { verseAccents: ['#D9A85C', '#C9CFDA', '#AEB8CC', '#D9A85C'], chorusAccents: ['#E4C79A'] },
+  ],
+  downpour: [
+    { verseAccents: ['#9FC3E8', '#7FA8D8', '#C9CFDA', '#5FD3F0'], chorusAccents: ['#BFD8F2'] },
+    { verseAccents: ['#5FD3F0', '#9FC3E8', '#8F7BF0', '#C9CFDA'], chorusAccents: ['#8FD0E8'] },
+  ],
+};
+
+const DOWNPOUR = {
+  world: 'downpour',
+  crack: false,
+  chorusInvert: false,
+  display: '"Avenir Next"',
+  displayWeight: 700,
+  text: '"Avenir Next"',
+  textWeightNormal: 500,
+  textWeightEmph: 700,
+  ink: '#E8EEF6',
+  dim: '#6E7A8C',
+  titleAccent: '#9FC3E8',
+};
+
 let style;
-if (args.mode === 'scroll') {
+if (args.mode === 'visualizer') {
+  // A different instrument per song: form, palette and turn all from the
+  // hash; the motion dial still follows the record.
+  const forms = ['ring', 'bars', 'waves'];
+  const pal = [
+    { verseAccents: ['#00C0E0', '#7060F0', '#B040F0', '#F04060', '#E0A040'], titleAccent: '#00C0E0' },
+    { verseAccents: ['#B040F0', '#F04060', '#E0A040', '#00C0E0'], titleAccent: '#B040F0' },
+    { verseAccents: ['#5FD3F0', '#8F7BF0', '#F06AAE', '#FFB347'], titleAccent: '#FFB347' },
+  ][(h >>> 2) % 3];
+  style = {
+    world: 'visualizer',
+    visForm: forms[h % forms.length],
+    visSpin: (h >>> 5) % 2 ? -1 : 1,
+    motion,
+    tail: 3,
+    ...pal,
+  };
+} else if (args.mode === 'scroll') {
   style = { world: 'scroll', motion: Math.min(0.5, motion), tail: 4 };
 } else {
-  // A slow dark song leans sanctum, a bright one leans elsewhere; the hash
-  // breaks ties so the catalogue rotates.
-  const pick = A.bpm < 78 ? 2 : h % WORLDS.length;
-  style = { ...WORLDS[pick], motion, tail: 3 };
+  // Subject first, when the song makes it obvious. Otherwise a slow dark
+  // song leans sanctum and the hash rotates the rest of the catalogue.
+  const byName = { venue: WORLDS[0], horizon: WORLDS[1], sanctum: WORLDS[2], downpour: DOWNPOUR };
+  let base;
+  if (subjectWorld) base = byName[subjectWorld];
+  else if (A.bpm < 78) base = byName.sanctum;
+  else base = [byName.venue, byName.horizon, byName.downpour][h % 3];
+  const accents = ACCENT_SETS[base.world];
+  style = { ...base, ...accents[(h >>> 3) % accents.length], motion, tail: 3 };
 }
 
 /* ----------------------------------------------------------------- output */
@@ -153,6 +240,8 @@ const sheet = {
   ...(args.cover ? { cover: args.cover } : {}),
   style,
   sections,
+  // A visualizer needs no aligner pass: this sheet doubles as its timing.
+  ...(args.mode === 'visualizer' ? { lines: [] } : {}),
 };
 
 await fs.writeFile(args.out, JSON.stringify(sheet, null, 1));

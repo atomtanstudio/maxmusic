@@ -161,7 +161,7 @@ function publicJob(job) {
     statusUrl: `/studio/video/${job.id}`,
   };
   if (job.status === 'completed') {
-    body.downloadUrl = `/studio/video/${job.id}/file`;
+    body.downloadUrl = job.publicUrl || `/studio/video/${job.id}/file`;
     body.filename = job.filename;
   }
   if (job.error) body.error = job.error;
@@ -182,41 +182,70 @@ async function work(job, backend) {
   job.progress = 0.02;
   await fetchToFile(backend, job.trackUrl, flac);
 
-  await ensureModel(job);
+  // A lyric video without lyrics is a visualizer — decided up front when
+  // the song is marked instrumental or arrived with no words at all.
+  if (job.mode !== 'visualizer' && !job.lyrics.trim()) {
+    job.mode = 'visualizer';
+    job.filename = `${safeName(job.title)}-visualizer.mp4`;
+  }
 
   job.step = 'Reading the song';
   job.progress = 0.12;
   await runCancellable(job, process.execPath, [path.join(RENDER_DIR, 'analyze.mjs'), flac, dataAnalysis]);
 
-  job.step = 'Listening for the words';
-  job.progress = 0.18;
-  await runCancellable(job, 'ffmpeg', ['-v', 'error', '-y', '-i', flac, '-ar', '16000', '-ac', '1', wav]);
-  await runCancellable(job, 'whisper-cli', ['-m', MODEL, '-f', wav, '-oj', '-of', path.join(d, 'seg'), '-np']);
-  job.progress = 0.3;
-  await runCancellable(job, 'whisper-cli', ['-m', MODEL, '-f', wav, '-ml', '1', '-sow', '-oj', '-of', path.join(d, 'words'), '-np']);
+  const direct = async () => {
+    const directArgs = [
+      path.join(RENDER_DIR, 'auto-direct.mjs'),
+      '--mode', job.mode,
+      '--analysis', dataAnalysis,
+      '--out', sheet,
+      '--title', job.title,
+      '--artist', job.artist,
+      '--seed', path.basename(job.trackUrl),
+    ];
+    if (job.mode !== 'visualizer') directArgs.push('--segments', path.join(d, 'seg.json'));
+    if (job.lyrics && job.mode !== 'visualizer') directArgs.push('--lyrics', lyricsTxt);
+    if (job.cover) directArgs.push('--cover', job.cover);
+    await runCancellable(job, process.execPath, directArgs);
+  };
 
-  job.step = 'Directing';
-  job.progress = 0.42;
-  if (job.lyrics) await fsp.writeFile(lyricsTxt, job.lyrics);
-  const directArgs = [
-    path.join(RENDER_DIR, 'auto-direct.mjs'),
-    '--mode', job.mode,
-    '--analysis', dataAnalysis,
-    '--segments', path.join(d, 'seg.json'),
-    '--out', sheet,
-    '--title', job.title,
-    '--artist', job.artist,
-    '--seed', path.basename(job.trackUrl),
-  ];
-  if (job.lyrics) directArgs.push('--lyrics', lyricsTxt);
-  if (job.cover) directArgs.push('--cover', job.cover);
-  await runCancellable(job, process.execPath, directArgs);
+  if (job.mode === 'visualizer') {
+    job.step = 'Directing';
+    job.progress = 0.4;
+    await direct();
+    await fsp.copyFile(sheet, dataTiming); // a visualizer sheet IS its timing
+  } else {
+    await ensureModel(job);
 
-  job.step = 'Timing the lyrics';
-  await runCancellable(job, process.execPath, [
-    path.join(RENDER_DIR, 'align.mjs'), sheet, path.join(d, 'seg.json'), path.join(d, 'words.json'), dataTiming,
-    '--drop-unanchored',
-  ]);
+    job.step = 'Listening for the words';
+    job.progress = 0.18;
+    await runCancellable(job, 'ffmpeg', ['-v', 'error', '-y', '-i', flac, '-ar', '16000', '-ac', '1', wav]);
+    await runCancellable(job, 'whisper-cli', ['-m', MODEL, '-f', wav, '-oj', '-of', path.join(d, 'seg'), '-np']);
+    job.progress = 0.3;
+    await runCancellable(job, 'whisper-cli', ['-m', MODEL, '-f', wav, '-ml', '1', '-sow', '-oj', '-of', path.join(d, 'words'), '-np']);
+
+    job.step = 'Directing';
+    job.progress = 0.42;
+    if (job.lyrics) await fsp.writeFile(lyricsTxt, job.lyrics);
+    await direct();
+
+    job.step = 'Timing the lyrics';
+    try {
+      await runCancellable(job, process.execPath, [
+        path.join(RENDER_DIR, 'align.mjs'), sheet, path.join(d, 'seg.json'), path.join(d, 'words.json'), dataTiming,
+        '--drop-unanchored',
+      ]);
+    } catch (err) {
+      if (!/None of the written lyrics/.test(err.message)) throw err;
+      // Nothing was sung that matches the words — make the visualizer
+      // instead of failing, exactly as if the song were instrumental.
+      job.mode = 'visualizer';
+      job.filename = `${safeName(job.title)}-visualizer.mp4`;
+      job.step = 'No words to time — making a visualizer';
+      await direct();
+      await fsp.copyFile(sheet, dataTiming);
+    }
+  }
 
   job.step = 'Rendering';
   job.progress = 0.45;
@@ -236,6 +265,15 @@ async function work(job, backend) {
 
   const stat = await fsp.stat(job.outFile);
   if (!stat.size) throw new Error('The render finished but produced no file.');
+
+  // The finished video moves to the keep — the job directory is swept in an
+  // hour, but the video belongs to the song now, downloadable whenever.
+  const store = path.join(RENDER_DIR, 'out', 'videos');
+  await fsp.mkdir(store, { recursive: true });
+  const publicName = `${safeName(job.title)}-${{ film: 'lyric-video', scroll: 'lyric-scroll', visualizer: 'visualizer' }[job.mode]}-${job.id.slice(0, 8)}.mp4`;
+  await fsp.copyFile(job.outFile, path.join(store, publicName));
+  job.publicUrl = `/studio/videos/${encodeURIComponent(publicName)}`;
+
   job.progress = 1;
   job.status = 'completed';
   job.step = 'Done';
@@ -341,7 +379,7 @@ export function handleStudio(req, res, backend) {
   if (pathname === '/studio/video' && req.method === 'POST') {
     readBody(req).then((body) => {
       const trackUrl = mediaPath(body?.trackUrl, 'tracks');
-      const mode = body?.mode === 'film' ? 'film' : body?.mode === 'scroll' ? 'scroll' : null;
+      const mode = ['film', 'scroll', 'visualizer'].includes(body?.mode) ? body.mode : null;
       if (!trackUrl || !mode) { json(res, 400, { error: 'A song and a video kind are required.' }); return; }
       const id = crypto.randomUUID();
       const dir = path.join(JOBS_DIR, id);
@@ -361,7 +399,7 @@ export function handleStudio(req, res, backend) {
         lyrics: String(body?.lyrics || '').slice(0, LYRICS_MAX),
         dir,
         outFile: path.join(dir, 'video.mp4'),
-        filename: `${safeName(title)}-${mode === 'film' ? 'lyric-film' : 'lyric-scroll'}.mp4`,
+        filename: `${safeName(title)}-${{ film: 'lyric-video', scroll: 'lyric-scroll', visualizer: 'visualizer' }[mode]}.mp4`,
         proc: null,
         createdAt: Date.now(),
         finishedAt: null,
@@ -371,6 +409,25 @@ export function handleStudio(req, res, backend) {
       pump(backend);
       json(res, 202, publicJob(job));
     }).catch(() => json(res, 400, { error: 'That request could not be read.' }));
+    return true;
+  }
+
+  // ---- the keep: finished videos, downloadable any time ----
+  const keepMatch = pathname.match(/^\/studio\/videos\/([^/]+)$/);
+  if (keepMatch && req.method === 'GET') {
+    const name = path.basename(decodeURIComponent(keepMatch[1]));
+    const file = path.join(RENDER_DIR, 'out', 'videos', name);
+    if (!file.startsWith(path.join(RENDER_DIR, 'out', 'videos')) || !fs.existsSync(file)) {
+      json(res, 404, { error: 'That video is not here.' });
+      return true;
+    }
+    const stat = fs.statSync(file);
+    res.writeHead(200, {
+      'content-type': 'video/mp4',
+      'content-length': stat.size,
+      'content-disposition': `attachment; filename="${name}"`,
+    });
+    fs.createReadStream(file).pipe(res);
     return true;
   }
 
