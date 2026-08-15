@@ -6,3 +6,4 @@ shots/showcase/
 render/out/
 render/models/
 render/data/job-*
+render/data/model-sets-length.json

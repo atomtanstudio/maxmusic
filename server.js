@@ -38,8 +38,18 @@ const MIME = {
   '.map': 'application/json; charset=utf-8',
 };
 
-/** Pipe a request straight through to the backend, preserving streaming. */
-function proxy(req, res, body = null) {
+/**
+ * Pipe a request straight through to the backend, preserving streaming.
+ *
+ * @param {?string} body   a replacement request body, or null to stream the
+ *                         original through untouched.
+ * @param {?(payload: *) => void} onJson  called with the parsed response when
+ *                         it is JSON. The customer's copy is never delayed for
+ *                         this: the response is piped as it arrives and only a
+ *                         copy is kept, so a watcher cannot slow a render down
+ *                         or break a stream by existing.
+ */
+function proxy(req, res, body = null, onJson = null) {
   const headers = { ...req.headers, host: `${BACKEND_HOST}:${BACKEND_PORT}` };
   if (body !== null) {
     delete headers['transfer-encoding'];
@@ -56,6 +66,17 @@ function proxy(req, res, body = null) {
     },
     (up) => {
       res.writeHead(up.statusCode || 502, up.headers);
+      if (!onJson || !/json/i.test(up.headers['content-type'] || '')) {
+        up.pipe(res);
+        return;
+      }
+      const seen = [];
+      let kept = 0;
+      up.on('data', (c) => { if (kept < MAX_BODY) { seen.push(c); kept += c.length; } });
+      up.on('end', () => {
+        try { onJson(JSON.parse(Buffer.concat(seen).toString('utf8'))); }
+        catch { /* not the shape we were watching for */ }
+      });
       up.pipe(res);
     }
   );
@@ -96,6 +117,51 @@ function proxy(req, res, body = null) {
 const PACED_ROUTE = /^\/api\/generate(-dual|-stream)?(\?|$)/;
 const MAX_BODY = 2 * 1024 * 1024;
 
+/* Whether the studio lets the model choose its own length.
+ *
+ * MiniMax reads the lyrics, plans an arrangement and reports how long that
+ * arrangement is; the workflow can either use that answer or overrule it with
+ * the length that was requested. While it overrules it, a sheet that outruns
+ * the canvas is cut off mid-phrase and this floor is what prevents that. Once
+ * the model is allowed to answer, the floor would be cutting verses the model
+ * had every intention of singing.
+ *
+ * Nothing needs configuring either way: a song that comes back SHORTER than it
+ * was asked for can only mean the model set the length, so that is the signal.
+ * See docs/backend-let-the-model-set-the-length.md.
+ */
+const PACING_FLAG = path.join(__dirname, 'render', 'data', 'model-sets-length.json');
+let modelSetsLength = false;
+try {
+  modelSetsLength = JSON.parse(fs.readFileSync(PACING_FLAG, 'utf8')).modelSetsLength === true;
+} catch { /* first run */ }
+
+function noteDeliveredLength(asked, delivered) {
+  if (modelSetsLength || !(asked > 0) || !(delivered > 0)) return;
+  if (delivered > asked - 2) return;
+  modelSetsLength = true;
+  console.log(
+    `[length] asked for ${clock(asked)} and got ${clock(delivered)} — the model is choosing its own `
+    + 'length now, so the app will stop trimming lyric sheets.',
+  );
+  try {
+    fs.mkdirSync(path.dirname(PACING_FLAG), { recursive: true });
+    fs.writeFileSync(PACING_FLAG, JSON.stringify({ modelSetsLength: true, noticedAt: new Date().toISOString() }, null, 2));
+  } catch (err) {
+    console.error('[length] could not remember that —', err.message);
+  }
+}
+
+/** The delivered length, wherever this shape of response happens to carry it. */
+function deliveredSeconds(payload) {
+  const takes = [payload, payload?.takes?.A, payload?.takes?.B].filter(Boolean);
+  for (const t of takes) {
+    const ms = Number(t?.extra_info?.music_duration);
+    if (Number.isFinite(ms) && ms > 0) return ms > 400 ? ms / 1000 : ms;
+  }
+  return 0;
+}
+
 function paceRequest(req, res) {
   const chunks = [];
   let size = 0;
@@ -119,6 +185,11 @@ function paceRequest(req, res) {
       return proxy(req, res, raw);
     }
 
+    // Watch what comes back, whether or not anything is trimmed on the way out.
+    const watch = (payload) => noteDeliveredLength(Number(body.duration), deliveredSeconds(payload));
+
+    if (modelSetsLength) return proxy(req, res, raw, watch);
+
     let fitted;
     try {
       fitted = enforceLength({
@@ -131,13 +202,13 @@ function paceRequest(req, res) {
       return proxy(req, res, raw);
     }
 
-    if (!fitted.trimmed.length) return proxy(req, res, raw);
+    if (!fitted.trimmed.length) return proxy(req, res, raw, watch);
 
     console.log(
       `[length] ${clock(body.duration)} can sing about ${fitted.limit} words; this sheet had `
       + `${fitted.raw}. Dropped ${fitted.trimmed.join(', ')} so the song can reach its ending.`,
     );
-    proxy(req, res, JSON.stringify({ ...body, lyrics: fitted.lyrics }));
+    proxy(req, res, JSON.stringify({ ...body, lyrics: fitted.lyrics }), watch);
   });
 
   req.on('error', () => { if (!res.headersSent) res.writeHead(400).end('Bad request'); });
