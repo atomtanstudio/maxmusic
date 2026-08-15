@@ -1,0 +1,60 @@
+{
+  "title": "Midnight Road",
+  "artist": "MaxMusic",
+  "footer": "github.com/richgates/maxmusic",
+  "note": "Canonical sheet for track 555e3bfff2b5a1c7890c (night-drive synthwave). Wording from the whisper small.en pass; title derived from the chorus hook. The verse sections are split so the palette walks night to dawn. Style: the horizon pack — a road world with a sun that rises on the song's clock, Futura display, italic verse voice, no crack device (nothing in this lyric breaks).",
+  "style": {
+    "world": "horizon",
+    "crack": false,
+    "display": "Futura",
+    "text": "\"Avenir Next\"",
+    "textStyle": "italic ",
+    "ink": "#FFF6EC",
+    "dim": "#9A8F9E",
+    "titleAccent": "#FFB347",
+    "verseAccents": ["#5FD3F0", "#8F7BF0", "#F06AAE", "#FFB347"],
+    "chorusAccents": ["#FF6FA8"]
+  },
+  "sections": [
+    { "id": "intro", "kind": "instrumental" },
+    { "id": "verse-1", "kind": "verse", "lines": [
+      { "text": "4 AM, the city fades to blue" },
+      { "text": "Open road and all I hear is you" },
+      { "text": "Street lights flicker like a film beneath the tires" },
+      { "text": "Dashboard glowing, every mile is pulling me higher" }
+    ]},
+    { "id": "verse-2", "kind": "verse", "lines": [
+      { "text": "Windows down, the summer air is rushing in" },
+      { "text": "No one around, just the road and where I've been" }
+    ]},
+    { "id": "pre-1", "kind": "pre", "lines": [
+      { "text": "The night is almost over, the skyline's falling behind" }
+    ]},
+    { "id": "verse-3", "kind": "verse", "lines": [
+      { "text": "I feel the morning getting closer, like a signal through the static in my mind" }
+    ]},
+    { "id": "chorus", "kind": "chorus", "lines": [
+      { "text": "I'm driving home through the neon glow" },
+      { "text": "Heart wide open and the radio low" },
+      { "text": "Hands in the wind, let the whole world know" },
+      { "text": "I'm alive, I'm alive on this midnight road" },
+      { "text": "And when the sunrise breaks the dark alone" },
+      { "text": "I follow every light until it leads me home" }
+    ]},
+    { "id": "bridge", "kind": "verse", "lines": [
+      { "text": "Racing with the dawn, oh all the shadows gone" },
+      { "text": "White lines vanish in the mirror one by one", "device": "vanish" },
+      { "text": "Old regrets are losing ground before the sun" }
+    ]},
+    { "id": "verse-4", "kind": "verse", "lines": [
+      { "text": "Every breath tastes like a life I haven't lived" },
+      { "text": "Every turn reminds me I've got more to give" }
+    ]},
+    { "id": "pre-2", "kind": "pre", "lines": [
+      { "text": "The night is almost over, the horizon starts to burn" }
+    ]},
+    { "id": "tag-final", "kind": "tag", "lines": [
+      { "text": "I feel the morning getting closer" }
+    ]}
+  ]
+}

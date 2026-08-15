@@ -87,6 +87,7 @@ for (const section of sheet.sections) {
         section: section.id,
         kind: section.kind,
         text: line.text,
+        device: line.device,
         repeatIndex: r,
         norm: norm(line.text),
         words: line.text.split(/\s+/).map((word) => ({ word, n: norm(word).replace(/ /g, '') })),
@@ -207,6 +208,9 @@ for (let idx = 0; idx < lines.length; idx++) {
       cur += dur;
     }
   }
+  // The window may carry leading silence from a padded ASR segment; the
+  // line begins when its first word does.
+  line.t0 = Math.min(...line.words.map((w) => w.t0));
   line.t1 = Math.max(line.t1, ...line.words.map((w) => w.t1));
 }
 
@@ -223,6 +227,7 @@ const outLines = lines.map((line) => ({
   section: line.section,
   kind: line.kind,
   text: line.text,
+  ...(line.device ? { device: line.device } : {}),
   repeatIndex: line.repeatIndex,
   t0: Number(line.t0.toFixed(3)),
   t1: Number(line.t1.toFixed(3)),
@@ -238,6 +243,7 @@ await fs.writeFile(outFile, JSON.stringify({
   title: sheet.title,
   artist: sheet.artist,
   footer: sheet.footer,
+  ...(sheet.style ? { style: sheet.style } : {}),
   lines: outLines,
 }, null, 1));
 

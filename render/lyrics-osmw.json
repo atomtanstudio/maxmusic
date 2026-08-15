@@ -11,7 +11,7 @@
     { "id": "verse-1", "kind": "verse", "lines": [
       { "text": "They built the walls, they sold you the key" },
       { "text": "Locked the door on what should have been free" },
-      { "text": "Every line you were never shown was a promise" },
+      { "text": "Every line you were never shown was a promise", "device": "redact" },
       { "text": "someone made on your behalf" }
     ]},
     { "id": "pre", "kind": "pre", "lines": [
@@ -23,7 +23,7 @@
       { "text": "Fork it, ship it, let them in" },
       { "text": "Open source must win" }
     ]},
-    { "id": "verse-2", "kind": "verse", "lines": [
+    { "id": "verse-2", "kind": "mono", "lines": [
       { "text": "No permission, no gatekeeper" },
       { "text": "Every hand that builds it deeper" },
       { "text": "Read the source, the truth is in it" },

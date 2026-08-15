@@ -23,8 +23,8 @@
 /* ---------------------------------------------------------------- palette */
 
 const BG = '#07070B';
-const INK = '#F2F5FA';
-const DIM = '#6E7889';
+const INK_DEFAULT = '#F2F5FA';
+const DIM_DEFAULT = '#6E7889';
 const RAMP = ['#00C0E0', '#0090F0', '#2090F0', '#7060F0', '#B040F0', '#F04060', '#E0A040'];
 const CYAN = RAMP[0];
 const VIOLET = RAMP[3];
@@ -32,8 +32,6 @@ const MAGENTA = RAMP[4];
 const RED = RAMP[5];
 const AMBER = RAMP[6];
 
-const DISPLAY = '"Avenir Next Condensed"';
-const TEXTY = '"Avenir Next"';
 const MONO = 'Menlo';
 
 /* ----------------------------------------------------------------- helpers */
@@ -67,12 +65,38 @@ const rgb = (hex) => {
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
 };
 
+/** Linear mix of two hex colours, u clamped 0..1. */
+const mixHex = (a, b, u) => {
+  const A = parseInt(a.slice(1), 16);
+  const B = parseInt(b.slice(1), 16);
+  const v = Math.max(0, Math.min(1, u));
+  const ch = (sa, sb) => Math.round(sa + (sb - sa) * v);
+  const r = ch((A >> 16) & 255, (B >> 16) & 255);
+  const g = ch((A >> 8) & 255, (B >> 8) & 255);
+  const bl = ch(A & 255, B & 255);
+  return `rgb(${r},${g},${bl})`;
+};
+
 /* ==================================================================== */
 
 export async function createStage(canvas, timing, analysis) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width;
   const H = canvas.height;
+
+  /* ------------------------------------------------------------ style pack
+     Every aesthetic choice the engine makes can be overridden per song by a
+     `style` block in the lyric sheet. Defaults are the venue pack. */
+  const style = timing.style || {};
+  const DISPLAY = style.display || '"Avenir Next Condensed"';
+  const TEXTY = style.text || '"Avenir Next"';
+  const TEXT_STYLE = style.textStyle || '';           // e.g. 'italic ' for speed
+  const INK = style.ink || '#F2F5FA';
+  const DIM = style.dim || '#6E7889';
+  const VERSE_ACCENTS = style.verseAccents || [CYAN, VIOLET, MAGENTA, AMBER];
+  const CHORUS_ACCENTS = style.chorusAccents || [CYAN, MAGENTA];
+  const WORLD = style.world || 'venue';               // 'venue' | 'horizon'
+  const CRACK_OK = style.crack !== false;
   const FPS = analysis.fps;
   const DUR = analysis.duration;
   const frames = Math.ceil(DUR * FPS);
@@ -288,6 +312,103 @@ export async function createStage(canvas, timing, analysis) {
     ctx.restore();
   }
 
+  /* The horizon world: a dusk sky that becomes dawn on the song's own
+     clock, a sun that rises through the last act, and a road running to the
+     vanishing point. An alternative to the venue for songs that travel. */
+  const stars = Array.from({ length: 130 }, (_, i) => ({
+    x: ((i * 761) % 1000) / 1000,
+    y: ((i * 383) % 620) / 1000,
+    r: 0.6 + ((i * 131) % 14) / 10,
+    tw: ((i * 97) % 63) / 10,
+  }));
+
+  function paintHorizon(t, o = {}) {
+    const prog = t / DUR;
+    const dawn = easeInOutCubic(clamp01((prog - 0.35) / 0.6));
+    const hy = H * 0.72;
+    const bass = atSm('bass', t, 5);
+
+    // Sky bands, night to dawn.
+    const g = ctx.createLinearGradient(0, 0, 0, hy);
+    g.addColorStop(0, mixHex('#04050E', '#232C55', dawn * 0.8));
+    g.addColorStop(0.55, mixHex('#0A0F2A', '#54346E', dawn));
+    g.addColorStop(0.85, mixHex('#171240', '#B04A44', dawn));
+    g.addColorStop(1, mixHex('#241A4E', '#FFB347', dawn));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, hy);
+
+    // Stars burn out as morning comes.
+    ctx.save();
+    for (const s of stars) {
+      const a = (1 - dawn) * (0.25 + 0.3 * Math.sin(s.tw + t * 1.7) ** 2);
+      if (a <= 0.02) continue;
+      ctx.fillStyle = `rgba(240,244,255,${a.toFixed(3)})`;
+      ctx.fillRect(s.x * W, s.y * H, s.r, s.r);
+    }
+    ctx.restore();
+
+    // The sun clears the horizon through the final act.
+    const rise = easeInOutCubic(clamp01((prog - 0.55) / 0.42));
+    if (rise > 0.02 || dawn > 0.4) {
+      const sunR = H * 0.09;
+      const sunY = hy + sunR * lerp(1.15, -0.75, rise);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(W / 2, sunY, 0, W / 2, sunY, sunR * (5 + bass * 2));
+      glow.addColorStop(0, `rgba(255,190,110,${(0.24 + 0.5 * rise + bass * 0.12).toFixed(3)})`);
+      glow.addColorStop(1, 'rgba(255,190,110,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, hy + 2);
+      ctx.beginPath();
+      ctx.rect(0, 0, W, hy);
+      ctx.clip();
+      ctx.fillStyle = mixHex('#FFD9A0', '#FFF3DC', rise);
+      ctx.beginPath();
+      ctx.arc(W / 2, sunY, sunR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Horizon line.
+    ctx.fillStyle = `rgba(255,200,130,${(0.25 + 0.45 * dawn + bass * 0.15).toFixed(3)})`;
+    ctx.fillRect(0, hy - 1, W, 2.5);
+
+    // The ground and the road, running to the vanishing point.
+    ctx.fillStyle = mixHex('#050508', '#1C0F14', dawn * 0.7);
+    ctx.fillRect(0, hy, W, H - hy);
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,220,170,${(0.1 + 0.14 * dawn).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    for (const k of [-0.34, 0.34]) {
+      ctx.beginPath();
+      ctx.moveTo(W / 2 + k * W, H + 30);
+      ctx.lineTo(W / 2, hy);
+      ctx.stroke();
+    }
+    // Centre-line dashes rush toward the camera.
+    const speed = 0.6;
+    for (let i = 0; i < 9; i++) {
+      const u = ((i / 9 + t * speed) % 1);
+      const uu = u * u;
+      const y = hy + uu * (H - hy + 40);
+      const w = 3 + uu * 26;
+      const hgt = 4 + uu * 40;
+      ctx.fillStyle = `rgba(255,230,190,${(0.05 + 0.5 * uu).toFixed(3)})`;
+      ctx.fillRect(W / 2 - w / 2, y, w, hgt);
+    }
+    ctx.restore();
+  }
+
+  /** One switch for the scenes: venue panels+beam, or the horizon. */
+  function paintWorld(t, o = {}) {
+    if (WORLD === 'horizon') {
+      if (!o.inverted) paintHorizon(t, o);
+      return;
+    }
+    paintPanels(t, o.panels ?? 0.35, o.live ?? 0.6, o.cam || { x: 0, y: 0, scale: 1 });
+    if (o.beam) paintBeam(t, o.beam, o.color || CYAN);
+  }
+
   function paintGrain(f, amount = 0.05) {
     const tile = grainTiles[f % grainTiles.length];
     const jx = ((f * 7919) % 97) - 48;
@@ -354,7 +475,7 @@ export async function createStage(canvas, timing, analysis) {
       const scale = emph[i] ? 1.5 : 1;
       const size = base * scale;
       const weight = emph[i] ? 800 : 600;
-      const font = `${weight} ${size}px ${TEXTY}`;
+      const font = `${TEXT_STYLE}${weight} ${size}px ${TEXTY}`;
       const ww = textW(wd.word.toUpperCase(), font);
       if (row.w > 0 && row.w + gapX + ww > budget) {
         rows.push(row);
@@ -391,6 +512,7 @@ export async function createStage(canvas, timing, analysis) {
           y: y + (wd.emph ? -wd.size * 0.02 : 0),
           size: wd.size,
           family: TEXTY,
+          fstyle: TEXT_STYLE,
           weight: wd.weight,
           rot: 0,
           role: wd.emph ? 'accent' : 'ink',
@@ -402,36 +524,69 @@ export async function createStage(canvas, timing, analysis) {
   }
 
   /**
-   * Anthem plate: every word its own full-width row — then the whole stack
-   * scaled to fit the frame's height, because four words each set to the
-   * frame's width is taller than the frame.
+   * Anthem plate: a short line sets every word as its own full-width row;
+   * a long line chunks into rows of two-three words so an eight-word chorus
+   * still reads as a poster, not a sliver. The whole stack then scales to
+   * fit the frame's height.
    */
   function layoutPlate(line, opts = {}) {
     const budget = opts.width || W * 0.72;
     const maxH = opts.maxH || H * 0.78;
-    const out = [];
-    let sizes = line.words.map((wd) => fitSize(wd.word.toUpperCase(), budget, DISPLAY, 900));
+
+    let rows;
+    if (line.words.length <= 4) {
+      rows = line.words.map((wd) => [wd]);
+    } else {
+      rows = [];
+      let cur = [];
+      let curLen = 0;
+      for (const wd of line.words) {
+        const bare = wd.word.replace(/[^A-Za-z']/g, '');
+        if (cur.length && (cur.length >= 3 || curLen + bare.length > 12)) {
+          rows.push(cur);
+          cur = [];
+          curLen = 0;
+        }
+        cur.push(wd);
+        curLen += bare.length;
+      }
+      if (cur.length) rows.push(cur);
+    }
+
+    const texts = rows.map((r) => r.map((w) => w.word.toUpperCase()).join(' '));
+    let sizes = texts.map((text) => fitSize(text, budget, DISPLAY, 900));
     let rowH = sizes.map((s) => s * 0.86);
     const totalH = rowH.reduce((a, b) => a + b, 0);
     const fit = Math.min(1, maxH / totalH);
     sizes = sizes.map((s) => s * fit);
     rowH = rowH.map((h) => h * fit);
+
+    const out = [];
     let y = -(totalH * fit) / 2;
-    line.words.forEach((wd, i) => {
-      y += rowH[i] / 2;
-      out.push({
-        word: wd.word.toUpperCase(),
-        t0: wd.t0,
-        t1: wd.t1,
-        x: 0,
-        y,
-        size: sizes[i],
-        family: DISPLAY,
-        weight: 900,
-        rot: 0,
-        role: i === line.words.length - 1 ? 'accent' : 'ink',
+    rows.forEach((row, ri) => {
+      y += rowH[ri] / 2;
+      const size = sizes[ri];
+      const font = `900 ${size}px ${DISPLAY}`;
+      const gap = size * 0.24;
+      const widths = row.map((wd) => textW(wd.word.toUpperCase(), font));
+      const total = widths.reduce((a, b) => a + b, 0) + gap * (row.length - 1);
+      let x = -total / 2;
+      row.forEach((wd, wi) => {
+        out.push({
+          word: wd.word.toUpperCase(),
+          t0: wd.t0,
+          t1: wd.t1,
+          x: x + widths[wi] / 2,
+          y,
+          size,
+          family: DISPLAY,
+          weight: 900,
+          rot: 0,
+          role: wd === line.words[line.words.length - 1] ? 'accent' : 'ink',
+        });
+        x += widths[wi] + gap;
       });
-      y += rowH[i] / 2;
+      y += rowH[ri] / 2;
     });
     return { words: out, w: budget, h: totalH * fit };
   }
@@ -535,7 +690,7 @@ export async function createStage(canvas, timing, analysis) {
       if (!o.preview) return;
       ctx.save();
       ctx.globalAlpha = o.previewAlpha ?? 0.13;
-      ctx.font = `${wd.weight} ${wd.size}px ${wd.family}`;
+      ctx.font = `${wd.fstyle || ''}${wd.weight} ${wd.size}px ${wd.family}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = DIM;
@@ -560,7 +715,7 @@ export async function createStage(canvas, timing, analysis) {
     ctx.rotate(wd.rot + (o.rot || 0) * (1 - e));
     ctx.scale(scale, scale);
     ctx.globalAlpha = alpha;
-    ctx.font = `${wd.weight} ${wd.size}px ${wd.family}`;
+    ctx.font = `${wd.fstyle || ''}${wd.weight} ${wd.size}px ${wd.family}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     if (o.shadow) {
@@ -630,6 +785,7 @@ export async function createStage(canvas, timing, analysis) {
     let chorusCount = 0;
     let verseCount = 0;
     let instCount = 0;
+    let preCount = 0;
     for (let i = 0; i < sections.length; i++) {
       const s = sections[i];
       const prev = out[out.length - 1];
@@ -638,17 +794,14 @@ export async function createStage(canvas, timing, analysis) {
 
       if (s.kind === 'chant') {
         out.push({ name: `chant-${s.id}`, t0: start, t1: end, paint: chantScene(s) });
+      } else if (s.kind === 'mono') {
+        out.push({ name: `mono-${s.id}`, t0: start, t1: end, paint: monoVerseScene(s) });
       } else if (s.kind === 'verse') {
-        const mono = s.lines.some((l) => /source|permission|hidden/i.test(l.text));
         verseCount++;
-        out.push({
-          name: `verse-${s.id}`,
-          t0: start,
-          t1: end,
-          paint: mono ? monoVerseScene(s) : verseScene(s, verseCount),
-        });
+        out.push({ name: `verse-${s.id}`, t0: start, t1: end, paint: verseScene(s, verseCount) });
       } else if (s.kind === 'pre') {
-        out.push({ name: `pre-${s.id}`, t0: start, t1: end, paint: preScene(s) });
+        preCount++;
+        out.push({ name: `pre-${s.id}`, t0: start, t1: end, paint: preScene(s, preCount) });
       } else if (s.kind === 'chorus') {
         chorusCount++;
         out.push({ name: `chorus-${s.id}`, t0: start, t1: end, paint: chorusScene(s, chorusCount) });
@@ -758,14 +911,19 @@ export async function createStage(canvas, timing, analysis) {
       ...rowsText.map((r) => fitSize(r, W * 0.62, DISPLAY, 900)),
       H * 0.21,
     );
-    const igniteT0 = section.t0 + 1.2;
-    const igniteStep = 1.1;
+    // A short intro compresses the whole reveal schedule to fit.
+    const k = Math.max(0.32, Math.min(1, (section.t1 - section.t0) / 9.9));
+    const igniteT0 = section.t0 + 1.2 * k;
+    const igniteStep = 1.1 * k;
     return (t, f) => {
       paintBackdrop();
-      paintPanels(t, easeOutCubic(span(t, section.t0, section.t0 + 3)) * 0.55, 0.6);
-      paintBeam(t, easeOutCubic(span(t, section.t0 + 0.4, section.t0 + 2.6)), CYAN);
+      paintWorld(t, {
+        panels: easeOutCubic(span(t, section.t0, section.t0 + 3 * k)) * 0.55,
+        beam: easeOutCubic(span(t, section.t0 + 0.4 * k, section.t0 + 2.6 * k)),
+        color: style.titleAccent || CYAN,
+      });
 
-      const a1 = span(t, section.t0 + 0.6, section.t0 + 1.4);
+      const a1 = span(t, section.t0 + 0.6 * k, section.t0 + 1.4 * k);
       if (a1 > 0) {
         ctx.save();
         ctx.globalAlpha = a1;
@@ -818,7 +976,7 @@ export async function createStage(canvas, timing, analysis) {
       });
       ctx.restore();
 
-      const a2 = span(t, section.t0 + 2.6, section.t0 + 3.4);
+      const a2 = span(t, section.t0 + 2.6 * k, section.t0 + 3.4 * k);
       if (a2 > 0 && timing.footer) {
         ctx.save();
         ctx.globalAlpha = a2 * 0.8;
@@ -833,13 +991,13 @@ export async function createStage(canvas, timing, analysis) {
     };
   }
 
-  /** Verses: a station per line; camera hands off between them. */
+  /** Verses: a station per line; camera hands off between them. Each verse
+      section advances the palette — the arc walks the brand ramp. */
   function verseScene(section, which) {
-    const accent = which === 1 ? CYAN : VIOLET;
+    const accent = VERSE_ACCENTS[Math.min(which - 1, VERSE_ACCENTS.length - 1)];
     return (t, f) => {
       paintBackdrop();
-      paintPanels(t, 0.32, 0.5, { x: t * 30, y: 0, scale: 1 });
-      paintBeam(t, 0.7, accent);
+      paintWorld(t, { panels: 0.32, live: 0.5, cam: { x: t * 30, y: 0, scale: 1 }, beam: 0.7, color: accent });
 
       section.lines.forEach((line, li) => {
         const next = section.lines[li + 1];
@@ -852,7 +1010,7 @@ export async function createStage(canvas, timing, analysis) {
         // constellation, which are composed for it.
         if (enter <= 0 || exit >= 1) return;
         const lay = layoutFor(line);
-        const device = /never shown/i.test(line.text) ? 'redact' : null;
+        const device = line.device || null;
         ctx.save();
         const slideIn = (1 - easeOutCubic(enter)) * W * 0.06;
         const slideOut = easeInOutCubic(exit) * W * -0.1;
@@ -862,7 +1020,13 @@ export async function createStage(canvas, timing, analysis) {
         ctx.scale(pump * lerp(1.03, 1, easeOutCubic(enter)), pump * lerp(1.03, 1, easeOutCubic(enter)));
         ctx.globalAlpha = easeOutCubic(enter) * (1 - easeInOutCubic(exit));
         for (const wd of lay.words) {
-          paintWord(wd, t, { accent, singingAccent: true, preview: false, popIn: 0.16 });
+          // The vanish device: each word dissolves shortly after it is sung
+          // — for lines about things disappearing one by one.
+          const va = device === 'vanish'
+            ? 1 - easeInOutCubic(span(t, wd.t1 + 0.55, wd.t1 + 1.15))
+            : 1;
+          if (va <= 0) continue;
+          paintWord(wd, t, { accent, singingAccent: true, preview: false, popIn: 0.16, alpha: va });
         }
         // The redaction device: uniform bars sit over the words that have not
         // been sung yet, and each lifts away exactly as its word arrives.
@@ -892,8 +1056,7 @@ export async function createStage(canvas, timing, analysis) {
     const accent = VIOLET;
     return (t, f) => {
       paintBackdrop();
-      paintPanels(t, 0.22, 0.4);
-      paintBeam(t, 0.45, accent);
+      paintWorld(t, { panels: 0.22, live: 0.4, beam: 0.45, color: accent });
 
       // One true gutter column — every number shares it, like an editor.
       const GUTTER = W * 0.16;
@@ -972,9 +1135,12 @@ export async function createStage(canvas, timing, analysis) {
    * splits it straight through the glyphs — the upper and lower halves part,
    * light pours out of the gap, and the whole thing breathes on the bass.
    */
-  function preScene(section) {
+  function preScene(section, which = 1) {
     const line = section.lines[0];
     const SEAM = -0.055;
+    // The first crack is night-cyan; a reprise cracks warm — dawn through it.
+    const accent = which === 1 ? CYAN : AMBER;
+    const seamLight = which === 1 ? '#CFF2FF' : '#FFE9C8';
     // The seam row is the phrase before the comma; what follows arrives
     // beneath the crack, breathing. The composition enacts the lyric.
     const commaAt = line.words.findIndex((w) => /,$/.test(w.word));
@@ -987,15 +1153,21 @@ export async function createStage(canvas, timing, analysis) {
     };
     return (t, f) => {
       paintBackdrop();
-      paintPanels(t, 0.3, 0.5);
+      paintWorld(t, { panels: 0.3, live: 0.5 });
       const openWord = line.words.find((w) => /open/i.test(w.word));
       const crackAt = openWord ? openWord.t0 : line.t0 + 1;
-      const crack = easeOutCubic(span(t, crackAt, crackAt + 0.8));
-      paintBeam(t, 0.55 + crack * 0.45, CYAN);
+      // The break SNAPS — a few frames, not a linear creep.
+      const crack = CRACK_OK ? easeOutExpo(span(t, crackAt, crackAt + 0.45)) : 0;
+      if (WORLD !== 'horizon') paintBeam(t, 0.55 + crack * 0.45, accent);
 
       const lay = layoutSlam(crackLine, { width: W * 0.66 });
       const breathe = 1 + atSm('bass', t, 6) * 0.03 * (1 + crack);
-      const halfGap = crack * H * 0.017;
+      // The gap scales with the glyphs — a hairline on a huge slam, still a
+      // visible break on a long small line.
+      const glyph = lay.words[0] ? lay.words[0].size : 120;
+      const halfGap = crack * Math.max(9, glyph * 0.1);
+      // The line arrives as its own element, not a teleport from the verse.
+      const arrive = easeOutCubic(span(t, line.t0 - 0.35, line.t0 + 0.05));
 
       // A sliver of light escapes the seam — a crack, not a floodlight.
       if (crack > 0.01) {
@@ -1005,29 +1177,34 @@ export async function createStage(canvas, timing, analysis) {
         ctx.rotate(SEAM);
         const g = ctx.createLinearGradient(0, -halfGap * 3, 0, halfGap * 3);
         g.addColorStop(0, 'rgba(0,0,0,0)');
-        g.addColorStop(0.5, `rgba(${rgb('#CFF2FF')},${(0.4 * crack).toFixed(3)})`);
+        g.addColorStop(0.5, `rgba(${rgb(seamLight)},${(0.4 * crack).toFixed(3)})`);
         g.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = g;
         ctx.fillRect(-W, -halfGap * 3 - 2, W * 2, halfGap * 6 + 4);
-        ctx.fillStyle = `rgba(${rgb('#EAF6FF')},${(0.7 * crack).toFixed(3)})`;
+        ctx.fillStyle = `rgba(${rgb(seamLight)},${(0.7 * crack).toFixed(3)})`;
         ctx.fillRect(-W * 0.42, -1.2, W * 0.84, 2.4);
         ctx.restore();
       }
 
-      for (const half of [-1, 1]) {
+      for (const half of (CRACK_OK ? [-1, 1] : [0])) {
         ctx.save();
         ctx.translate(W / 2, H / 2);
-        // Clip to one side of the angled seam, then push that half away
-        // along the seam's normal and slide it slightly along the seam.
-        ctx.rotate(SEAM);
-        ctx.beginPath();
-        ctx.rect(-W, half < 0 ? -H : 0.5, W * 2, H);
-        ctx.clip();
-        ctx.translate(crack * 14 * half * -0.5, half * halfGap);
-        ctx.rotate(-SEAM);
+        if (half !== 0) {
+          ctx.rotate(SEAM);
+          // Push the half away FIRST, then clip in the moved space — the
+          // clip travels with the glyphs, so each half shows only its own
+          // side and nothing is ever drawn twice (the double-exposure bug).
+          ctx.translate(crack * 14 * half * -0.5, half * halfGap);
+          ctx.beginPath();
+          ctx.rect(-W, half < 0 ? -H : 0.5, W * 2, H);
+          ctx.clip();
+          ctx.rotate(-SEAM);
+        }
         ctx.scale(breathe, breathe);
+        ctx.globalAlpha = arrive;
+        ctx.translate(0, (1 - arrive) * 26);
         for (const wd of lay.words) {
-          paintWord(wd, t, { accent: CYAN, singingAccent: true, popIn: 0.18 });
+          paintWord(wd, t, { accent, singingAccent: true, popIn: 0.18 });
         }
         ctx.restore();
       }
@@ -1052,7 +1229,7 @@ export async function createStage(canvas, timing, analysis) {
             ctx.font = bFont;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = t <= w.t1 + 0.15 ? CYAN : INK;
+            ctx.fillStyle = t <= w.t1 + 0.15 ? accent : INK;
             ctx.fillText(w.word.toUpperCase(), x + widths[i] / 2, 0);
             ctx.restore();
           }
@@ -1077,17 +1254,17 @@ export async function createStage(canvas, timing, analysis) {
       let idx = -1;
       for (let i = 0; i < flips.length; i++) if (t >= flips[i]) idx = i;
       const line = section.lines[Math.max(0, idx)];
-      const inverted = idx >= 0 && idx % 2 === 1 && which > 1;
-      const accent = which > 1 ? MAGENTA : CYAN;
+      // Alternate slams invert the frame — the panel's favourite move.
+      const inverted = idx >= 0 && idx % 2 === 1;
+      const accent = CHORUS_ACCENTS[Math.min(which - 1, CHORUS_ACCENTS.length - 1)];
 
       paintBackdrop();
       if (inverted) {
         ctx.fillStyle = INK;
         ctx.fillRect(0, 0, W, H);
-        paintPanels(t, 0.07, 0.6);
+        if (WORLD === 'venue') paintPanels(t, 0.07, 0.6);
       } else {
-        paintPanels(t, which > 1 ? 0.55 : 0.35, 0.9);
-        paintBeam(t, 0.85, accent);
+        paintWorld(t, { panels: which > 1 ? 0.55 : 0.35, live: 0.9, beam: 0.85, color: accent });
       }
 
       const isStamp = /fork/i.test(line.text);
@@ -1187,6 +1364,38 @@ export async function createStage(canvas, timing, analysis) {
     const isFinal = line.t0 > DUR - 8;
     return (t, f) => {
       paintBackdrop();
+      const hasMono = timing.lines.some((l) => l.kind === 'mono');
+      if (isFinal && !hasMono) {
+        // The dawn close: the last line small and calm in the song's own
+        // voice, over whatever the world has become.
+        paintWorld(t, { panels: 0.2, beam: 0.25, color: style.titleAccent || CYAN });
+        const a = easeOutCubic(span(t, line.t0 - 0.2, line.t0 + 0.6));
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.font = `${TEXT_STYLE}600 44px ${TEXTY}`;
+        ctx.letterSpacing = '10px';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = INK;
+        ctx.fillText(line.text.toUpperCase(), W / 2, H * 0.42);
+        ctx.letterSpacing = '0px';
+        const a2c = span(t, line.t0 + 0.7, line.t0 + 1.4);
+        if (a2c > 0) {
+          ctx.globalAlpha = a * a2c;
+          ctx.font = `500 28px ${TEXTY}`;
+          ctx.letterSpacing = '12px';
+          ctx.fillStyle = DIM;
+          ctx.fillText(timing.artist.toUpperCase(), W / 2, H * 0.52);
+          ctx.letterSpacing = '0px';
+          if (timing.footer) {
+            ctx.font = `400 24px ${MONO}`;
+            ctx.fillText(timing.footer, W / 2, H * 0.58);
+          }
+        }
+        ctx.restore();
+        paintGrain(f, 0.05);
+        paintVignette(0.8);
+        return;
+      }
       if (isFinal) {
         // Quiet end: typed mono phrase, caret, then the sign-off.
         paintBeam(t, 0.2, CYAN);
@@ -1221,8 +1430,7 @@ export async function createStage(canvas, timing, analysis) {
         }
       } else {
         // Mid-song echo: the phrase glows alone over the live room.
-        paintPanels(t, 0.6, 1);
-        paintBeam(t, 0.9, CYAN);
+        paintWorld(t, { panels: 0.6, live: 1, beam: 0.9, color: CYAN });
         const lay = layoutFor(line, 'chant');
         const held = span(t, line.t0, line.t0 + 0.5);
         ctx.save();

@@ -1,0 +1,1147 @@
+{
+ "title": "Midnight Road",
+ "artist": "MaxMusic",
+ "footer": "github.com/richgates/maxmusic",
+ "style": {
+  "world": "horizon",
+  "crack": false,
+  "display": "Futura",
+  "text": "\"Avenir Next\"",
+  "textStyle": "italic ",
+  "ink": "#FFF6EC",
+  "dim": "#9A8F9E",
+  "titleAccent": "#FFB347",
+  "verseAccents": [
+   "#5FD3F0",
+   "#8F7BF0",
+   "#F06AAE",
+   "#FFB347"
+  ],
+  "chorusAccents": [
+   "#FF6FA8"
+  ]
+ },
+ "lines": [
+  {
+   "section": "verse-1",
+   "kind": "verse",
+   "text": "4 AM, the city fades to blue",
+   "repeatIndex": 0,
+   "t0": 4,
+   "t1": 10.16,
+   "words": [
+    {
+     "word": "4",
+     "t0": 4,
+     "t1": 4.13
+    },
+    {
+     "word": "AM,",
+     "t0": 4.13,
+     "t1": 4.25
+    },
+    {
+     "word": "the",
+     "t0": 4.21,
+     "t1": 4.34
+    },
+    {
+     "word": "city",
+     "t0": 4.34,
+     "t1": 4.51
+    },
+    {
+     "word": "fades",
+     "t0": 4.51,
+     "t1": 4.72
+    },
+    {
+     "word": "to",
+     "t0": 4.72,
+     "t1": 4.84
+    },
+    {
+     "word": "blue",
+     "t0": 4.8,
+     "t1": 5
+    }
+   ]
+  },
+  {
+   "section": "verse-1",
+   "kind": "verse",
+   "text": "Open road and all I hear is you",
+   "repeatIndex": 0,
+   "t0": 10.91,
+   "t1": 17.14,
+   "words": [
+    {
+     "word": "Open",
+     "t0": 10.91,
+     "t1": 11.77
+    },
+    {
+     "word": "road",
+     "t0": 11.77,
+     "t1": 12.69
+    },
+    {
+     "word": "and",
+     "t0": 12.69,
+     "t1": 13.38
+    },
+    {
+     "word": "all",
+     "t0": 13.38,
+     "t1": 14.07
+    },
+    {
+     "word": "I",
+     "t0": 14.07,
+     "t1": 14.3
+    },
+    {
+     "word": "hear",
+     "t0": 14.3,
+     "t1": 15.22
+    },
+    {
+     "word": "is",
+     "t0": 15.22,
+     "t1": 15.68
+    },
+    {
+     "word": "you",
+     "t0": 15.68,
+     "t1": 16.36
+    }
+   ]
+  },
+  {
+   "section": "verse-1",
+   "kind": "verse",
+   "text": "Street lights flicker like a film beneath the tires",
+   "repeatIndex": 0,
+   "t0": 17.55,
+   "t1": 24,
+   "words": [
+    {
+     "word": "Street",
+     "t0": 17.55,
+     "t1": 18.38
+    },
+    {
+     "word": "lights",
+     "t0": 18.38,
+     "t1": 19.21
+    },
+    {
+     "word": "flicker",
+     "t0": 19.21,
+     "t1": 20.18
+    },
+    {
+     "word": "like",
+     "t0": 20.18,
+     "t1": 20.74
+    },
+    {
+     "word": "a",
+     "t0": 20.74,
+     "t1": 20.89
+    },
+    {
+     "word": "film",
+     "t0": 20.89,
+     "t1": 21.44
+    },
+    {
+     "word": "beneath",
+     "t0": 21.44,
+     "t1": 22.41
+    },
+    {
+     "word": "the",
+     "t0": 22.41,
+     "t1": 22.83
+    },
+    {
+     "word": "tires",
+     "t0": 22.83,
+     "t1": 23.52
+    }
+   ]
+  },
+  {
+   "section": "verse-1",
+   "kind": "verse",
+   "text": "Dashboard glowing, every mile is pulling me higher",
+   "repeatIndex": 0,
+   "t0": 24.36,
+   "t1": 29.96,
+   "words": [
+    {
+     "word": "Dashboard",
+     "t0": 24.36,
+     "t1": 25.46
+    },
+    {
+     "word": "glowing,",
+     "t0": 25.46,
+     "t1": 26.32
+    },
+    {
+     "word": "every",
+     "t0": 26.32,
+     "t1": 26.94
+    },
+    {
+     "word": "mile",
+     "t0": 26.94,
+     "t1": 27.43
+    },
+    {
+     "word": "is",
+     "t0": 27.43,
+     "t1": 27.75
+    },
+    {
+     "word": "pulling",
+     "t0": 27.75,
+     "t1": 28.53
+    },
+    {
+     "word": "me",
+     "t0": 28.53,
+     "t1": 28.77
+    },
+    {
+     "word": "higher",
+     "t0": 28.77,
+     "t1": 29.51
+    }
+   ]
+  },
+  {
+   "section": "verse-2",
+   "kind": "verse",
+   "text": "Windows down, the summer air is rushing in",
+   "repeatIndex": 0,
+   "t0": 30.71,
+   "t1": 36.58,
+   "words": [
+    {
+     "word": "Windows",
+     "t0": 30.71,
+     "t1": 31.52
+    },
+    {
+     "word": "down,",
+     "t0": 31.52,
+     "t1": 32.46
+    },
+    {
+     "word": "the",
+     "t0": 32.46,
+     "t1": 32.93
+    },
+    {
+     "word": "summer",
+     "t0": 32.93,
+     "t1": 33.87
+    },
+    {
+     "word": "air",
+     "t0": 33.87,
+     "t1": 34.34
+    },
+    {
+     "word": "is",
+     "t0": 34.34,
+     "t1": 34.65
+    },
+    {
+     "word": "rushing",
+     "t0": 34.65,
+     "t1": 35.75
+    },
+    {
+     "word": "in",
+     "t0": 35.75,
+     "t1": 36.05
+    }
+   ]
+  },
+  {
+   "section": "verse-2",
+   "kind": "verse",
+   "text": "No one around, just the road and where I've been",
+   "repeatIndex": 0,
+   "t0": 37.1,
+   "t1": 44.66,
+   "words": [
+    {
+     "word": "No",
+     "t0": 37.1,
+     "t1": 37.45
+    },
+    {
+     "word": "one",
+     "t0": 37.45,
+     "t1": 37.97
+    },
+    {
+     "word": "around,",
+     "t0": 37.97,
+     "t1": 39.37
+    },
+    {
+     "word": "just",
+     "t0": 39.37,
+     "t1": 40.07
+    },
+    {
+     "word": "the",
+     "t0": 40.07,
+     "t1": 40.59
+    },
+    {
+     "word": "road",
+     "t0": 40.59,
+     "t1": 41.29
+    },
+    {
+     "word": "and",
+     "t0": 41.29,
+     "t1": 41.81
+    },
+    {
+     "word": "where",
+     "t0": 41.81,
+     "t1": 42.68
+    },
+    {
+     "word": "I've",
+     "t0": 42.68,
+     "t1": 43.37
+    },
+    {
+     "word": "been",
+     "t0": 43.37,
+     "t1": 44.07
+    }
+   ]
+  },
+  {
+   "section": "pre-1",
+   "kind": "pre",
+   "text": "The night is almost over, the skyline's falling behind",
+   "repeatIndex": 0,
+   "t0": 44.97,
+   "t1": 50.36,
+   "words": [
+    {
+     "word": "The",
+     "t0": 44.97,
+     "t1": 45.31
+    },
+    {
+     "word": "night",
+     "t0": 45.31,
+     "t1": 45.82
+    },
+    {
+     "word": "is",
+     "t0": 45.82,
+     "t1": 46.03
+    },
+    {
+     "word": "almost",
+     "t0": 46.03,
+     "t1": 46.68
+    },
+    {
+     "word": "over,",
+     "t0": 46.68,
+     "t1": 47.31
+    },
+    {
+     "word": "the",
+     "t0": 47.31,
+     "t1": 47.63
+    },
+    {
+     "word": "skyline's",
+     "t0": 47.63,
+     "t1": 48.59
+    },
+    {
+     "word": "falling",
+     "t0": 48.59,
+     "t1": 49.34
+    },
+    {
+     "word": "behind",
+     "t0": 49.34,
+     "t1": 49.98
+    }
+   ]
+  },
+  {
+   "section": "verse-3",
+   "kind": "verse",
+   "text": "I feel the morning getting closer, like a signal through the static in my mind",
+   "repeatIndex": 0,
+   "t0": 50.64,
+   "t1": 57.16,
+   "words": [
+    {
+     "word": "I",
+     "t0": 50.64,
+     "t1": 50.76
+    },
+    {
+     "word": "feel",
+     "t0": 50.73,
+     "t1": 51.11
+    },
+    {
+     "word": "the",
+     "t0": 51.11,
+     "t1": 51.39
+    },
+    {
+     "word": "morning",
+     "t0": 51.39,
+     "t1": 52.05
+    },
+    {
+     "word": "getting",
+     "t0": 52.05,
+     "t1": 52.71
+    },
+    {
+     "word": "closer,",
+     "t0": 52.71,
+     "t1": 53.47
+    },
+    {
+     "word": "like",
+     "t0": 53.47,
+     "t1": 53.85
+    },
+    {
+     "word": "a",
+     "t0": 53.85,
+     "t1": 53.97
+    },
+    {
+     "word": "signal",
+     "t0": 53.94,
+     "t1": 54.51
+    },
+    {
+     "word": "through",
+     "t0": 54.51,
+     "t1": 55.17
+    },
+    {
+     "word": "the",
+     "t0": 55.17,
+     "t1": 55.45
+    },
+    {
+     "word": "static",
+     "t0": 55.45,
+     "t1": 56.02
+    },
+    {
+     "word": "in",
+     "t0": 56.02,
+     "t1": 56.21
+    },
+    {
+     "word": "my",
+     "t0": 56.21,
+     "t1": 56.4
+    },
+    {
+     "word": "mind",
+     "t0": 56.4,
+     "t1": 56.78
+    }
+   ]
+  },
+  {
+   "section": "chorus",
+   "kind": "chorus",
+   "text": "I'm driving home through the neon glow",
+   "repeatIndex": 0,
+   "t0": 57.41,
+   "t1": 60.44,
+   "words": [
+    {
+     "word": "I'm",
+     "t0": 57.41,
+     "t1": 57.66
+    },
+    {
+     "word": "driving",
+     "t0": 57.66,
+     "t1": 58.26
+    },
+    {
+     "word": "home",
+     "t0": 58.26,
+     "t1": 58.6
+    },
+    {
+     "word": "through",
+     "t0": 58.6,
+     "t1": 59.2
+    },
+    {
+     "word": "the",
+     "t0": 59.2,
+     "t1": 59.45
+    },
+    {
+     "word": "neon",
+     "t0": 59.45,
+     "t1": 59.79
+    },
+    {
+     "word": "glow",
+     "t0": 59.79,
+     "t1": 60.13
+    }
+   ]
+  },
+  {
+   "section": "chorus",
+   "kind": "chorus",
+   "text": "Heart wide open and the radio low",
+   "repeatIndex": 0,
+   "t0": 60.74,
+   "t1": 63.76,
+   "words": [
+    {
+     "word": "Heart",
+     "t0": 60.74,
+     "t1": 61.24
+    },
+    {
+     "word": "wide",
+     "t0": 61.24,
+     "t1": 61.64
+    },
+    {
+     "word": "open",
+     "t0": 61.64,
+     "t1": 62.04
+    },
+    {
+     "word": "and",
+     "t0": 62.04,
+     "t1": 62.34
+    },
+    {
+     "word": "the",
+     "t0": 62.34,
+     "t1": 62.64
+    },
+    {
+     "word": "radio",
+     "t0": 62.64,
+     "t1": 63.14
+    },
+    {
+     "word": "low",
+     "t0": 63.14,
+     "t1": 63.44
+    }
+   ]
+  },
+  {
+   "section": "chorus",
+   "kind": "chorus",
+   "text": "Hands in the wind, let the whole world know",
+   "repeatIndex": 0,
+   "t0": 64,
+   "t1": 67.16,
+   "words": [
+    {
+     "word": "Hands",
+     "t0": 64,
+     "t1": 64.4
+    },
+    {
+     "word": "in",
+     "t0": 64.4,
+     "t1": 64.56
+    },
+    {
+     "word": "the",
+     "t0": 64.56,
+     "t1": 64.8
+    },
+    {
+     "word": "wind,",
+     "t0": 64.8,
+     "t1": 65.28
+    },
+    {
+     "word": "let",
+     "t0": 65.28,
+     "t1": 65.52
+    },
+    {
+     "word": "the",
+     "t0": 65.52,
+     "t1": 65.76
+    },
+    {
+     "word": "whole",
+     "t0": 65.76,
+     "t1": 66.16
+    },
+    {
+     "word": "world",
+     "t0": 66.16,
+     "t1": 66.56
+    },
+    {
+     "word": "know",
+     "t0": 66.56,
+     "t1": 66.88
+    }
+   ]
+  },
+  {
+   "section": "chorus",
+   "kind": "chorus",
+   "text": "I'm alive, I'm alive on this midnight road",
+   "repeatIndex": 0,
+   "t0": 67.43,
+   "t1": 71.06,
+   "words": [
+    {
+     "word": "I'm",
+     "t0": 67.43,
+     "t1": 67.7
+    },
+    {
+     "word": "alive,",
+     "t0": 67.7,
+     "t1": 68.34
+    },
+    {
+     "word": "I'm",
+     "t0": 68.34,
+     "t1": 68.61
+    },
+    {
+     "word": "alive",
+     "t0": 68.61,
+     "t1": 69.07
+    },
+    {
+     "word": "on",
+     "t0": 69.07,
+     "t1": 69.25
+    },
+    {
+     "word": "this",
+     "t0": 69.25,
+     "t1": 69.62
+    },
+    {
+     "word": "midnight",
+     "t0": 69.62,
+     "t1": 70.36
+    },
+    {
+     "word": "road",
+     "t0": 70.36,
+     "t1": 70.73
+    }
+   ]
+  },
+  {
+   "section": "chorus",
+   "kind": "chorus",
+   "text": "And when the sunrise breaks the dark alone",
+   "repeatIndex": 0,
+   "t0": 71.3,
+   "t1": 74.36,
+   "words": [
+    {
+     "word": "And",
+     "t0": 71.3,
+     "t1": 71.54
+    },
+    {
+     "word": "when",
+     "t0": 71.54,
+     "t1": 71.86
+    },
+    {
+     "word": "the",
+     "t0": 71.86,
+     "t1": 72.1
+    },
+    {
+     "word": "sunrise",
+     "t0": 72.1,
+     "t1": 72.66
+    },
+    {
+     "word": "breaks",
+     "t0": 72.66,
+     "t1": 73.14
+    },
+    {
+     "word": "the",
+     "t0": 73.14,
+     "t1": 73.38
+    },
+    {
+     "word": "dark",
+     "t0": 73.38,
+     "t1": 73.7
+    },
+    {
+     "word": "alone",
+     "t0": 73.7,
+     "t1": 74.1
+    }
+   ]
+  },
+  {
+   "section": "chorus",
+   "kind": "chorus",
+   "text": "I follow every light until it leads me home",
+   "repeatIndex": 0,
+   "t0": 74.75,
+   "t1": 79.86,
+   "words": [
+    {
+     "word": "I",
+     "t0": 74.75,
+     "t1": 75.01
+    },
+    {
+     "word": "follow",
+     "t0": 75.01,
+     "t1": 75.68
+    },
+    {
+     "word": "every",
+     "t0": 75.68,
+     "t1": 76.35
+    },
+    {
+     "word": "light",
+     "t0": 76.35,
+     "t1": 77.02
+    },
+    {
+     "word": "until",
+     "t0": 77.02,
+     "t1": 77.69
+    },
+    {
+     "word": "it",
+     "t0": 77.69,
+     "t1": 77.98
+    },
+    {
+     "word": "leads",
+     "t0": 77.98,
+     "t1": 78.62
+    },
+    {
+     "word": "me",
+     "t0": 78.62,
+     "t1": 78.88
+    },
+    {
+     "word": "home",
+     "t0": 78.88,
+     "t1": 79.41
+    }
+   ]
+  },
+  {
+   "section": "bridge",
+   "kind": "verse",
+   "text": "Racing with the dawn, oh all the shadows gone",
+   "repeatIndex": 0,
+   "t0": 80.22,
+   "t1": 85.16,
+   "words": [
+    {
+     "word": "Racing",
+     "t0": 80.22,
+     "t1": 80.94
+    },
+    {
+     "word": "with",
+     "t0": 80.94,
+     "t1": 81.42
+    },
+    {
+     "word": "the",
+     "t0": 81.42,
+     "t1": 81.78
+    },
+    {
+     "word": "dawn,",
+     "t0": 81.78,
+     "t1": 82.5
+    },
+    {
+     "word": "oh",
+     "t0": 82.5,
+     "t1": 82.74
+    },
+    {
+     "word": "all",
+     "t0": 82.74,
+     "t1": 83.1
+    },
+    {
+     "word": "the",
+     "t0": 83.1,
+     "t1": 83.48
+    },
+    {
+     "word": "shadows",
+     "t0": 83.48,
+     "t1": 84.3
+    },
+    {
+     "word": "gone",
+     "t0": 84.3,
+     "t1": 84.78
+    }
+   ]
+  },
+  {
+   "section": "bridge",
+   "kind": "verse",
+   "text": "White lines vanish in the mirror one by one",
+   "device": "vanish",
+   "repeatIndex": 0,
+   "t0": 85.81,
+   "t1": 92.04,
+   "words": [
+    {
+     "word": "White",
+     "t0": 85.81,
+     "t1": 86.48
+    },
+    {
+     "word": "lines",
+     "t0": 86.48,
+     "t1": 87.31
+    },
+    {
+     "word": "vanish",
+     "t0": 87.31,
+     "t1": 88.31
+    },
+    {
+     "word": "in",
+     "t0": 88.31,
+     "t1": 88.64
+    },
+    {
+     "word": "the",
+     "t0": 88.64,
+     "t1": 89.14
+    },
+    {
+     "word": "mirror",
+     "t0": 89.14,
+     "t1": 90.14
+    },
+    {
+     "word": "one",
+     "t0": 90.14,
+     "t1": 90.64
+    },
+    {
+     "word": "by",
+     "t0": 90.64,
+     "t1": 90.97
+    },
+    {
+     "word": "one",
+     "t0": 90.97,
+     "t1": 91.47
+    }
+   ]
+  },
+  {
+   "section": "bridge",
+   "kind": "verse",
+   "text": "Old regrets are losing ground before the sun",
+   "repeatIndex": 0,
+   "t0": 92.44,
+   "t1": 97.96,
+   "words": [
+    {
+     "word": "Old",
+     "t0": 92.44,
+     "t1": 92.9
+    },
+    {
+     "word": "regrets",
+     "t0": 92.9,
+     "t1": 93.81
+    },
+    {
+     "word": "are",
+     "t0": 93.81,
+     "t1": 94.22
+    },
+    {
+     "word": "losing",
+     "t0": 94.22,
+     "t1": 95.04
+    },
+    {
+     "word": "ground",
+     "t0": 95.04,
+     "t1": 95.95
+    },
+    {
+     "word": "before",
+     "t0": 95.95,
+     "t1": 96.68
+    },
+    {
+     "word": "the",
+     "t0": 96.68,
+     "t1": 97.09
+    },
+    {
+     "word": "sun",
+     "t0": 97.09,
+     "t1": 97.5
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "Every breath tastes like a life I haven't lived",
+   "repeatIndex": 0,
+   "t0": 98.41,
+   "t1": 104.76,
+   "words": [
+    {
+     "word": "Every",
+     "t0": 98.41,
+     "t1": 99.16
+    },
+    {
+     "word": "breath",
+     "t0": 99.16,
+     "t1": 100.06
+    },
+    {
+     "word": "tastes",
+     "t0": 100.06,
+     "t1": 100.96
+    },
+    {
+     "word": "like",
+     "t0": 100.96,
+     "t1": 101.56
+    },
+    {
+     "word": "a",
+     "t0": 101.56,
+     "t1": 101.71
+    },
+    {
+     "word": "life",
+     "t0": 101.71,
+     "t1": 102.31
+    },
+    {
+     "word": "I",
+     "t0": 102.31,
+     "t1": 102.46
+    },
+    {
+     "word": "haven't",
+     "t0": 102.46,
+     "t1": 103.51
+    },
+    {
+     "word": "lived",
+     "t0": 103.51,
+     "t1": 104.26
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "Every turn reminds me I've got more to give",
+   "repeatIndex": 0,
+   "t0": 105.51,
+   "t1": 112.66,
+   "words": [
+    {
+     "word": "Every",
+     "t0": 105.51,
+     "t1": 106.29
+    },
+    {
+     "word": "turn",
+     "t0": 106.29,
+     "t1": 107.06
+    },
+    {
+     "word": "reminds",
+     "t0": 107.06,
+     "t1": 108.44
+    },
+    {
+     "word": "me",
+     "t0": 108.44,
+     "t1": 108.78
+    },
+    {
+     "word": "I've",
+     "t0": 108.78,
+     "t1": 109.54
+    },
+    {
+     "word": "got",
+     "t0": 109.54,
+     "t1": 110.11
+    },
+    {
+     "word": "more",
+     "t0": 110.11,
+     "t1": 110.88
+    },
+    {
+     "word": "to",
+     "t0": 110.88,
+     "t1": 111.26
+    },
+    {
+     "word": "give",
+     "t0": 111.26,
+     "t1": 112.03
+    }
+   ]
+  },
+  {
+   "section": "pre-2",
+   "kind": "pre",
+   "text": "The night is almost over, the horizon starts to burn",
+   "repeatIndex": 0,
+   "t0": 112.99,
+   "t1": 118.26,
+   "words": [
+    {
+     "word": "The",
+     "t0": 112.99,
+     "t1": 113.32
+    },
+    {
+     "word": "night",
+     "t0": 113.32,
+     "t1": 113.87
+    },
+    {
+     "word": "is",
+     "t0": 113.87,
+     "t1": 114.09
+    },
+    {
+     "word": "almost",
+     "t0": 114.09,
+     "t1": 114.76
+    },
+    {
+     "word": "over,",
+     "t0": 114.76,
+     "t1": 115.42
+    },
+    {
+     "word": "the",
+     "t0": 115.42,
+     "t1": 115.75
+    },
+    {
+     "word": "horizon",
+     "t0": 115.75,
+     "t1": 116.57
+    },
+    {
+     "word": "starts",
+     "t0": 116.57,
+     "t1": 117.2
+    },
+    {
+     "word": "to",
+     "t0": 117.2,
+     "t1": 117.42
+    },
+    {
+     "word": "burn",
+     "t0": 117.42,
+     "t1": 117.86
+    }
+   ]
+  },
+  {
+   "section": "tag-final",
+   "kind": "tag",
+   "text": "I feel the morning getting closer",
+   "repeatIndex": 0,
+   "t0": 118.4,
+   "t1": 119.96,
+   "words": [
+    {
+     "word": "I",
+     "t0": 118.4,
+     "t1": 118.52
+    },
+    {
+     "word": "feel",
+     "t0": 118.45,
+     "t1": 118.65
+    },
+    {
+     "word": "the",
+     "t0": 118.65,
+     "t1": 118.8
+    },
+    {
+     "word": "morning",
+     "t0": 118.8,
+     "t1": 119.14
+    },
+    {
+     "word": "getting",
+     "t0": 119.14,
+     "t1": 119.48
+    },
+    {
+     "word": "closer",
+     "t0": 119.48,
+     "t1": 119.77
+    }
+   ]
+  }
+ ]
+}

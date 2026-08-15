@@ -8,7 +8,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 0,
-   "t0": 0,
+   "t0": 0.19,
    "t1": 0.77,
    "words": [
     {
@@ -33,7 +33,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 1,
-   "t0": 0.63,
+   "t0": 0.77,
    "t1": 1.28,
    "words": [
     {
@@ -58,7 +58,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 2,
-   "t0": 1.26,
+   "t0": 1.28,
    "t1": 1.89,
    "words": [
     {
@@ -83,7 +83,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 3,
-   "t0": 1.89,
+   "t0": 1.84,
    "t1": 2.52,
    "words": [
     {
@@ -166,7 +166,7 @@
    "kind": "verse",
    "text": "Locked the door on what should have been free",
    "repeatIndex": 0,
-   "t0": 14.86,
+   "t0": 15.05,
    "t1": 17.28,
    "words": [
     {
@@ -220,8 +220,9 @@
    "section": "verse-1",
    "kind": "verse",
    "text": "Every line you were never shown was a promise",
+   "device": "redact",
    "repeatIndex": 0,
-   "t0": 17.28,
+   "t0": 17.47,
    "t1": 19.8,
    "words": [
     {
@@ -276,7 +277,7 @@
    "kind": "verse",
    "text": "someone made on your behalf",
    "repeatIndex": 0,
-   "t0": 19.8,
+   "t0": 20.15,
    "t1": 23.28,
    "words": [
     {
@@ -311,7 +312,7 @@
    "kind": "pre",
    "text": "Crack it open, let it breathe",
    "repeatIndex": 0,
-   "t0": 23.28,
+   "t0": 23.65,
    "t1": 27.16,
    "words": [
     {
@@ -351,7 +352,7 @@
    "kind": "chorus",
    "text": "Open source must win",
    "repeatIndex": 0,
-   "t0": 27.16,
+   "t0": 27.61,
    "t1": 30.66,
    "words": [
     {
@@ -381,7 +382,7 @@
    "kind": "chorus",
    "text": "Open source must win",
    "repeatIndex": 0,
-   "t0": 30.66,
+   "t0": 31.03,
    "t1": 33.56,
    "words": [
     {
@@ -411,7 +412,7 @@
    "kind": "chorus",
    "text": "Fork it, ship it, let them in",
    "repeatIndex": 0,
-   "t0": 33.56,
+   "t0": 33.83,
    "t1": 36.48,
    "words": [
     {
@@ -456,7 +457,7 @@
    "kind": "chorus",
    "text": "Open source must win",
    "repeatIndex": 0,
-   "t0": 36.48,
+   "t0": 36.7,
    "t1": 38.28,
    "words": [
     {
@@ -483,10 +484,10 @@
   },
   {
    "section": "verse-2",
-   "kind": "verse",
+   "kind": "mono",
    "text": "No permission, no gatekeeper",
    "repeatIndex": 0,
-   "t0": 38.28,
+   "t0": 38.49,
    "t1": 40.6,
    "words": [
     {
@@ -513,10 +514,10 @@
   },
   {
    "section": "verse-2",
-   "kind": "verse",
+   "kind": "mono",
    "text": "Every hand that builds it deeper",
    "repeatIndex": 0,
-   "t0": 40.6,
+   "t0": 40.81,
    "t1": 42.94,
    "words": [
     {
@@ -553,10 +554,10 @@
   },
   {
    "section": "verse-2",
-   "kind": "verse",
+   "kind": "mono",
    "text": "Read the source, the truth is in it",
    "repeatIndex": 0,
-   "t0": 42.94,
+   "t0": 43.13,
    "t1": 45.28,
    "words": [
     {
@@ -603,10 +604,10 @@
   },
   {
    "section": "verse-2",
-   "kind": "verse",
+   "kind": "mono",
    "text": "Nothing hidden, nothing rented",
    "repeatIndex": 0,
-   "t0": 45.28,
+   "t0": 45.55,
    "t1": 48.28,
    "words": [
     {
@@ -637,7 +638,7 @@
    "kind": "chorus",
    "text": "Open source must win",
    "repeatIndex": 0,
-   "t0": 48.28,
+   "t0": 48.74,
    "t1": 51.84,
    "words": [
     {
@@ -667,7 +668,7 @@
    "kind": "chorus",
    "text": "Open source must win",
    "repeatIndex": 0,
-   "t0": 51.84,
+   "t0": 52.21,
    "t1": 54.74,
    "words": [
     {
@@ -697,7 +698,7 @@
    "kind": "chorus",
    "text": "Fork it, ship it, let them in",
    "repeatIndex": 0,
-   "t0": 54.74,
+   "t0": 55.02,
    "t1": 57.76,
    "words": [
     {
@@ -742,7 +743,7 @@
    "kind": "chorus",
    "text": "Open source must win",
    "repeatIndex": 0,
-   "t0": 57.76,
+   "t0": 58.06,
    "t1": 60.1,
    "words": [
     {
@@ -772,7 +773,7 @@
    "kind": "tag",
    "text": "Open it up",
    "repeatIndex": 0,
-   "t0": 60.1,
+   "t0": 60.73,
    "t1": 63.1,
    "words": [
     {
@@ -822,7 +823,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 0,
-   "t0": 84.24,
+   "t0": 84.6,
    "t1": 85.98,
    "words": [
     {
@@ -847,7 +848,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 1,
-   "t0": 85.98,
+   "t0": 86.17,
    "t1": 86.63,
    "words": [
     {
@@ -872,7 +873,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 2,
-   "t0": 86.59,
+   "t0": 86.63,
    "t1": 87.2,
    "words": [
     {
@@ -897,7 +898,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 3,
-   "t0": 87.2,
+   "t0": 87.39,
    "t1": 88.05,
    "words": [
     {
@@ -922,7 +923,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 4,
-   "t0": 87.973,
+   "t0": 88.05,
    "t1": 88.747,
    "words": [
     {
@@ -947,7 +948,7 @@
    "kind": "chant",
    "text": "Open it up",
    "repeatIndex": 5,
-   "t0": 88.747,
+   "t0": 88.71,
    "t1": 89.52,
    "words": [
     {
