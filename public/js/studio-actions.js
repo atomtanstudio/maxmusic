@@ -34,6 +34,27 @@ export function downloadVideo(ctx, record, mode) {
 /** The one active render, whichever screen started it. */
 let activeJob = null;
 
+/**
+ * The song as it is SAVED, not as the caller remembers it.
+ *
+ * Screens hold their own copies of a song — a row painted minutes ago, a list
+ * built at mount — and a menu opened from one of those carries whatever was
+ * true when it was drawn. Rename a song and export it, and the export can
+ * still go out under the old name. It happened: a song renamed in the library
+ * rendered a video titled "The Source Stays Open" with no artist on it.
+ *
+ * So anything that leaves this app reads the ledger first. The caller's copy
+ * fills in only what the ledger has no opinion about.
+ */
+function asSaved(ctx, record) {
+  try {
+    const stored = loadRecords(ctx.storage).find((r) => String(r.id) === String(record?.id));
+    return stored ? { ...record, ...stored } : record;
+  } catch {
+    return record;
+  }
+}
+
 /** The server only accepts `/tracks/<name>` — normalise what screens hold. */
 function trackPath(record) {
   const url = String(record?.url || '');
@@ -44,6 +65,7 @@ function trackPath(record) {
 
 /** Save the song itself, as the original FLAC or a 320k MP3. */
 export function downloadAudio(ctx, record, format) {
+  record = asSaved(ctx, record);
   const track = trackPath(record);
   if (!track) {
     ctx.toast('This song has no audio file on the server yet.', { kind: 'warn', title: 'Nothing to download' });
@@ -74,6 +96,9 @@ export async function makeLyricVideo(ctx, record, mode) {
     ctx.toast('One video at a time — this one is still rendering.', { kind: 'info', title: 'Already working' });
     return;
   }
+  // The words are already sung and cannot change, but the name on the screen
+  // is decided here, at export time. Take the current one.
+  record = asSaved(ctx, record);
   const track = trackPath(record);
   if (!track) {
     ctx.toast('This song has no audio file to build a video from.', { kind: 'warn', title: 'Nothing to render' });

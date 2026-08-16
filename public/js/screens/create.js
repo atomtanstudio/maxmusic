@@ -2069,10 +2069,24 @@ export function mount(root, ctx) {
       const ledger = ctx.storage.get(LIBRARY_KEY, []);
       const truth = Array.isArray(ledger) ? ledger.find((r) => String(r?.id) === id) : null;
       const mine = history.find((r) => String(r.id) === id);
-      const real = Number(truth?.duration);
-      if (mine && Number.isFinite(real) && real > 0 && Math.abs(real - Number(mine.duration || 0)) >= 1.5) {
-        mine.duration = real;
-        persistHistory();
+      if (mine && truth) {
+        let changed = false;
+        const real = Number(truth.duration);
+        if (Number.isFinite(real) && real > 0 && Math.abs(real - Number(mine.duration || 0)) >= 1.5) {
+          mine.duration = real;
+          changed = true;
+        }
+        // A song renamed anywhere is renamed everywhere. This list keeps its
+        // own copy, and a stale copy here is a video exported under the wrong
+        // name later.
+        for (const field of ['title', 'artist', 'cover']) {
+          const value = truth[field];
+          if (value !== undefined && value !== null && value !== mine[field]) {
+            mine[field] = value;
+            changed = true;
+          }
+        }
+        if (changed) persistHistory();
       }
     }
     paintWorkspace();
