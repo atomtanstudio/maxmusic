@@ -1,0 +1,41 @@
+# The model runtime, as one service.
+#
+#   docker compose -f worker/compose.yaml up -d --build
+#
+# The first start downloads MiniMax Music 3 (about 25 GB) into the models
+# volume. Nothing licensed lives in the image, so the image can be rebuilt and
+# shared freely while the weights stay where you put them.
+name: maxmusic-worker
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: maxmusic-worker:latest
+    container_name: maxmusic-worker
+    restart: unless-stopped
+    runtime: nvidia
+    gpus: all
+    shm_size: "8gb"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      HF_HOME: /models/huggingface
+      MAXMUSIC_TRACKS: /data/tracks
+      # Set this if the weights live somewhere else, or to try a fine-tune.
+      # MAXMUSIC_MODEL: MiniMaxAI/MiniMax-Music3
+    ports:
+      - "3011:3011"
+    volumes:
+      # The Hugging Face cache. Point this at wherever you keep model weights.
+      - ${MAXMUSIC_MODELS:-./models}:/models
+      # Finished songs. The app reads them straight from here.
+      - ${MAXMUSIC_DATA:-./data}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3011/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # The weights download on first run; do not call it unhealthy meanwhile.
+      start_period: 900s

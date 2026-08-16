@@ -1,0 +1,24 @@
+# MaxMusic's model worker.
+#
+# torch is deliberately NOT pinned here: the right wheel depends on the card
+# and the CUDA version, and pinning one strands everybody else. Install it
+# first, from the selector at https://pytorch.org/get-started/locally/ — an
+# RTX 50-series (Blackwell) card needs a cu128 build or newer.
+#
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r worker/requirements.txt
+
+# MiniMax Music 3 landed in diffusers as a modular pipeline and is still
+# experimental — its own docs say it is likely to change — so this is pinned to
+# the exact commit the pipeline was verified against rather than tracking main.
+# When huggingface/diffusers#14456 is in a release, this becomes a version.
+diffusers @ git+https://github.com/huggingface/diffusers@dafe3733fcfdbf3c48915fe77be3aef65b5d6a2d
+
+transformers>=4.44
+accelerate>=0.34
+soundfile>=0.12
+numpy>=1.26
+
+# The worker's HTTP surface.
+fastapi>=0.110
+uvicorn>=0.27
