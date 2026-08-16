@@ -179,6 +179,148 @@ function deliveredSeconds(payload) {
   });
 }
 
+/**
+ * One buffered round trip to the backend. Used where the reply has to be READ
+ * before it can be answered with — piping is right for everything else.
+ *
+ * @returns {Promise<{status: number, headers: Object, body: string}>}
+ */
+function askBackend(req, bodyText) {
+  return new Promise((resolve, reject) => {
+    const headers = { ...req.headers, host: `${BACKEND_HOST}:${BACKEND_PORT}` };
+    delete headers['transfer-encoding'];
+    headers['content-length'] = Buffer.byteLength(bodyText);
+    const up = http.request(
+      { host: BACKEND_HOST, port: BACKEND_PORT, method: req.method, path: req.url, headers },
+      (r) => {
+        const parts = [];
+        r.on('data', (c) => parts.push(c));
+        r.on('end', () => resolve({ status: r.statusCode || 502, headers: r.headers, body: Buffer.concat(parts).toString('utf8') }));
+      },
+    );
+    up.on('error', reject);
+    up.end(bodyText);
+  });
+}
+
+/* -------------------------------------------------------------------------- *
+ * The ceiling guard
+ *
+ * `max_duration` is a ceiling and the model ends the song earlier when the song
+ * is over — but when its arrangement needs MORE than the ceiling, it does not
+ * get to say so. It plans right up to the limit and the recording stops
+ * mid-line. That is what a cut-off song is, every time: the plan came back
+ * equal to the ceiling.
+ *
+ * Which makes it detectable without asking anything in advance. A song that
+ * fits ends somewhere short of its ceiling — 2:25, 2:52, 2:56 of a 3:00 — and
+ * a song that was squeezed lands on it to the centisecond. When that happens
+ * the song is made once more with room to finish. Measured on the song that
+ * prompted this: a 3:00 ceiling had it planning 180.0s exactly, and the same
+ * words under a 4:05 ceiling planned 3:13 and ended properly.
+ *
+ * Asking the model up front instead would cost a minute on EVERY song, for a
+ * question that is only interesting occasionally, and its answer changes with
+ * the ceiling anyway.
+ * -------------------------------------------------------------------------- */
+
+const CEILING_HEADROOM = 1.35;
+const HIT_THE_CEILING = 0.6;
+
+/* What the model can actually sing in a second once it is allowed to set its
+   own length — measured, not guessed: 399 words in 172s is 2.32. Sheets are
+   left alone below this. It is not a pacing target like the old one, which
+   existed to protect a fixed canvas; it is the point past which no amount of
+   extra room will help, so words have to come out instead. */
+const BEYOND_SINGING = 2.4;
+
+async function guardCeiling(req, res, body, raw) {
+  const asked = Number(body.duration);
+
+  // A sheet nobody could sing in the time available, at any ceiling.
+  try {
+    const ceilingRoom = Math.min(360, Math.round(asked * CEILING_HEADROOM));
+    const fitted = enforceLength({ lyrics: String(body.lyrics), duration: ceilingRoom, density: BEYOND_SINGING });
+    if (fitted.trimmed.length) {
+      console.log(
+        `[length] even with ${clock(ceilingRoom)} to sing in, ${fitted.raw} words is past what a voice gets `
+        + `through. Dropped ${fitted.trimmed.join(', ')}.`,
+      );
+      body = { ...body, lyrics: fitted.lyrics };
+      raw = JSON.stringify(body);
+    }
+  } catch (err) {
+    console.error('[length] could not weigh this sheet —', err.message);
+  }
+
+  // Whether anyone is still waiting for this. NOT `req.destroyed`, which is
+  // true the moment the request body has been read — a stream auto-destroys
+  // when it ends, so reading that as "they left" made this give up every time.
+  let clientGone = false;
+  res.on('close', () => { if (!res.writableEnded) clientGone = true; });
+
+  let reply;
+  try {
+    reply = await askBackend(req, raw);
+  } catch (err) {
+    if (res.headersSent) return res.destroy();
+    res.writeHead(502, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      error: 'Backend unreachable',
+      detail: `${err.code || err.message} — expected the maxmusic backend on ${BACKEND_HOST}:${BACKEND_PORT}`,
+    }));
+    return;
+  }
+
+  const send = (r) => {
+    const headers = { ...r.headers };
+    delete headers['content-length'];
+    delete headers['transfer-encoding'];
+    headers['content-length'] = Buffer.byteLength(r.body);
+    res.writeHead(r.status, headers);
+    res.end(r.body);
+  };
+
+  let payload = null;
+  try { payload = JSON.parse(reply.body); } catch { /* not ours to reason about */ }
+  if (reply.status !== 200 || !payload) return send(reply);
+
+  const delivered = await deliveredSeconds(payload).catch(() => 0);
+  noteDeliveredLength(asked, delivered);
+
+  const squeezed = delivered > 0 && asked > 0 && delivered >= asked - HIT_THE_CEILING;
+  // Nobody is waiting for this any more, so there is nothing to rescue.
+  if (!squeezed || clientGone || res.writableEnded) return send(reply);
+
+  const roomier = Math.min(360, Math.round(asked * CEILING_HEADROOM));
+  if (roomier <= asked) return send(reply);
+
+  console.log(
+    `[length] this song used every second of ${clock(asked)}, which is what being cut off looks like. `
+    + `Making it again, with up to ${clock(roomier)} to finish in.`,
+  );
+
+  let second;
+  try {
+    second = await askBackend(req, JSON.stringify({ ...body, duration: roomier }));
+  } catch (err) {
+    console.error('[length] the second attempt did not come back —', err.message, '· keeping the first.');
+    return send(reply);
+  }
+
+  let secondPayload = null;
+  try { secondPayload = JSON.parse(second.body); } catch { /* keep the first */ }
+  if (second.status !== 200 || !secondPayload) return send(reply);
+
+  const secondLength = await deliveredSeconds(secondPayload).catch(() => 0);
+  if (secondLength > 0 && secondLength < roomier - HIT_THE_CEILING) {
+    console.log(`[length] it came out ${clock(secondLength)} and ended on its own.`);
+  } else {
+    console.log(`[length] it wanted the whole ${clock(roomier)} as well — sending it, but this song wants to be longer than the studio will go.`);
+  }
+  send(second);
+}
+
 function paceRequest(req, res) {
   const chunks = [];
   let size = 0;
@@ -211,6 +353,8 @@ function paceRequest(req, res) {
         .catch(() => {});
     };
 
+    // A stream cannot be read and reconsidered, so it keeps the simple path.
+    if (modelSetsLength && !/-stream/.test(req.url)) return guardCeiling(req, res, body, raw);
     if (modelSetsLength) return proxy(req, res, raw, watch);
 
     let fitted;

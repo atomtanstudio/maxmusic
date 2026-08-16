@@ -298,10 +298,10 @@ function trimToBudget(blocks, budget) {
  * @returns {{lyrics: string, words: number, raw: number, limit: number, trimmed: string[]}}
  *          `raw` is the count as it arrived, `words` what is left.
  */
-export function enforceLength({ lyrics, duration, voice = '' }) {
+export function enforceLength({ lyrics, duration, voice = '', density = 0 }) {
   const words = countSungWords(lyrics);
   const seconds = Math.max(0, Number(duration) || 0);
-  const limit = wordsFor(seconds, rateFor(voice));
+  const limit = wordsFor(seconds, density > 0 ? density : rateFor(voice));
   const out = { lyrics: String(lyrics || ''), words, raw: words, limit, trimmed: [] };
   // The floor sits at the boundary the songs themselves drew, not at the
   // comfortable target: nine measured takes put every truncation at 1.77
