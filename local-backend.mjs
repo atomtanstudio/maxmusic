@@ -22,6 +22,8 @@
 import http from 'node:http';
 import https from 'node:https';
 
+import { enforceLength, countSungWords, clock } from './public/js/pacing.js';
+
 const WORKER_URL = (process.env.WORKER_URL || '').replace(/\/+$/, '');
 
 /* The words. Anything speaking the OpenAI chat API will do: Ollama (the
@@ -114,11 +116,11 @@ function readBody(req, limit = 2 * 1024 * 1024) {
  */
 function lyricBrief({ prompt, duration, mode, lyrics, title }) {
   const seconds = Number(duration) > 0 ? Math.round(Number(duration)) : 120;
-  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const runtime = clock(seconds);
   const words = Math.round(seconds * 1.6);
 
   const rules = [
-    `Write a song that runs about ${clock}. Aim for roughly ${words} sung words — a little under is better than over, because a sheet that outruns the take is cut off mid-line.`,
+    `Write a song that runs about ${runtime}. Aim for roughly ${words} sung words — a little under is better than over, because a sheet that outruns the take is cut off mid-line.`,
     'Use structure tags in square brackets — [intro], [verse], [pre-chorus], [chorus], [bridge], [instrumental], [outro] — and put every tag ALONE on its own line, with the words on the lines beneath it. Text sharing a line with a tag is thrown away.',
     'Pace the song to LAND. Give it an ending: close on an [outro] or a final chorus that resolves. Never pad by repeating a hook to fill time.',
     'No commentary, no explanation, no markdown fences. Reply with JSON only.',
@@ -194,11 +196,28 @@ async function writeLyrics(req, res) {
     });
   }
 
+  // Writers overshoot. Asked for a 90-second song with a budget of about 144
+  // words, a good local model returned 217 — and 217 words cannot be sung in
+  // 90 seconds at any tempo, so the take gets cut off mid-line no matter how
+  // much room it is given afterwards. Fit the sheet to the take here, where
+  // the length is known, rather than leaving it for the ceiling to discover.
+  let sheet = String(parsed.lyrics || '').trim();
+  const asked = Number(body.duration) > 0 ? Number(body.duration) : 120;
+  const fitted = enforceLength({ lyrics: sheet, duration: asked, density: 1.6 });
+  if (fitted.trimmed.length) {
+    console.log(
+      `[lyrics] ${clock(asked)} can sing about ${fitted.limit} words and the writer sent ${fitted.raw}. `
+      + `Dropped ${fitted.trimmed.join(', ')}.`,
+    );
+    sheet = fitted.lyrics;
+  }
+
   send(res, 200, {
     ok: true,
     song_title: String(parsed.song_title || '').trim(),
     style_tags: String(parsed.style_tags || '').trim(),
-    lyrics: String(parsed.lyrics || '').trim(),
+    lyrics: sheet,
+    words: countSungWords(sheet),
     provider: 'openai-compatible',
     model: LLM_MODEL,
   });
@@ -207,6 +226,41 @@ async function writeLyrics(req, res) {
 /* -------------------------------------------------------------------------- *
  * Music
  * -------------------------------------------------------------------------- */
+
+/* The same rule the proxy path enforces, and for the same reason: the length
+   asked for is a CEILING, and when the arrangement needs more than the ceiling
+   the model plans right up to it and the recording stops mid-line. A song that
+   fits ends short of its ceiling; a squeezed one lands on it. Here the worker
+   reports the real length itself, so no measuring is needed to spot it. */
+const CEILING_HEADROOM = 1.35;
+const HIT_THE_CEILING = 0.6;
+
+const deliveredSeconds = (result) => Number(result?.extra_info?.music_duration || 0) / 1000;
+
+async function makeSongThatEnds(body) {
+  const asked = Number(body.duration) || 120;
+  const first = await makeSong(body);
+  const got = deliveredSeconds(first);
+  if (!got || got < asked - HIT_THE_CEILING) return first;
+
+  const roomier = Math.min(360, Math.round(asked * CEILING_HEADROOM));
+  if (roomier <= asked) return first;
+  console.log(
+    `[length] this song used every second of ${asked}s, which is what being cut off looks like. `
+    + `Making it again, with up to ${roomier}s to finish in.`,
+  );
+  try {
+    const second = await makeSong({ ...body, duration: roomier });
+    const secondGot = deliveredSeconds(second);
+    console.log(secondGot && secondGot < roomier - HIT_THE_CEILING
+      ? `[length] it came out ${secondGot.toFixed(0)}s and ended on its own.`
+      : `[length] it wanted the whole ${roomier}s as well — sending it, but this song wants to be longer.`);
+    return second;
+  } catch (err) {
+    console.error('[length] the second attempt failed —', err.message, '· keeping the first.');
+    return first;
+  }
+}
 
 async function makeSong(body) {
   const reply = await fetchJson(`${WORKER_URL}/generate`, {
@@ -230,7 +284,7 @@ async function makeSong(body) {
 async function generate(req, res) {
   const body = await readBody(req);
   try {
-    send(res, 200, await makeSong(body));
+    send(res, 200, await makeSongThatEnds(body));
   } catch (err) {
     send(res, 502, { error: `The studio could not make that song. ${err.message}` });
   }
@@ -243,7 +297,7 @@ async function generateDual(req, res) {
   // Sequential on purpose: one GPU, one song at a time.
   for (const slot of ['A', 'B']) {
     try {
-      takes[slot] = await makeSong({
+      takes[slot] = await makeSongThatEnds({
         ...body,
         seed: body.seed ?? null,
         // The second take explores a different arrangement of the same brief.
@@ -268,7 +322,7 @@ async function generateStream(req, res) {
   event({ status: 'queued', backend: 'diffusers-worker' });
   const beat = setInterval(() => event({ status: 'working' }), 15_000);
   try {
-    const result = await makeSong(body);
+    const result = await makeSongThatEnds(body);
     event({ done: true, ...result });
   } catch (err) {
     event({ error: `The studio could not make that song. ${err.message}` });
