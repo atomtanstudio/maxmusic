@@ -234,11 +234,11 @@ const HIT_THE_CEILING = 0.6;
    extra room will help, so words have to come out instead. */
 const BEYOND_SINGING = 2.4;
 
-async function guardCeiling(req, res, body, raw) {
+async function guardCeiling(req, res, body, raw, hasWords) {
   const asked = Number(body.duration);
 
   // A sheet nobody could sing in the time available, at any ceiling.
-  try {
+  if (hasWords) try {
     const ceilingRoom = Math.min(360, Math.round(asked * CEILING_HEADROOM));
     const fitted = enforceLength({ lyrics: String(body.lyrics), duration: ceilingRoom, density: BEYOND_SINGING });
     if (fitted.trimmed.length) {
@@ -340,9 +340,13 @@ function paceRequest(req, res) {
 
     let body;
     try { body = JSON.parse(raw); } catch { return proxy(req, res, raw); }
-    if (!body || typeof body !== 'object' || body.is_instrumental || !body.lyrics || !body.duration) {
-      return proxy(req, res, raw);
-    }
+    if (!body || typeof body !== 'object' || !body.duration) return proxy(req, res, raw);
+
+    // An instrumental has no words to weigh, but it is a song with an
+    // arrangement and it gets squeezed against the ceiling exactly like any
+    // other — a 0:30 instrumental came back 29.99s long, which is a cut-off.
+    // Only the lyric side of this is about lyrics.
+    const hasWords = !body.is_instrumental && Boolean(body.lyrics);
 
     // Watch what comes back, whether or not anything is trimmed on the way out.
     // This runs after the customer already has their response, so measuring the
@@ -354,8 +358,8 @@ function paceRequest(req, res) {
     };
 
     // A stream cannot be read and reconsidered, so it keeps the simple path.
-    if (modelSetsLength && !/-stream/.test(req.url)) return guardCeiling(req, res, body, raw);
-    if (modelSetsLength) return proxy(req, res, raw, watch);
+    if (modelSetsLength && !/-stream/.test(req.url)) return guardCeiling(req, res, body, raw, hasWords);
+    if (modelSetsLength || !hasWords) return proxy(req, res, raw, watch);
 
     let fitted;
     try {

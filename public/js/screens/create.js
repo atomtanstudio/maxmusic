@@ -197,6 +197,27 @@ function buildCaption({ idea, styleTags, instrumental }, max) {
   return parts.join('\n').slice(0, max);
 }
 
+/* -------------------------------------------------------------------- run -- */
+
+/**
+ * The song currently being made, if there is one — held out here on the module
+ * so that it outlives the screen.
+ *
+ * A render takes minutes, and this screen used to abort it on the way out, so
+ * looking at your library while one was running threw it away. That read as
+ * "single takes survive but two takes don't", because one take usually
+ * finished before you had a reason to leave and two takes did not. Nothing was
+ * different about two takes; there was just more time to lose them in.
+ *
+ * The Studio screen has always kept its job out here for the same reason. Only
+ * Cancel stops a render now.
+ *
+ * @type {?{controller: AbortController, startedAt: number, dual: boolean,
+ *          step: string, waiters: Function[], takes: Array, song: ?Object,
+ *          error: ?Error}}
+ */
+let liveRun = null;
+
 /* ---------------------------------------------------------------- records -- */
 
 function normalise(raw) {
@@ -1634,6 +1655,20 @@ export function mount(root, ctx) {
     state.phase = needLyrics ? 'lyrics' : 'render';
     if (needLyrics) state.song = null;
 
+    // Published on the module so this survives the screen being left. See the
+    // note on `liveRun`.
+    const run = {
+      controller,
+      startedAt: state.startedAt,
+      dual: state.dual,
+      step: state.step,
+      waiters: [],
+      takes: [],
+      song: null,
+      error: null,
+    };
+    liveRun = run;
+
     paintFooter();
     paintWorkspace();
     el.scroll.scrollTo({ top: 0 });
@@ -1726,6 +1761,8 @@ export function mount(root, ctx) {
       };
       state.step = 'render';
       state.phase = 'render';
+      run.step = 'render';
+      run.song = state.song;
       paintFooter();
       paintWorkspace();
 
@@ -1751,6 +1788,8 @@ export function mount(root, ctx) {
 
       state.step = 'idle';
       state.phase = 'done';
+      run.takes = state.takes;
+      run.song = state.song;
 
       state.takes.forEach((t, i) => {
         const slot = state.takes.length > 1 ? 'AB'[i] : '';
@@ -1777,6 +1816,7 @@ export function mount(root, ctx) {
         { kind: 'success', title: state.song?.title || titleFromIdea(idea), key: 'done' },
       );
     } catch (err) {
+      run.error = err;
       if (err?.name === 'AbortError') {
         state.phase = state.takes.length ? 'done' : 'idle';
         state.step = 'idle';
@@ -1801,7 +1841,50 @@ export function mount(root, ctx) {
       ticker = null;
       paintFooter();
       paintWorkspace();
+      // Whoever is on screen NOW gets told, which may be a later mount of this
+      // screen than the one that started the song — or nobody, which is fine.
+      if (liveRun === run) liveRun = null;
+      for (const waiter of run.waiters.splice(0)) {
+        try { waiter(run); } catch (err) { console.error('[create] could not report a finished run', err); }
+      }
     }
+  }
+
+  /**
+   * Pick up a render that was already going when this screen was opened, so
+   * coming back to it shows the song being made rather than an empty form.
+   */
+  function adoptRun(run) {
+    state.running = true;
+    state.startedAt = run.startedAt;
+    state.finishedAt = 0;
+    state.step = run.step;
+    state.phase = run.step === 'lyrics' ? 'lyrics' : 'render';
+    if (run.song) state.song = run.song;
+    controller = run.controller;          // so Cancel still stops it
+    clearInterval(ticker);
+    ticker = setInterval(tick, 1000);
+
+    run.waiters.push((done) => {
+      state.running = false;
+      state.finishedAt = Date.now();
+      state.step = 'idle';
+      controller = null;
+      clearInterval(ticker);
+      ticker = null;
+      if (done.error && done.error.name !== 'AbortError') {
+        state.error = done.error;
+        state.errorStep = 'render';
+        state.phase = 'error';
+      } else {
+        if (done.song) state.song = done.song;
+        state.takes = done.takes;
+        for (const t of done.takes) if (t?.track?.id) state.sessionIds.add(String(t.track.id));
+        state.phase = done.takes.length ? 'done' : 'idle';
+      }
+      paintFooter();
+      paintWorkspace();
+    });
   }
 
   /* ---------------------------------------------------------------- wiring -- */
@@ -1958,7 +2041,24 @@ export function mount(root, ctx) {
     paintWorkspace();
   });
 
-  ctx.bus.on('library:changed', () => paintWorkspace());
+  ctx.bus.on('library:changed', (payload) => {
+    // The shell measures each finished song and corrects its length, because
+    // the studio reports the length that was ASKED for and the model now ends
+    // when the song is over. This list keeps its own copy of a song, so take
+    // the corrected number rather than showing 0:30 beside a 0:24 track.
+    const id = payload?.id ? String(payload.id) : '';
+    if (id) {
+      const ledger = ctx.storage.get(LIBRARY_KEY, []);
+      const truth = Array.isArray(ledger) ? ledger.find((r) => String(r?.id) === id) : null;
+      const mine = history.find((r) => String(r.id) === id);
+      const real = Number(truth?.duration);
+      if (mine && Number.isFinite(real) && real > 0 && Math.abs(real - Number(mine.duration || 0)) >= 1.5) {
+        mine.duration = real;
+        persistHistory();
+      }
+    }
+    paintWorkspace();
+  });
 
   ctx.onHealth((snapshot) => {
     health = snapshot;
@@ -1974,11 +2074,15 @@ export function mount(root, ctx) {
   root.append(page);
   paintHints();
   paintForm();
+  if (liveRun) adoptRun(liveRun);
   paintWorkspace();
-  if (!state.idea) el.idea.focus();
+  paintFooter();
+  if (!state.idea && !state.running) el.idea.focus();
 
   return () => {
-    controller?.abort();
+    // The render is deliberately NOT stopped here. It belongs to the person,
+    // not to whichever screen they happen to be looking at, and it is picked
+    // back up by `adoptRun` when they return. Cancel is the way to stop one.
     clearInterval(ticker);
     clearTimeout(searchTimer);
     tabs.remove();
