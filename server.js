@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { handleStudio } from './render/jobs.mjs';
+import { handleLocal, standalone } from './local-backend.mjs';
 import { enforceLength, clock } from './public/js/pacing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -466,6 +467,10 @@ const server = http.createServer((req, res) => {
   if (req.url.startsWith('/studio/')) {
     if (handleStudio(req, res, { host: BACKEND_HOST, port: BACKEND_PORT })) return;
   }
+  // Standing on its own: the model worker and a local lyric writer, with no
+  // separate studio service in the picture. Only when WORKER_URL is set.
+  if (handleLocal(req, res)) return;
+
   const isProxied = PROXY_PREFIXES.some(
     (p) => req.url === p || req.url.startsWith(p + '/') || req.url.startsWith(p + '?')
   );
@@ -486,5 +491,7 @@ server.on('error', (err) => {
 
 server.listen(PORT, () => {
   console.log(`\n  MaxMusic → http://localhost:${PORT}`);
-  console.log(`  API proxied to ${BACKEND_HOST}:${BACKEND_PORT}\n`);
+  console.log(standalone
+    ? `  Music from the worker at ${process.env.WORKER_URL}\n`
+    : `  API proxied to ${BACKEND_HOST}:${BACKEND_PORT}\n`);
 });

@@ -630,14 +630,19 @@ export function mount(root, ctx) {
       // Lyrics come from the OpenAI account, so the account is what is asked.
       // health.lyricsEnabled describes configured routing and does not change
       // when someone signs in.
+      // A local lyric writer is as good as a signed-in account — better, for
+      // anyone running this on their own machine, where there is no account
+      // to sign into at all. Ask whether words can be written, not who by.
       const auth = ctx.auth;
-      if (!state.instrumental && auth && !auth.ready && !state.song?.lyrics) {
+      const canWrite = auth?.ready || health.lyricsEnabled;
+      if (!state.instrumental && auth && !canWrite && !state.song?.lyrics) {
         const needsSignIn = auth.brokerConfigured && !auth.authenticated;
         return {
           title: needsSignIn ? 'Sign in to write lyrics' : 'Lyric writing is unavailable',
           text: needsSignIn
             ? 'Songs with vocals need words first. Connect your OpenAI account in Settings, or make this one instrumental.'
-            : 'Songs with vocals need lyrics before they can render. Switch to Instrumental, or set up lyric writing in Settings.',
+            : 'Songs with vocals need words first, and nothing is set up to write them. Start a local writer such as Ollama, '
+              + 'write the lyrics yourself in Studio, or make this one instrumental.',
           kind: 'warn',
           instrumental: true,
         };

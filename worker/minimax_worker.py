@@ -71,6 +71,7 @@ class Studio:
         self.sampling_rate = 44100
         self.device = "cuda"
         self.offloaded = False
+        self.note = None
         self.loading = False
         self.error: str | None = None
         self._lock = threading.Lock()
@@ -95,6 +96,7 @@ class Studio:
             "loading": self.loading,
             "device": self.device,
             "offloaded": self.offloaded,
+            "note": self.note,
             "vramFreeGb": free_gb,
             "error": self.error,
         }
@@ -115,12 +117,31 @@ class Studio:
                         "MiniMax Music 3 needs an NVIDIA GPU — torch reports no CUDA device."
                     )
 
-                free, _total = torch.cuda.mem_get_info()
+                free, total = torch.cuda.mem_get_info()
                 free_gb = free / 1024**3
-                # ~23GB in bfloat16 with everything resident. Below that, hand
-                # the components to the offloader rather than failing at the
+                total_gb = total / 1024**3
+                # ~23GB in bfloat16 with everything resident. Below that the
+                # components go to the offloader rather than failing at the
                 # first generation with an out-of-memory error.
-                roomy = free_gb >= 26.0
+                #
+                # This asks what is FREE, and it is worth knowing why that is
+                # a trap: whatever else is on the card at this instant decides
+                # how the model runs for the life of the process. A neighbour
+                # holding 4 GB while this loaded once put a 32 GB card on the
+                # offload path, and a 90-second song took 23 minutes instead
+                # of 90 seconds. The number cannot be ignored — loading full
+                # into a card that is genuinely occupied just fails later —
+                # but it CAN be said out loud, so the cause is never a mystery.
+                needed_gb = 24.0
+                roomy = free_gb >= needed_gb
+
+                if not roomy and total_gb >= needed_gb:
+                    print(
+                        f"[worker] this card has {total_gb:.0f} GB but only {free_gb:.1f} GB is free, so the "
+                        f"model is loading in offload mode, which is MUCH slower (minutes per minute of audio, "
+                        f"not seconds). Free the card and restart the worker to run at full speed.",
+                        flush=True,
+                    )
 
                 if roomy:
                     self.pipe = ModularPipeline.from_pretrained(MODEL_ID)
@@ -146,6 +167,15 @@ class Studio:
                         )
 
                 self.sampling_rate = int(getattr(self.pipe, "sampling_rate", 44100))
+                self.note = None if roomy else (
+                    f"Loaded in offload mode: only {free_gb:.1f} GB of {total_gb:.0f} GB was free. "
+                    "Songs will take minutes rather than seconds. Free the card and restart for full speed."
+                )
+                print(
+                    f"[worker] ready · {'full speed' if roomy else 'offload mode'} · "
+                    f"{free_gb:.1f} GB free of {total_gb:.0f} GB",
+                    flush=True,
+                )
             except Exception as err:  # noqa: BLE001 — reported, not raised, so /health can explain
                 self.error = f"{type(err).__name__}: {err}"
                 self.pipe = None
