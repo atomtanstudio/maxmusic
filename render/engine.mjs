@@ -1349,7 +1349,6 @@ export async function createStage(canvas, timing, analysis) {
     const out = [];
     let chorusCount = 0;
     let verseCount = 0;
-    let instCount = 0;
     let preCount = 0;
     for (let i = 0; i < sections.length; i++) {
       const s = sections[i];
@@ -1373,7 +1372,6 @@ export async function createStage(canvas, timing, analysis) {
       } else if (s.kind === 'tag') {
         out.push({ name: `tag-${s.id}`, t0: start, t1: end, paint: tagScene(s) });
       } else {
-        instCount++;
         const isFirst = s.t0 < 5;
         const isOutro = (s.t1 - s.t0) > 12 && s.t0 > DUR * 0.5;
         const isEnd = s.t0 > DUR - 8;
@@ -1381,7 +1379,7 @@ export async function createStage(canvas, timing, analysis) {
         if (isFirst) painter = titleScene(s);
         else if (isOutro) painter = outroScene(s);
         else if (isEnd) painter = endcardScene(s);
-        else painter = instCount % 2 === 0 ? dropRushScene(s) : dropWallScene(s);
+        else painter = interludeScene(s);
         out.push({ name: s.id, t0: start, t1: end, paint: painter });
       }
     }
@@ -1403,14 +1401,14 @@ export async function createStage(canvas, timing, analysis) {
       for (let i = 0; i < flips.length; i++) if (t >= flips[i]) idx = i;
       // The room flashes for a beat on every slam landing.
       const flashK = idx >= 0 ? 1 - clamp01(span(t, flips[idx], flips[idx] + 2.5 / FPS)) : 0;
+      // The room this song is in, lit by the slam. A featureless black card
+      // reads as a dropped layer rather than restraint, but the room has to
+      // be the song's own — this lit the venue's wall even for a song set by
+      // a candle.
       if (isCold) {
-        // Even the cold open keeps a breath of the venue — a featureless
-        // black card reads as a dropped layer, not restraint.
-        paintPanels(t, 0.15 + flashK * 0.4, 0.4);
-        paintBeam(t, 0.28 + flashK * 0.35, accent);
+        paintWorld(t, { panels: 0.15 + flashK * 0.4, live: 0.4, beam: 0.28 + flashK * 0.35, color: accent });
       } else {
-        paintPanels(t, 0.5 + flashK * 0.4, 1);
-        paintBeam(t, 0.5, accent);
+        paintWorld(t, { panels: 0.5 + flashK * 0.4, live: 1, beam: 0.5, color: accent });
       }
       if (idx >= 0) {
         const line = section.lines[idx];
@@ -1723,7 +1721,9 @@ export async function createStage(canvas, timing, analysis) {
       const crackAt = openWord ? openWord.t0 : line.t0 + 1;
       // The break SNAPS — a few frames, not a linear creep.
       const crack = CRACK_OK ? easeOutExpo(span(t, crackAt, crackAt + 0.45)) : 0;
-      if (WORLD !== 'horizon') paintBeam(t, 0.55 + crack * 0.45, accent);
+      // A stage beam belongs on a stage. Elsewhere the world has already
+      // been painted above and does not want the venue's lighting rig in it.
+      if (WORLD === 'venue') paintBeam(t, 0.55 + crack * 0.45, accent);
 
       const lay = layoutSlam(crackLine, { width: W * 0.66 });
       const breathe = 1 + atSm('bass', t, 6) * 0.03 * PUMP_K * (1 + crack);
@@ -1993,7 +1993,7 @@ export async function createStage(canvas, timing, analysis) {
       }
       if (isFinal) {
         // Quiet end: typed mono phrase, caret, then the sign-off.
-        paintBeam(t, 0.2, CYAN);
+        if (WORLD === 'venue') paintBeam(t, 0.2, style.titleAccent || CYAN);
         const lay = layoutMono(line, { size: 74 });
         ctx.save();
         ctx.translate(W / 2, H * 0.46);
@@ -2046,111 +2046,42 @@ export async function createStage(canvas, timing, analysis) {
     };
   }
 
-  /** The sung history as a designed marquee band along the frame's floor. */
-  function paintMarquee(t, local) {
-    const bandH = 96;
-    const bandY = H * 0.83;
-    const font = `700 46px ${MONO}`;
-    const all = memory
-      .filter((m) => m.line.t1 < t)
-      .map((m) => m.line.text)
-      .filter((text, i, arr) => text !== arr[i - 1]) // a chant is one entry, not six
-      .join('    ·    ');
-    if (!all) return;
-    ctx.save();
-    ctx.fillStyle = 'rgba(4,5,9,0.55)';
-    ctx.fillRect(0, bandY, W, bandH);
-    ctx.fillStyle = 'rgba(242,245,250,0.10)';
-    ctx.fillRect(0, bandY, W, 2);
-    ctx.fillRect(0, bandY + bandH - 2, W, 2);
-    ctx.font = font;
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = `rgba(${rgb(INK)},0.85)`;
-    const tw = textW(all, font) + W * 0.25;
-    const x = -((local * 220) % tw);
-    ctx.fillText(all, x, bandY + bandH / 2 + 2);
-    ctx.fillText(all, x + tw, bandY + bandH / 2 + 2);
-    ctx.restore();
-  }
-
-  /** Instrumental drop, flavour A: the wall of lights owns the frame. */
-  function dropWallScene(section) {
-    // The breathing watermark speaks this song's own name — hardcoded
-    // words from another song read as lyrics that never arrive.
-    const GHOSTS = (timing.title || 'MUSIC').toUpperCase().split(/\s+/)
-      .filter((w) => w.replace(/[^A-Z]/g, '').length >= 3).slice(0, 3);
-    if (!GHOSTS.length) GHOSTS.push((timing.artist || 'MUSIC').toUpperCase());
+  /**
+   * An instrumental stretch: the song's own world, carried through it.
+   *
+   * There used to be two "drop" scenes here for the breaks — a wall of stage
+   * lights and a rush of rainbow streaks — and they cut to the same venue
+   * furniture no matter where the song lived. A road song arrived at its
+   * bridge and jumped to a coloured stage; a candle song did too. Rich named
+   * it exactly: always the same, and distracting. A break in the singing is
+   * not a change of place.
+   *
+   * So the break stays where the song is, and the world opens up a little to
+   * carry it: the horizon runs on, the candle keeps burning, the rain keeps
+   * falling. Everything here reads the music, so a loud break looks loud
+   * without anything being bolted on for it.
+   */
+  function interludeScene(section) {
+    const accent = (style.verseAccents || [CYAN])[0];
     return (t, f) => {
       paintBackdrop();
-      const u = span(t, section.t0, section.t0 + 1.2);
-      // The wall surges on every onset — this is the most musical the room gets.
-      paintPanels(t, Math.min(1, (0.6 + 0.4 * u) * (0.8 + onsetKick(t) * 0.45)), 1, {
-        x: Math.sin(t * 0.24) * 120,
-        y: Math.cos(t * 0.2) * 60,
-        scale: 1.38 + atSm('bass', t, 3) * 0.09,
+      const settle = easeOutCubic(span(t, section.t0, section.t0 + 1.4));
+      const lift = atSm('bass', t, 4);
+      const kick = onsetKick(t, 0.12) * KICK_K;
+      paintWorld(t, {
+        // Roomier than a verse, because nothing is competing with the words
+        // now, and breathing on the low end rather than on a clock.
+        panels: 0.36 + settle * 0.22 + lift * 0.16,
+        live: 0.62 + settle * 0.28,
+        cam: {
+          x: Math.sin(t * 0.16) * 90 * settle,
+          y: Math.cos(t * 0.13) * 34 * settle,
+          scale: 1 + settle * 0.05 + lift * 0.04 * PUMP_K + kick * 0.02,
+        },
+        beam: 0.55 + settle * 0.3,
+        color: accent,
       });
-      paintBeam(t, 1, CYAN);
-      // A light-bar chases across the wall on the music.
-      const chaseX = (((t - section.t0) * W * 0.38) % (W * 1.4)) - W * 0.2;
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      const cg = ctx.createLinearGradient(chaseX - W * 0.07, 0, chaseX + W * 0.07, 0);
-      cg.addColorStop(0, 'rgba(0,0,0,0)');
-      cg.addColorStop(0.5, `rgba(${rgb('#CFE9FF')},${(0.07 + atSm('bass', t, 3) * 0.08).toFixed(3)})`);
-      cg.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = cg;
-      ctx.fillRect(chaseX - W * 0.07, 0, W * 0.14, H);
-      ctx.restore();
-      // The watermark trades words while it breathes — the wallpaper stays
-      // kinetic through the whole stretch, and the marquee keeps the lyric
-      // thread alive.
-      const local = t - section.t0;
-      const word = GHOSTS[Math.floor(local / 3.6) % GHOSTS.length];
-      const wu = (local % 3.6) / 3.6;
-      ctx.save();
-      ctx.globalAlpha = (0.2 + atSm('bass', t, 5) * 0.2) * Math.min(1, wu * 6, (1 - wu) * 6);
-      const size = fitSize(word, W * 0.66, DISPLAY, 900);
-      ctx.font = `900 ${size}px ${DISPLAY}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = INK;
-      ctx.fillText(word, W / 2, H * 0.46);
-      ctx.restore();
-      paintMarquee(t, local);
-      paintGrain(f, 0.07 + onsetKick(t) * 0.05);
-      paintVignette(0.85);
-    };
-  }
-
-  /** Instrumental drop, flavour B: rushing motes + the memory ticker. */
-  function dropRushScene(section) {
-    const streaks = Array.from({ length: 90 }, (_, i) => ({
-      y: (i * 97) % H,
-      speed: 900 + ((i * 131) % 700),
-      len: 90 + ((i * 53) % 240),
-      a: 0.05 + ((i * 17) % 10) / 40,
-    }));
-    return (t, f) => {
-      paintBackdrop();
-      paintPanels(t, 0.7 + onsetKick(t) * 0.3, 1, { x: -t * 60, y: 0, scale: 1.3 + atSm('bass', t, 3) * 0.06 });
-      const local = t - section.t0;
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      for (const s of streaks) {
-        const x = W + 200 - ((local * s.speed + s.y * 7) % (W + 400));
-        const hue = RAMP[Math.floor((s.y / H) * RAMP.length) % RAMP.length];
-        ctx.strokeStyle = `rgba(${rgb(hue)},${(s.a * (0.9 + at('high', t) * 1.2)).toFixed(3)})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(x, s.y);
-        ctx.lineTo(x + s.len, s.y);
-        ctx.stroke();
-      }
-      ctx.restore();
-      paintBeam(t, 1, VIOLET);
-      // The lyric thread never drops — it rides the marquee.
-      paintMarquee(t, local);
-      paintGrain(f, 0.06);
+      paintGrain(f, 0.05 + kick * 0.02);
       paintVignette(1);
     };
   }
@@ -2221,8 +2152,16 @@ export async function createStage(canvas, timing, analysis) {
       paintBackdrop();
       const u = span(t, section.t0, section.t1 - 4);
       const pull = easeInOutCubic(u);
-      paintPanels(t, 0.5 - 0.3 * pull, lerp(1, 0.3, pull), { x: 0, y: 0, scale: 1 - pull * 0.2 });
-      paintBeam(t, 0.7 - pull * 0.45, AMBER);
+      // Through the song's own world, dimming as the camera pulls back. This
+      // used to light the venue's panel wall whatever the song was, so a
+      // candle song ended on a grid of coloured squares.
+      paintWorld(t, {
+        panels: 0.5 - 0.3 * pull,
+        live: lerp(1, 0.3, pull),
+        cam: { x: 0, y: 0, scale: 1 - pull * 0.2 },
+        beam: 0.7 - pull * 0.45,
+        color: style.titleAccent || AMBER,
+      });
 
       const zoom = lerp(1.65, 0.9, pull);
       ctx.save();
@@ -2275,7 +2214,7 @@ export async function createStage(canvas, timing, analysis) {
   function endcardScene(section) {
     return (t, f) => {
       paintBackdrop();
-      paintBeam(t, 0.15, AMBER);
+      paintWorld(t, { panels: 0.1, live: 0.25, cam: { x: 0, y: 0, scale: 1 }, beam: 0.15, color: style.titleAccent || AMBER });
       const a = easeOutCubic(span(t, section.t0, section.t0 + 1));
       const fade = 1 - easeInOutCubic(span(t, DUR2 - 1.2, DUR2 - 0.2));
       ctx.save();

@@ -1,0 +1,1581 @@
+{
+ "title": "Veil of the Ninth Moon",
+ "artist": "MaxMusic",
+ "footer": "github.com/atomtanstudio/maxmusic",
+ "style": {
+  "world": "sanctum",
+  "crack": false,
+  "chorusInvert": false,
+  "display": "Didot",
+  "displayWeight": 700,
+  "text": "Baskerville",
+  "textWeightNormal": 400,
+  "textWeightEmph": 700,
+  "ink": "#EAE6DA",
+  "dim": "#77715F",
+  "titleAccent": "#D9A85C",
+  "verseAccents": [
+   "#C9CFDA",
+   "#AEB8CC",
+   "#D9A85C",
+   "#BFC6D4"
+  ],
+  "chorusAccents": [
+   "#D3D9E4"
+  ],
+  "textCenterY": 0.42,
+  "plateMaxH": 0.5,
+  "motion": 0.47,
+  "tail": 3
+ },
+ "cover": "/covers/8a67c9ff238fbe7bf3d3.png",
+ "lines": [
+  {
+   "section": "verse-1",
+   "kind": "verse",
+   "text": "Aiya no reya, aiya no rei",
+   "repeatIndex": 0,
+   "t0": 0,
+   "t1": 4.35,
+   "words": [
+    {
+     "word": "Aiya",
+     "t0": 0,
+     "t1": 0.916,
+     "guessed": true
+    },
+    {
+     "word": "no",
+     "t0": 0.916,
+     "t1": 1.374,
+     "guessed": true
+    },
+    {
+     "word": "reya,",
+     "t0": 1.374,
+     "t1": 2.289,
+     "guessed": true
+    },
+    {
+     "word": "aiya",
+     "t0": 2.289,
+     "t1": 3.205,
+     "guessed": true
+    },
+    {
+     "word": "no",
+     "t0": 3.205,
+     "t1": 3.663,
+     "guessed": true
+    },
+    {
+     "word": "rei",
+     "t0": 3.663,
+     "t1": 4.35,
+     "guessed": true
+    }
+   ]
+  },
+  {
+   "section": "verse-1",
+   "kind": "verse",
+   "text": "Wake, silver fire, beneath the sleeping sky",
+   "repeatIndex": 0,
+   "t0": 4.84,
+   "t1": 9.52,
+   "words": [
+    {
+     "word": "Wake,",
+     "t0": 4.84,
+     "t1": 4.986,
+     "guessed": true
+    },
+    {
+     "word": "silver",
+     "t0": 4.986,
+     "t1": 5.204,
+     "guessed": true
+    },
+    {
+     "word": "fire,",
+     "t0": 5.204,
+     "t1": 5.35,
+     "guessed": true
+    },
+    {
+     "word": "beneath",
+     "t0": 5.35,
+     "t1": 6.55
+    },
+    {
+     "word": "the",
+     "t0": 6.55,
+     "t1": 7.07
+    },
+    {
+     "word": "sleeping",
+     "t0": 7.07,
+     "t1": 8.44
+    },
+    {
+     "word": "sky",
+     "t0": 8.44,
+     "t1": 8.97
+    }
+   ]
+  },
+  {
+   "section": "verse-2",
+   "kind": "verse",
+   "text": "Open the gate in the heart of the night",
+   "repeatIndex": 0,
+   "t0": 9.86,
+   "t1": 13.84,
+   "words": [
+    {
+     "word": "Open",
+     "t0": 9.86,
+     "t1": 10.32
+    },
+    {
+     "word": "the",
+     "t0": 10.32,
+     "t1": 10.67
+    },
+    {
+     "word": "gate",
+     "t0": 10.67,
+     "t1": 11.13
+    },
+    {
+     "word": "in",
+     "t0": 11.13,
+     "t1": 11.36
+    },
+    {
+     "word": "the",
+     "t0": 11.36,
+     "t1": 11.71
+    },
+    {
+     "word": "heart",
+     "t0": 11.71,
+     "t1": 12.29
+    },
+    {
+     "word": "of",
+     "t0": 12.29,
+     "t1": 12.52
+    },
+    {
+     "word": "the",
+     "t0": 12.52,
+     "t1": 12.87
+    },
+    {
+     "word": "night",
+     "t0": 12.87,
+     "t1": 13.55
+    }
+   ]
+  },
+  {
+   "section": "verse-2",
+   "kind": "verse",
+   "text": "Name me in thunder, remake me in light",
+   "repeatIndex": 0,
+   "t0": 14.17,
+   "t1": 16.55,
+   "words": [
+    {
+     "word": "Name",
+     "t0": 14.17,
+     "t1": 14.62
+    },
+    {
+     "word": "me",
+     "t0": 14.62,
+     "t1": 14.84
+    },
+    {
+     "word": "in",
+     "t0": 14.84,
+     "t1": 15.06
+    },
+    {
+     "word": "thunder,",
+     "t0": 15.06,
+     "t1": 16.07
+    },
+    {
+     "word": "remake",
+     "t0": 16.07,
+     "t1": 16.19,
+     "guessed": true
+    },
+    {
+     "word": "me",
+     "t0": 16.19,
+     "t1": 16.31,
+     "guessed": true
+    },
+    {
+     "word": "in",
+     "t0": 16.31,
+     "t1": 16.43,
+     "guessed": true
+    },
+    {
+     "word": "light",
+     "t0": 16.43,
+     "t1": 16.55,
+     "guessed": true
+    }
+   ]
+  },
+  {
+   "section": "verse-3",
+   "kind": "verse",
+   "text": "Carry me over the veil of the ninth moon",
+   "repeatIndex": 0,
+   "t0": 18.53,
+   "t1": 22.96,
+   "words": [
+    {
+     "word": "Carry",
+     "t0": 18.53,
+     "t1": 19.16
+    },
+    {
+     "word": "me",
+     "t0": 19.16,
+     "t1": 19.41
+    },
+    {
+     "word": "over",
+     "t0": 19.41,
+     "t1": 19.91
+    },
+    {
+     "word": "the",
+     "t0": 19.91,
+     "t1": 20.28
+    },
+    {
+     "word": "veil",
+     "t0": 20.28,
+     "t1": 20.78
+    },
+    {
+     "word": "of",
+     "t0": 20.78,
+     "t1": 21.03
+    },
+    {
+     "word": "the",
+     "t0": 21.03,
+     "t1": 21.4
+    },
+    {
+     "word": "ninth",
+     "t0": 21.4,
+     "t1": 22.03
+    },
+    {
+     "word": "moon",
+     "t0": 22.03,
+     "t1": 22.53
+    }
+   ]
+  },
+  {
+   "section": "verse-3",
+   "kind": "verse",
+   "text": "Out where the lost constellations are born",
+   "repeatIndex": 0,
+   "t0": 23.23,
+   "t1": 26.9,
+   "words": [
+    {
+     "word": "Out",
+     "t0": 23.23,
+     "t1": 23.51
+    },
+    {
+     "word": "where",
+     "t0": 23.51,
+     "t1": 23.97
+    },
+    {
+     "word": "the",
+     "t0": 23.97,
+     "t1": 24.25
+    },
+    {
+     "word": "lost",
+     "t0": 24.25,
+     "t1": 24.61
+    },
+    {
+     "word": "constellations",
+     "t0": 24.61,
+     "t1": 25.92
+    },
+    {
+     "word": "are",
+     "t0": 25.92,
+     "t1": 26.2
+    },
+    {
+     "word": "born",
+     "t0": 26.2,
+     "t1": 26.57
+    }
+   ]
+  },
+  {
+   "section": "verse-3",
+   "kind": "verse",
+   "text": "Aiya, aiya, the shadows awaken",
+   "repeatIndex": 0,
+   "t0": 27.22,
+   "t1": 30.317,
+   "words": [
+    {
+     "word": "Aiya,",
+     "t0": 27.22,
+     "t1": 27.75
+    },
+    {
+     "word": "aiya,",
+     "t0": 27.75,
+     "t1": 28.28
+    },
+    {
+     "word": "the",
+     "t0": 28.28,
+     "t1": 28.6
+    },
+    {
+     "word": "shadows",
+     "t0": 28.6,
+     "t1": 29.36
+    },
+    {
+     "word": "awaken",
+     "t0": 29.36,
+     "t1": 30.317,
+     "guessed": true
+    }
+   ]
+  },
+  {
+   "section": "verse-3",
+   "kind": "verse",
+   "text": "Singing the language we knew before form",
+   "repeatIndex": 0,
+   "t0": 31.04,
+   "t1": 34.44,
+   "words": [
+    {
+     "word": "Singing",
+     "t0": 31.04,
+     "t1": 31.74
+    },
+    {
+     "word": "the",
+     "t0": 31.74,
+     "t1": 32.04
+    },
+    {
+     "word": "language",
+     "t0": 32.04,
+     "t1": 32.84
+    },
+    {
+     "word": "we",
+     "t0": 32.84,
+     "t1": 33.04
+    },
+    {
+     "word": "knew",
+     "t0": 33.04,
+     "t1": 33.44
+    },
+    {
+     "word": "before",
+     "t0": 33.44,
+     "t1": 34.04
+    },
+    {
+     "word": "form",
+     "t0": 34.04,
+     "t1": 34.44
+    }
+   ]
+  },
+  {
+   "section": "verse-3",
+   "kind": "verse",
+   "text": "If I become only breath in the starlight",
+   "repeatIndex": 0,
+   "t0": 35.06,
+   "t1": 37.717,
+   "words": [
+    {
+     "word": "If",
+     "t0": 35.06,
+     "t1": 35.26
+    },
+    {
+     "word": "I",
+     "t0": 35.26,
+     "t1": 35.38
+    },
+    {
+     "word": "become",
+     "t0": 35.36,
+     "t1": 35.96
+    },
+    {
+     "word": "only",
+     "t0": 35.96,
+     "t1": 36.36
+    },
+    {
+     "word": "breath",
+     "t0": 36.36,
+     "t1": 36.96
+    },
+    {
+     "word": "in",
+     "t0": 36.96,
+     "t1": 37.16
+    },
+    {
+     "word": "the",
+     "t0": 37.16,
+     "t1": 37.46
+    },
+    {
+     "word": "starlight",
+     "t0": 37.46,
+     "t1": 37.717,
+     "guessed": true
+    }
+   ]
+  },
+  {
+   "section": "verse-3",
+   "kind": "verse",
+   "text": "Hold to the echo and I will return",
+   "repeatIndex": 0,
+   "t0": 39.13,
+   "t1": 42.4,
+   "words": [
+    {
+     "word": "Hold",
+     "t0": 39.13,
+     "t1": 39.73
+    },
+    {
+     "word": "to",
+     "t0": 39.73,
+     "t1": 40.03
+    },
+    {
+     "word": "the",
+     "t0": 40.03,
+     "t1": 40.47
+    },
+    {
+     "word": "echo",
+     "t0": 40.47,
+     "t1": 41.08
+    },
+    {
+     "word": "and",
+     "t0": 41.08,
+     "t1": 41.53
+    },
+    {
+     "word": "I",
+     "t0": 41.53,
+     "t1": 41.68
+    },
+    {
+     "word": "will",
+     "t0": 41.68,
+     "t1": 42.28
+    },
+    {
+     "word": "return",
+     "t0": 42.28,
+     "t1": 42.4,
+     "guessed": true
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "Your hand was a flame on the edge of the void",
+   "repeatIndex": 0,
+   "t0": 44.6,
+   "t1": 48.04,
+   "words": [
+    {
+     "word": "Your",
+     "t0": 44.6,
+     "t1": 44.72
+    },
+    {
+     "word": "hand",
+     "t0": 44.6,
+     "t1": 44.83
+    },
+    {
+     "word": "was",
+     "t0": 44.83,
+     "t1": 45.14
+    },
+    {
+     "word": "a",
+     "t0": 45.14,
+     "t1": 45.26
+    },
+    {
+     "word": "flame",
+     "t0": 45.24,
+     "t1": 45.77
+    },
+    {
+     "word": "on",
+     "t0": 45.77,
+     "t1": 45.98
+    },
+    {
+     "word": "the",
+     "t0": 45.98,
+     "t1": 46.29
+    },
+    {
+     "word": "edge",
+     "t0": 46.29,
+     "t1": 46.71
+    },
+    {
+     "word": "of",
+     "t0": 46.71,
+     "t1": 46.92
+    },
+    {
+     "word": "the",
+     "t0": 46.92,
+     "t1": 47.23
+    },
+    {
+     "word": "void",
+     "t0": 47.23,
+     "t1": 47.65
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "A vow no machine and no god could destroy",
+   "repeatIndex": 0,
+   "t0": 48.26,
+   "t1": 50.96,
+   "words": [
+    {
+     "word": "A",
+     "t0": 48.26,
+     "t1": 48.38
+    },
+    {
+     "word": "vow",
+     "t0": 48.33,
+     "t1": 48.55
+    },
+    {
+     "word": "no",
+     "t0": 48.55,
+     "t1": 48.7
+    },
+    {
+     "word": "machine",
+     "t0": 48.7,
+     "t1": 49.22
+    },
+    {
+     "word": "and",
+     "t0": 49.22,
+     "t1": 49.44
+    },
+    {
+     "word": "no",
+     "t0": 49.44,
+     "t1": 49.59
+    },
+    {
+     "word": "god",
+     "t0": 49.59,
+     "t1": 49.81
+    },
+    {
+     "word": "could",
+     "t0": 49.81,
+     "t1": 50.18
+    },
+    {
+     "word": "destroy",
+     "t0": 50.18,
+     "t1": 50.7
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "We crossed through the temple of luminous dust",
+   "repeatIndex": 0,
+   "t0": 51.15,
+   "t1": 54.08,
+   "words": [
+    {
+     "word": "We",
+     "t0": 51.15,
+     "t1": 51.28
+    },
+    {
+     "word": "crossed",
+     "t0": 51.28,
+     "t1": 51.76
+    },
+    {
+     "word": "through",
+     "t0": 51.76,
+     "t1": 52.24
+    },
+    {
+     "word": "the",
+     "t0": 52.24,
+     "t1": 52.44
+    },
+    {
+     "word": "temple",
+     "t0": 52.44,
+     "t1": 52.84
+    },
+    {
+     "word": "of",
+     "t0": 52.84,
+     "t1": 52.98
+    },
+    {
+     "word": "luminous",
+     "t0": 52.98,
+     "t1": 53.52
+    },
+    {
+     "word": "dust",
+     "t0": 53.52,
+     "t1": 53.79
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "Past angels of iron surrendering rust",
+   "repeatIndex": 0,
+   "t0": 54.35,
+   "t1": 57.52,
+   "words": [
+    {
+     "word": "Past",
+     "t0": 54.35,
+     "t1": 54.71
+    },
+    {
+     "word": "angels",
+     "t0": 54.71,
+     "t1": 55.25
+    },
+    {
+     "word": "of",
+     "t0": 55.25,
+     "t1": 55.43
+    },
+    {
+     "word": "iron",
+     "t0": 55.43,
+     "t1": 55.79
+    },
+    {
+     "word": "surrendering",
+     "t0": 55.79,
+     "t1": 56.87
+    },
+    {
+     "word": "rust",
+     "t0": 56.87,
+     "t1": 57.23
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "The future bent low like a wave at our feet",
+   "repeatIndex": 0,
+   "t0": 57.74,
+   "t1": 60.7,
+   "words": [
+    {
+     "word": "The",
+     "t0": 57.74,
+     "t1": 57.97
+    },
+    {
+     "word": "future",
+     "t0": 57.97,
+     "t1": 58.44
+    },
+    {
+     "word": "bent",
+     "t0": 58.44,
+     "t1": 58.75,
+     "guessed": true
+    },
+    {
+     "word": "low",
+     "t0": 58.75,
+     "t1": 58.98
+    },
+    {
+     "word": "like",
+     "t0": 58.98,
+     "t1": 59.29
+    },
+    {
+     "word": "a",
+     "t0": 59.29,
+     "t1": 59.41
+    },
+    {
+     "word": "wave",
+     "t0": 59.37,
+     "t1": 59.68
+    },
+    {
+     "word": "at",
+     "t0": 59.68,
+     "t1": 59.83
+    },
+    {
+     "word": "our",
+     "t0": 59.83,
+     "t1": 60.06
+    },
+    {
+     "word": "feet",
+     "t0": 60.06,
+     "t1": 60.37
+    }
+   ]
+  },
+  {
+   "section": "verse-4",
+   "kind": "verse",
+   "text": "And every dead planet began its heartbeat",
+   "repeatIndex": 0,
+   "t0": 60.91,
+   "t1": 63.68,
+   "words": [
+    {
+     "word": "And",
+     "t0": 60.91,
+     "t1": 61.12
+    },
+    {
+     "word": "every",
+     "t0": 61.12,
+     "t1": 61.48
+    },
+    {
+     "word": "dead",
+     "t0": 61.48,
+     "t1": 61.77
+    },
+    {
+     "word": "planet",
+     "t0": 61.77,
+     "t1": 62.2
+    },
+    {
+     "word": "began",
+     "t0": 62.2,
+     "t1": 62.56
+    },
+    {
+     "word": "its",
+     "t0": 62.56,
+     "t1": 62.77
+    },
+    {
+     "word": "heartbeat",
+     "t0": 62.77,
+     "t1": 63.42
+    }
+   ]
+  },
+  {
+   "section": "verse-5",
+   "kind": "verse",
+   "text": "No crown, no kingdom, no body to bind us",
+   "repeatIndex": 0,
+   "t0": 63.99,
+   "t1": 67.98,
+   "words": [
+    {
+     "word": "No",
+     "t0": 63.99,
+     "t1": 64.2
+    },
+    {
+     "word": "crown,",
+     "t0": 64.2,
+     "t1": 64.94
+    },
+    {
+     "word": "no",
+     "t0": 64.94,
+     "t1": 65.15
+    },
+    {
+     "word": "kingdom,",
+     "t0": 65.15,
+     "t1": 66.11
+    },
+    {
+     "word": "no",
+     "t0": 66.11,
+     "t1": 66.23,
+     "guessed": true
+    },
+    {
+     "word": "body",
+     "t0": 66.11,
+     "t1": 66.75
+    },
+    {
+     "word": "to",
+     "t0": 66.75,
+     "t1": 66.96
+    },
+    {
+     "word": "bind",
+     "t0": 66.96,
+     "t1": 67.39
+    },
+    {
+     "word": "us",
+     "t0": 67.39,
+     "t1": 67.71
+    }
+   ]
+  },
+  {
+   "section": "verse-5",
+   "kind": "verse",
+   "text": "Only the infinite opening wide",
+   "repeatIndex": 0,
+   "t0": 68.34,
+   "t1": 71.92,
+   "words": [
+    {
+     "word": "Only",
+     "t0": 68.34,
+     "t1": 68.83
+    },
+    {
+     "word": "the",
+     "t0": 68.83,
+     "t1": 69.19
+    },
+    {
+     "word": "infinite",
+     "t0": 69.19,
+     "t1": 70.17
+    },
+    {
+     "word": "opening",
+     "t0": 70.17,
+     "t1": 71.03
+    },
+    {
+     "word": "wide",
+     "t0": 71.03,
+     "t1": 71.52
+    }
+   ]
+  },
+  {
+   "section": "verse-5",
+   "kind": "verse",
+   "text": "Aiya no reya, ancestors behind us",
+   "repeatIndex": 0,
+   "t0": 71.92,
+   "t1": 75.84,
+   "words": [
+    {
+     "word": "Aiya",
+     "t0": 71.92,
+     "t1": 72.469,
+     "guessed": true
+    },
+    {
+     "word": "no",
+     "t0": 72.469,
+     "t1": 72.744,
+     "guessed": true
+    },
+    {
+     "word": "reya,",
+     "t0": 72.744,
+     "t1": 73.294,
+     "guessed": true
+    },
+    {
+     "word": "ancestors",
+     "t0": 73.294,
+     "t1": 74.53,
+     "guessed": true
+    },
+    {
+     "word": "behind",
+     "t0": 74.53,
+     "t1": 75.22
+    },
+    {
+     "word": "us",
+     "t0": 75.22,
+     "t1": 75.45
+    }
+   ]
+  },
+  {
+   "section": "verse-5",
+   "kind": "verse",
+   "text": "Aiya no reya, the unborn beside",
+   "repeatIndex": 0,
+   "t0": 77.52,
+   "t1": 78.95,
+   "words": [
+    {
+     "word": "Aiya",
+     "t0": 77.52,
+     "t1": 78.22
+    },
+    {
+     "word": "no",
+     "t0": 78.22,
+     "t1": 78.34,
+     "guessed": true
+    },
+    {
+     "word": "reya,",
+     "t0": 78.34,
+     "t1": 78.46,
+     "guessed": true
+    },
+    {
+     "word": "the",
+     "t0": 78.22,
+     "t1": 78.64
+    },
+    {
+     "word": "unborn",
+     "t0": 78.64,
+     "t1": 78.795,
+     "guessed": true
+    },
+    {
+     "word": "beside",
+     "t0": 78.795,
+     "t1": 78.95,
+     "guessed": true
+    }
+   ]
+  },
+  {
+   "section": "verse-5",
+   "kind": "verse",
+   "text": "We are the doorway, the dream, and the witness",
+   "repeatIndex": 0,
+   "t0": 81.57,
+   "t1": 84.87,
+   "words": [
+    {
+     "word": "We",
+     "t0": 81.57,
+     "t1": 81.74
+    },
+    {
+     "word": "are",
+     "t0": 81.74,
+     "t1": 82
+    },
+    {
+     "word": "the",
+     "t0": 82,
+     "t1": 82.26
+    },
+    {
+     "word": "doorway,",
+     "t0": 82.26,
+     "t1": 83.04
+    },
+    {
+     "word": "the",
+     "t0": 83.04,
+     "t1": 83.3
+    },
+    {
+     "word": "dream,",
+     "t0": 83.3,
+     "t1": 83.74
+    },
+    {
+     "word": "and",
+     "t0": 83.74,
+     "t1": 84
+    },
+    {
+     "word": "the",
+     "t0": 84,
+     "t1": 84.26
+    },
+    {
+     "word": "witness",
+     "t0": 84.26,
+     "t1": 84.87
+    }
+   ]
+  },
+  {
+   "section": "verse-5",
+   "kind": "verse",
+   "text": "We are the darkness remembering dawn",
+   "repeatIndex": 0,
+   "t0": 85.6,
+   "t1": 90.2,
+   "words": [
+    {
+     "word": "We",
+     "t0": 85.6,
+     "t1": 85.87
+    },
+    {
+     "word": "are",
+     "t0": 85.87,
+     "t1": 86.27
+    },
+    {
+     "word": "the",
+     "t0": 86.27,
+     "t1": 86.67
+    },
+    {
+     "word": "darkness",
+     "t0": 86.67,
+     "t1": 87.75
+    },
+    {
+     "word": "remembering",
+     "t0": 87.75,
+     "t1": 89.23
+    },
+    {
+     "word": "dawn",
+     "t0": 89.23,
+     "t1": 89.77
+    }
+   ]
+  },
+  {
+   "section": "verse-6",
+   "kind": "verse",
+   "text": "Carry me over the veil of the ninth moon",
+   "repeatIndex": 0,
+   "t0": 91.14,
+   "t1": 95.05,
+   "words": [
+    {
+     "word": "Carry",
+     "t0": 91.14,
+     "t1": 91.3
+    },
+    {
+     "word": "me",
+     "t0": 91.3,
+     "t1": 91.58
+    },
+    {
+     "word": "over",
+     "t0": 91.58,
+     "t1": 92.13
+    },
+    {
+     "word": "the",
+     "t0": 92.13,
+     "t1": 92.55
+    },
+    {
+     "word": "veil",
+     "t0": 92.55,
+     "t1": 93.09
+    },
+    {
+     "word": "of",
+     "t0": 93.09,
+     "t1": 93.38
+    },
+    {
+     "word": "the",
+     "t0": 93.38,
+     "t1": 93.8
+    },
+    {
+     "word": "ninth",
+     "t0": 93.8,
+     "t1": 94.49
+    },
+    {
+     "word": "moon",
+     "t0": 94.49,
+     "t1": 95.05
+    }
+   ]
+  },
+  {
+   "section": "verse-6",
+   "kind": "verse",
+   "text": "Out where the lost constellations are born",
+   "repeatIndex": 0,
+   "t0": 95.8,
+   "t1": 99.52,
+   "words": [
+    {
+     "word": "Out",
+     "t0": 95.8,
+     "t1": 96.08
+    },
+    {
+     "word": "where",
+     "t0": 96.08,
+     "t1": 96.55
+    },
+    {
+     "word": "the",
+     "t0": 96.55,
+     "t1": 96.83
+    },
+    {
+     "word": "lost",
+     "t0": 96.83,
+     "t1": 97.21
+    },
+    {
+     "word": "constellations",
+     "t0": 97.21,
+     "t1": 98.53
+    },
+    {
+     "word": "are",
+     "t0": 98.53,
+     "t1": 98.81
+    },
+    {
+     "word": "born",
+     "t0": 98.81,
+     "t1": 99.19
+    }
+   ]
+  },
+  {
+   "section": "verse-6",
+   "kind": "verse",
+   "text": "Aiya, aiya, the shadows awaken",
+   "repeatIndex": 0,
+   "t0": 99.84,
+   "t1": 102.917,
+   "words": [
+    {
+     "word": "Aiya,",
+     "t0": 99.84,
+     "t1": 100.37
+    },
+    {
+     "word": "aiya,",
+     "t0": 100.37,
+     "t1": 100.9
+    },
+    {
+     "word": "the",
+     "t0": 100.9,
+     "t1": 101.22
+    },
+    {
+     "word": "shadows",
+     "t0": 101.22,
+     "t1": 101.98
+    },
+    {
+     "word": "awaken",
+     "t0": 101.98,
+     "t1": 102.917,
+     "guessed": true
+    }
+   ]
+  },
+  {
+   "section": "verse-6",
+   "kind": "verse",
+   "text": "Singing the language we knew before form",
+   "repeatIndex": 0,
+   "t0": 103.7,
+   "t1": 107.7,
+   "words": [
+    {
+     "word": "Singing",
+     "t0": 103.7,
+     "t1": 104.52
+    },
+    {
+     "word": "the",
+     "t0": 104.52,
+     "t1": 104.87
+    },
+    {
+     "word": "language",
+     "t0": 104.87,
+     "t1": 105.82
+    },
+    {
+     "word": "we",
+     "t0": 105.82,
+     "t1": 106.05
+    },
+    {
+     "word": "knew",
+     "t0": 106.05,
+     "t1": 106.51
+    },
+    {
+     "word": "before",
+     "t0": 106.51,
+     "t1": 107.23
+    },
+    {
+     "word": "form",
+     "t0": 107.23,
+     "t1": 107.7
+    }
+   ]
+  },
+  {
+   "section": "verse-6",
+   "kind": "verse",
+   "text": "When I become only breath in the starlight",
+   "repeatIndex": 0,
+   "t0": 108.4,
+   "t1": 111.71,
+   "words": [
+    {
+     "word": "When",
+     "t0": 108.4,
+     "t1": 108.78
+    },
+    {
+     "word": "I",
+     "t0": 108.78,
+     "t1": 108.9
+    },
+    {
+     "word": "become",
+     "t0": 108.87,
+     "t1": 109.44
+    },
+    {
+     "word": "only",
+     "t0": 109.44,
+     "t1": 109.82
+    },
+    {
+     "word": "breath",
+     "t0": 109.82,
+     "t1": 110.39
+    },
+    {
+     "word": "in",
+     "t0": 110.39,
+     "t1": 110.58
+    },
+    {
+     "word": "the",
+     "t0": 110.58,
+     "t1": 110.86
+    },
+    {
+     "word": "starlight",
+     "t0": 110.86,
+     "t1": 111.71
+    }
+   ]
+  },
+  {
+   "section": "verse-6",
+   "kind": "verse",
+   "text": "Follow the echo; together, return",
+   "repeatIndex": 0,
+   "t0": 112.49,
+   "t1": 117.04,
+   "words": [
+    {
+     "word": "Follow",
+     "t0": 112.49,
+     "t1": 113.39
+    },
+    {
+     "word": "the",
+     "t0": 113.39,
+     "t1": 113.83
+    },
+    {
+     "word": "echo;",
+     "t0": 113.83,
+     "t1": 114.44
+    },
+    {
+     "word": "together,",
+     "t0": 114.44,
+     "t1": 115.64
+    },
+    {
+     "word": "return",
+     "t0": 115.64,
+     "t1": 116.55
+    }
+   ]
+  },
+  {
+   "section": "verse-7",
+   "kind": "verse",
+   "text": "Morning descends on the towers like water",
+   "repeatIndex": 0,
+   "t0": 118.42,
+   "t1": 121.54,
+   "words": [
+    {
+     "word": "Morning",
+     "t0": 118.42,
+     "t1": 118.54
+    },
+    {
+     "word": "descends",
+     "t0": 118.42,
+     "t1": 118.98
+    },
+    {
+     "word": "on",
+     "t0": 118.98,
+     "t1": 119.2
+    },
+    {
+     "word": "the",
+     "t0": 119.2,
+     "t1": 119.52
+    },
+    {
+     "word": "towers",
+     "t0": 119.52,
+     "t1": 120.17
+    },
+    {
+     "word": "like",
+     "t0": 120.17,
+     "t1": 120.6
+    },
+    {
+     "word": "water",
+     "t0": 120.6,
+     "t1": 121.14
+    }
+   ]
+  },
+  {
+   "section": "verse-7",
+   "kind": "verse",
+   "text": "Night folds her wings at eternity's shore",
+   "repeatIndex": 0,
+   "t0": 121.76,
+   "t1": 124.58,
+   "words": [
+    {
+     "word": "Night",
+     "t0": 121.76,
+     "t1": 122.14
+    },
+    {
+     "word": "folds",
+     "t0": 122.14,
+     "t1": 122.52
+    },
+    {
+     "word": "her",
+     "t0": 122.52,
+     "t1": 122.75
+    },
+    {
+     "word": "wings",
+     "t0": 122.75,
+     "t1": 123.13
+    },
+    {
+     "word": "at",
+     "t0": 123.13,
+     "t1": 123.28
+    },
+    {
+     "word": "eternity's",
+     "t0": 123.28,
+     "t1": 123.9
+    },
+    {
+     "word": "shore",
+     "t0": 123.9,
+     "t1": 124.28
+    }
+   ]
+  },
+  {
+   "section": "verse-7",
+   "kind": "verse",
+   "text": "I speak your true name, and silence grows golden",
+   "repeatIndex": 0,
+   "t0": 124.77,
+   "t1": 127.56,
+   "words": [
+    {
+     "word": "I",
+     "t0": 124.77,
+     "t1": 124.89
+    },
+    {
+     "word": "speak",
+     "t0": 124.83,
+     "t1": 125.17
+    },
+    {
+     "word": "your",
+     "t0": 125.17,
+     "t1": 125.44
+    },
+    {
+     "word": "true",
+     "t0": 125.44,
+     "t1": 125.71
+    },
+    {
+     "word": "name,",
+     "t0": 125.71,
+     "t1": 125.98
+    },
+    {
+     "word": "and",
+     "t0": 125.98,
+     "t1": 126.18
+    },
+    {
+     "word": "silence",
+     "t0": 126.18,
+     "t1": 126.66
+    },
+    {
+     "word": "grows",
+     "t0": 126.66,
+     "t1": 127
+    },
+    {
+     "word": "golden",
+     "t0": 127,
+     "t1": 127.27
+    }
+   ]
+  },
+  {
+   "section": "verse-7",
+   "kind": "verse",
+   "text": "The gate closes softly",
+   "repeatIndex": 0,
+   "t0": 128.22,
+   "t1": 130.72,
+   "words": [
+    {
+     "word": "The",
+     "t0": 128.22,
+     "t1": 128.55
+    },
+    {
+     "word": "gate",
+     "t0": 128.55,
+     "t1": 129
+    },
+    {
+     "word": "closes",
+     "t0": 129,
+     "t1": 129.67
+    },
+    {
+     "word": "softly",
+     "t0": 129.67,
+     "t1": 130.34
+    }
+   ]
+  },
+  {
+   "section": "verse-7",
+   "kind": "verse",
+   "text": "We wander no more",
+   "repeatIndex": 0,
+   "t0": 131.15,
+   "t1": 133.18,
+   "words": [
+    {
+     "word": "We",
+     "t0": 131.15,
+     "t1": 131.44
+    },
+    {
+     "word": "wander",
+     "t0": 131.44,
+     "t1": 132.31
+    },
+    {
+     "word": "no",
+     "t0": 132.31,
+     "t1": 132.6
+    },
+    {
+     "word": "more",
+     "t0": 132.6,
+     "t1": 133.18
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,176 @@
+{
+ "title": "Veil of the Ninth Moon",
+ "artist": "MaxMusic",
+ "footer": "github.com/atomtanstudio/maxmusic",
+ "note": "Directed automatically (film) — profile bpm 75.5, motion 0.47, world sanctum. Hand-author a sheet to overrule.",
+ "cover": "/covers/8a67c9ff238fbe7bf3d3.png",
+ "style": {
+  "world": "sanctum",
+  "crack": false,
+  "chorusInvert": false,
+  "display": "Didot",
+  "displayWeight": 700,
+  "text": "Baskerville",
+  "textWeightNormal": 400,
+  "textWeightEmph": 700,
+  "ink": "#EAE6DA",
+  "dim": "#77715F",
+  "titleAccent": "#D9A85C",
+  "verseAccents": [
+   "#C9CFDA",
+   "#AEB8CC",
+   "#D9A85C",
+   "#BFC6D4"
+  ],
+  "chorusAccents": [
+   "#D3D9E4"
+  ],
+  "textCenterY": 0.42,
+  "plateMaxH": 0.5,
+  "motion": 0.47,
+  "tail": 3
+ },
+ "sections": [
+  {
+   "id": "verse-1",
+   "kind": "verse",
+   "lines": [
+    {
+     "text": "Aiya no reya, aiya no rei"
+    },
+    {
+     "text": "Wake, silver fire, beneath the sleeping sky"
+    }
+   ]
+  },
+  {
+   "id": "verse-2",
+   "kind": "verse",
+   "lines": [
+    {
+     "text": "Open the gate in the heart of the night"
+    },
+    {
+     "text": "Name me in thunder, remake me in light"
+    }
+   ]
+  },
+  {
+   "id": "verse-3",
+   "kind": "verse",
+   "lines": [
+    {
+     "text": "Carry me over the veil of the ninth moon"
+    },
+    {
+     "text": "Out where the lost constellations are born"
+    },
+    {
+     "text": "Aiya, aiya, the shadows awaken"
+    },
+    {
+     "text": "Singing the language we knew before form"
+    },
+    {
+     "text": "If I become only breath in the starlight"
+    },
+    {
+     "text": "Hold to the echo and I will return"
+    }
+   ]
+  },
+  {
+   "id": "verse-4",
+   "kind": "verse",
+   "lines": [
+    {
+     "text": "Your hand was a flame on the edge of the void"
+    },
+    {
+     "text": "A vow no machine and no god could destroy"
+    },
+    {
+     "text": "We crossed through the temple of luminous dust"
+    },
+    {
+     "text": "Past angels of iron surrendering rust"
+    },
+    {
+     "text": "The future bent low like a wave at our feet"
+    },
+    {
+     "text": "And every dead planet began its heartbeat"
+    }
+   ]
+  },
+  {
+   "id": "verse-5",
+   "kind": "verse",
+   "lines": [
+    {
+     "text": "No crown, no kingdom, no body to bind us"
+    },
+    {
+     "text": "Only the infinite opening wide"
+    },
+    {
+     "text": "Aiya no reya, ancestors behind us"
+    },
+    {
+     "text": "Aiya no reya, the unborn beside"
+    },
+    {
+     "text": "We are the doorway, the dream, and the witness"
+    },
+    {
+     "text": "We are the darkness remembering dawn"
+    }
+   ]
+  },
+  {
+   "id": "verse-6",
+   "kind": "verse",
+   "lines": [
+    {
+     "text": "Carry me over the veil of the ninth moon"
+    },
+    {
+     "text": "Out where the lost constellations are born"
+    },
+    {
+     "text": "Aiya, aiya, the shadows awaken"
+    },
+    {
+     "text": "Singing the language we knew before form"
+    },
+    {
+     "text": "When I become only breath in the starlight"
+    },
+    {
+     "text": "Follow the echo; together, return"
+    }
+   ]
+  },
+  {
+   "id": "verse-7",
+   "kind": "verse",
+   "lines": [
+    {
+     "text": "Morning descends on the towers like water"
+    },
+    {
+     "text": "Night folds her wings at eternity's shore"
+    },
+    {
+     "text": "I speak your true name, and silence grows golden"
+    },
+    {
+     "text": "The gate closes softly"
+    },
+    {
+     "text": "We wander no more"
+    }
+   ]
+  }
+ ]
+}
