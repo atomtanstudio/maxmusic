@@ -21,6 +21,7 @@
 
 import { downloadAudio, makeLyricVideo, downloadVideo } from '../studio-actions.js';
 import { redoCoverArt } from '../cover-redo.js';
+import { renameSong } from '../rename.js';
 import { pacedPrompt, planSong, wordsFor } from '../pacing.js';
 
 export const meta = {
@@ -1019,6 +1020,19 @@ export function mount(root, ctx) {
             onSelect: () => downloadVideo(ctx, { videos: [v] }, v.mode),
           })),
           { label: 'Redo the cover art', icon: 'wand', onSelect: () => redoCoverArt(ctx, rec) },
+          {
+            label: 'Rename song or artist',
+            icon: 'pencil',
+            // The ledger is where a name lives, and this list keeps its own
+            // copy of a song, so the rename is written through to both.
+            onSelect: () => renameSong(ctx, rec, {
+              onDone: ({ title, artist }) => {
+                const mine = history.find((r) => String(r.id) === String(rec.id));
+                if (mine) { mine.title = title; mine.artist = artist; persistHistory(); }
+                paintWorkspace();
+              },
+            }),
+          },
           { label: 'Start a new song from this', icon: 'wand', onSelect: () => reuse(rec) },
           { separator: true },
           {
@@ -1796,6 +1810,10 @@ export function mount(root, ctx) {
         const rec = normalise({
           ...t,
           title: state.song?.title || titleFromIdea(idea),
+          // Simple mode has no artist field and is not getting one — but if
+          // there is a name in Settings, songs made here should be credited to
+          // it rather than arriving anonymous and being renamed one at a time.
+          artist: String((ctx.storage.get('defaults', null) || {}).artist || '').trim(),
           prompt: state.facts.prompt,
           idea,
           lyrics: state.facts.instrumental ? '' : (state.song?.lyrics || ''),

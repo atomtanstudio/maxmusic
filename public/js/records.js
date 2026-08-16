@@ -50,6 +50,10 @@ export function toRecord(payload) {
     filename,
     size: Number(track.size ?? m.size) || 0,
     title: String(m.title || '').trim() || titleFromPrompt(prompt) || 'Untitled song',
+    // Empty is a real answer — a song may simply be uncredited, and nothing
+    // substitutes a house name in. It is carried here so that renaming a song
+    // sticks: every field this function forgets is deleted on the next read.
+    artist: String(m.artist || '').trim(),
     prompt,
     lyrics: String(m.lyrics ?? ''),
     isInstrumental: Boolean(m.isInstrumental ?? m.is_instrumental),

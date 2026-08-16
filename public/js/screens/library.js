@@ -33,6 +33,7 @@
 import { toRecord, coerce, loadRecords, saveRecords } from '../records.js';
 import { downloadAudio, makeLyricVideo, downloadVideo } from '../studio-actions.js';
 import { redoCoverArt } from '../cover-redo.js';
+import { renameSong } from '../rename.js';
 
 export const meta = {
   title: 'Library',
@@ -754,6 +755,7 @@ export function mount(root, ctx) {
     const hasLyrics = Boolean(record.lyrics) && !record.isInstrumental;
     return [
       { label: 'Song details', icon: 'info', onSelect: () => openSheet(record.id, null) },
+      { label: 'Rename song or artist', icon: 'pencil', onSelect: () => renameSong(ctx, record) },
       { separator: true },
       { label: 'Download FLAC', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(ctx, record, 'flac') },
       { label: 'Download MP3', icon: 'wave', disabled: !record.url, onSelect: () => downloadAudio(ctx, record, 'mp3') },
