@@ -821,3 +821,66 @@
   .is-playing .cover__eq i,
   .is-flagged { animation: none; }
 }
+
+/* ---------------------------------------------------------- selecting --- */
+/* Choosing several songs at once. The tick sits over the top-left corner of
+   the artwork, where a cover has nothing worth covering, and the same
+   treatment works for a row because a row shows its cover in the same place. */
+.screen-library .lib-select-toggle { margin-left: var(--space-3); }
+.screen-library .lib-select-toggle.is-active {
+  background: var(--surface-4);
+  color: var(--text-hi);
+}
+
+.screen-library .lib-selbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-lg);
+}
+.screen-library .lib-selbar__count {
+  font-size: var(--fs-sm);
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+}
+.screen-library .lib-selbar__spacer { flex: 1 1 auto; }
+.screen-library .lib-selbar__delete {
+  background: var(--danger, #f04060);
+  border-color: transparent;
+  color: #fff;
+}
+.screen-library .lib-selbar__delete[disabled] { opacity: .45; cursor: not-allowed; }
+
+.screen-library .lib-tick {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm, 6px);
+  background: rgba(6, 8, 12, 0.66);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.screen-library .lib-tick__box { margin: 0; width: 15px; height: 15px; accent-color: var(--text-hi); }
+/* The row's cover is the positioning context in list view; the card's art is
+   in grid view. Both need to be relative for the tick to land on the artwork. */
+.screen-library .lib-row { position: relative; }
+.screen-library .lib-card__art { position: relative; }
+
+.screen-library .lib-row.is-picked,
+.screen-library .lib-card.is-picked {
+  outline: 2px solid var(--text-hi);
+  outline-offset: -2px;
+  border-radius: var(--r-lg);
+}

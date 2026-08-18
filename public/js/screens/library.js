@@ -34,6 +34,7 @@ import { toRecord, coerce, loadRecords, saveRecords } from '../records.js';
 import { downloadAudio, makeLyricVideo, downloadVideo, hasDisplayableLyrics } from '../studio-actions.js';
 import { redoCoverArt } from '../cover-redo.js';
 import { renameSong } from '../rename.js';
+import { confirmAction } from '../confirm-dialog.js';
 
 export const meta = {
   title: 'Library',
@@ -646,6 +647,80 @@ export function mount(root, ctx) {
     ],
   }));
 
+  /* --------------------------------------------------------- selecting -- *
+   * Choosing several songs at once, the way a file list does it: a plain click
+   * moves the selection, shift extends it from wherever it last was, and the
+   * platform's own modifier adds one without losing the rest. The range runs
+   * over what is on screen, so it follows the sort and the filter rather than
+   * some hidden order underneath them.
+   * ----------------------------------------------------------------------- */
+
+  let selecting = false;
+  /** @type {Set<string>} */
+  const selected = new Set();
+  /** Where a shift-click measures from. */
+  let anchorId = null;
+
+  function selectionExit() {
+    selecting = false;
+    selected.clear();
+    anchorId = null;
+  }
+
+  /** Everything selected, in the order it is shown. */
+  function selectedRecords() {
+    return visible.filter((r) => selected.has(r.id));
+  }
+
+  function selectRange(toId) {
+    const ids = visible.map((r) => r.id);
+    const from = ids.indexOf(anchorId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) { selected.add(toId); return; }
+    const [lo, hi] = from <= to ? [from, to] : [to, from];
+    for (let i = lo; i <= hi; i += 1) selected.add(ids[i]);
+  }
+
+  /** One click on a song while selecting. */
+  function selectClick(id, event) {
+    const additive = event.metaKey || event.ctrlKey;
+    if (event.shiftKey && anchorId) {
+      selectRange(id);
+    } else if (additive) {
+      if (selected.has(id)) selected.delete(id); else selected.add(id);
+      anchorId = id;
+    } else {
+      // A plain click on the only selected song clears it, so there is a way
+      // out that does not need the toolbar.
+      const only = selected.size === 1 && selected.has(id);
+      selected.clear();
+      if (!only) selected.add(id);
+      anchorId = only ? null : id;
+    }
+    render();
+  }
+
+  async function deleteSelected() {
+    const chosen = selectedRecords();
+    if (!chosen.length) return;
+    const ok = await confirmAction({
+      title: chosen.length === 1 ? 'Delete this song?' : `Delete ${chosen.length} songs?`,
+      body: 'They are removed from your library on every device it syncs with. This cannot be undone.',
+      items: chosen.map((r) => r.title || 'Untitled'),
+      confirm: chosen.length === 1 ? 'Delete song' : `Delete ${chosen.length} songs`,
+      cancel: 'Keep them',
+    });
+    if (!ok) return;
+    const gone = new Set(chosen.map((r) => r.id));
+    if (openSheetId && gone.has(openSheetId)) closeSheet();
+    selectionExit();
+    persist(records.filter((r) => !gone.has(r.id)), { allowEmpty: true });
+    ctx.toast(
+      chosen.length === 1 ? `Deleted “${chosen[0].title}”.` : `Deleted ${chosen.length} songs.`,
+      { kind: 'info', title: 'Deleted', timeout: 6000 },
+    );
+  }
+
   /* ------------------------------------------------------- header slot -- */
 
   const headerTools = document.createElement('div');
@@ -658,10 +733,16 @@ export function mount(root, ctx) {
       <button class="segment__item" type="button" data-view="grid" title="Grid view">
         ${ctx.iconMarkup('art')}<span class="lib-view__label">Grid</span>
       </button>
-    </div>`;
+    </div>
+    <button class="btn btn--ghost lib-select-toggle" type="button" data-role="select-toggle">Select</button>`;
   ctx.headerSlot.append(headerTools);
 
   headerTools.addEventListener('click', (e) => {
+    if (e.target.closest('[data-role="select-toggle"]')) {
+      if (selecting) selectionExit(); else selecting = true;
+      render();
+      return;
+    }
     const view = e.target.closest('[data-view]');
     if (!view) return;
     prefs.view = view.dataset.view;
@@ -686,6 +767,12 @@ export function mount(root, ctx) {
     }
     searchClear.hidden = !query;
 
+    const toggle = headerTools.querySelector('[data-role="select-toggle"]');
+    if (toggle) {
+      toggle.textContent = selecting ? 'Done' : 'Select';
+      toggle.classList.toggle('is-active', selecting);
+    }
+
     /* A count is only worth screen space when it is telling you something you
        did not already know: that a filter is hiding things. */
     const filtered = records.length > 0 && visible.length !== records.length;
@@ -693,6 +780,35 @@ export function mount(root, ctx) {
     if (filtered) {
       statsLine.textContent = `${visible.length} of ${records.length} songs`;
     }
+  }
+
+  /** The bar that says how many are chosen and offers the only destructive act. */
+  function selectBarMarkup() {
+    if (!selecting) return '';
+    const n = selected.size;
+    const all = n > 0 && n === visible.length;
+    return `<div class="lib-selbar" role="toolbar" aria-label="Selected songs">
+      <span class="lib-selbar__count">${n === 0 ? 'Nothing selected' : `${n} selected`}</span>
+      <span class="lib-selbar__spacer"></span>
+      <button class="btn btn--ghost" type="button" data-sel="all">${all ? 'Select none' : 'Select all'}</button>
+      <button class="btn lib-selbar__delete" type="button" data-sel="delete" ${n ? '' : 'disabled'}>
+        ${n > 1 ? `Delete ${n}` : 'Delete'}
+      </button>
+    </div>`;
+  }
+
+  /**
+   * The tick that appears on a song while selecting. It is a real checkbox so
+   * the state is announced, and it sits over the top-left of the artwork where
+   * it covers nothing worth seeing.
+   */
+  function tickMarkup(record) {
+    if (!selecting) return '';
+    const on = selected.has(record.id);
+    return `<span class="lib-tick">
+      <input class="lib-tick__box" type="checkbox" tabindex="-1" ${on ? 'checked' : ''}
+        aria-label="Select ${esc(record.title)}">
+    </span>`;
   }
 
   /** Cover block shared by both views. */
@@ -828,7 +944,8 @@ export function mount(root, ctx) {
   }
 
   function rowMarkup(record) {
-    return `<li class="lib-row" data-id="${esc(record.id)}" tabindex="0">
+    return `<li class="lib-row${selecting && selected.has(record.id) ? ' is-picked' : ''}" data-id="${esc(record.id)}" tabindex="0">
+      ${tickMarkup(record)}
       ${coverMarkup(record)}
       <div class="lib-row__main">
         <p class="lib-row__title"><span class="lib-row__name truncate">${esc(record.title)}</span>${badgesMarkup(record)}</p>
@@ -843,8 +960,9 @@ export function mount(root, ctx) {
 
   function cardMarkup(record) {
     const canPlay = Boolean(record.url);
-    return `<li class="lib-card" data-id="${esc(record.id)}" tabindex="0">
+    return `<li class="lib-card${selecting && selected.has(record.id) ? ' is-picked' : ''}" data-id="${esc(record.id)}" tabindex="0">
       <span class="lib-card__art">
+        ${tickMarkup(record)}
         ${coverMarkup(record)}
         <span class="actionbar lib-card__actions">
           <button class="actionchip actionchip--lg" type="button" data-act="play"
@@ -1004,7 +1122,8 @@ export function mount(root, ctx) {
     }
 
     const grid = prefs.view === 'grid';
-    body.innerHTML = `<ul class="${grid ? 'lib-grid' : 'lib-list'}" role="list">`
+    body.innerHTML = selectBarMarkup()
+      + `<ul class="${grid ? 'lib-grid' : 'lib-list'}" role="list">`
       + visible.map(grid ? cardMarkup : rowMarkup).join('')
       + '</ul>'
       + tailMarkup();
@@ -1453,6 +1572,16 @@ export function mount(root, ctx) {
   });
 
   body.addEventListener('click', (e) => {
+    const sel = e.target.closest('[data-sel]');
+    if (sel) {
+      if (sel.dataset.sel === 'delete') { deleteSelected(); return; }
+      if (selected.size === visible.length) selected.clear();
+      else for (const r of visible) selected.add(r.id);
+      anchorId = null;
+      render();
+      return;
+    }
+
     const action = e.target.closest('[data-action]');
     if (action) {
       const kind = action.dataset.action;
@@ -1471,6 +1600,13 @@ export function mount(root, ctx) {
 
     const item = e.target.closest('[data-id]');
     if (!item) return;
+
+    // While selecting, a song is something to choose, not something to open.
+    if (selecting) {
+      e.preventDefault();
+      selectClick(item.dataset.id, e);
+      return;
+    }
     const record = recordById(item.dataset.id);
     if (!record) return;
 
