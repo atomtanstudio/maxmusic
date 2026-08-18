@@ -392,7 +392,6 @@ function template(iconMarkup) {
       ${capCard('music', 'wave', 'Music generation', 'create')}
       ${capCard('lyrics', 'mic', 'Lyrics', 'lyrics')}
       ${capCard('cover', 'art', 'Cover art', 'art')}
-      ${capCard('key', 'lock', 'Server API key', '')}
     </div>
   </section>
 
@@ -647,9 +646,9 @@ export function mount(root, ctx) {
     paintDiagSummary(h);
     const offline = h.status === 'offline';
     const degraded = h.status === 'degraded';
-    // Only claim a remote backend when the health call actually told us so —
-    // an offline snapshot reports `backend: 'unreachable'`, which is not an answer.
-    const remote = !offline && h.backend !== 'local-comfy';
+    // The model runs on this hardware. There is no hosted service behind it,
+    // and the engine node names whichever runtime answered.
+    const engineHost = h.comfyUrl ? hostOf(h.comfyUrl) : '';
     /** The API error kind tells us which hop broke: 0 = never reached this app. */
     const errStatus = h.error ? h.error.status : null;
     const proxyDead = offline && errStatus === 0;
@@ -674,24 +673,22 @@ export function mount(root, ctx) {
       offline ? (h.error && h.error.status ? `HTTP ${h.error.status}` : 'no response') : h.backend,
       offline ? (proxyDead ? 'not reached' : 'refused the request') : 'answering /api/health');
 
-    const engineName = offline ? 'Music engine' : (remote ? 'MiniMax API' : 'ComfyUI');
+    const engineName = offline
+      ? 'Music engine'
+      : (h.backend === 'comfy-worker' ? 'ComfyUI' : h.backend === 'diffusers-worker' ? 'Model worker' : 'Music engine');
     node('engine').querySelector('[data-name]').textContent = engineName;
     if (offline) {
-      // The backend never answered, so which engine it uses is genuinely unknown.
+      // Nothing answered, so which engine is behind it is genuinely unknown.
       paintNode('engine', 'unknown', 'not reported', 'not reached');
-    } else if (remote) {
-      paintNode('engine', h.ok ? 'ok' : 'fail',
-        (h.raw && h.raw.apiBase) ? hostOf(h.raw.apiBase) : 'remote',
-        h.ok ? 'reported ready' : 'not ready');
     } else {
       paintNode('engine', h.comfyReachable ? 'ok' : 'fail',
-        h.comfyUrl ? hostOf(h.comfyUrl) : 'no COMFY_URL reported',
+        engineHost || 'on this machine',
         h.comfyReachable ? 'reachable' : (h.comfyError || 'unreachable'));
     }
 
     paintLink(1, proxyDead ? 'fail' : 'ok');
     paintLink(2, proxyDead ? 'unknown' : (offline ? 'fail' : 'ok'));
-    paintLink(3, offline ? 'unknown' : (remote ? (h.ok ? 'ok' : 'fail') : (h.comfyReachable ? 'ok' : 'fail')));
+    paintLink(3, offline ? 'unknown' : (h.comfyReachable ? 'ok' : 'fail'));
 
     /* --- verdict --------------------------------------------------------- */
     if (offline) {
@@ -699,12 +696,10 @@ export function mount(root, ctx) {
         `${h.message}\nThe API did not answer, so every screen that talks to the backend will fail. Check that the MaxMusic backend is running and that this app can proxy to it.`);
     } else if (degraded) {
       paintVerdict('warn', 'Generation will fail until the engine answers',
-        remote
-          ? h.message
-          : `${h.comfyError || h.message}\nMaxMusic reaches the backend, but the backend cannot reach ComfyUI at ${h.comfyUrl || 'the configured COMFY_URL'}. Start ComfyUI on that host, or point COMFY_URL at the right one.`);
+        `${h.comfyError || h.message}\nThe app is running, but the model worker is not answering${engineHost ? ` at ${engineHost}` : ''}. Start it, or point WORKER_URL at the machine that has it.`);
     } else {
       paintVerdict('ok', 'Ready to generate',
-        `${h.backend} is up and ${remote ? 'the API reports ready' : `ComfyUI answers at ${hostOf(h.comfyUrl) || 'the configured COMFY_URL'}`}. Vocal songs still need lyrics — the backend will not write them, so use Lyrics first.`);
+        `${h.backend} is up${engineHost ? ` and answering at ${engineHost}` : ''}. A song with vocals needs words first — write them in Studio, or let the lyric writer do it.`);
     }
 
     /* --- capabilities ---------------------------------------------------- */
@@ -716,9 +711,7 @@ export function mount(root, ctx) {
             state: 'ok',
             badge: 'Ready',
             value: h.backend,
-            note: remote
-              ? 'Generation runs on the MiniMax API.'
-              : `Generation runs on your own ComfyUI at ${h.comfyUrl || 'the configured COMFY_URL'}.`,
+            note: `Generation runs on your own hardware${engineHost ? `, through ${engineName} at ${engineHost}` : ''}.`,
           });
 
     // A sign-in that was found but cannot be used is worth saying out loud: a
@@ -742,14 +735,6 @@ export function mount(root, ctx) {
       : h.coverArtEnabled
         ? { state: 'ok', badge: 'Available', value: h.coverArtProvider, note: `Ready to make album art for any of your songs. Start on the Art screen.${accountNote}` }
         : { state: 'warn', badge: 'Disabled', value: h.coverArtProvider, note: `Cover art is off. Set OPENAI_API_KEY, or COVER_URL to anything speaking the OpenAI images API. Songs, lyric videos and visualizers all work without it.${accountNote}` });
-
-    paintCap('key', offline
-      ? { state: 'fail', badge: 'Unknown', value: '—', note: 'The backend did not answer.' }
-      : h.hasServerKey
-        ? { state: 'ok', badge: 'Present', value: 'server key set', note: 'The server holds its own MiniMax key, so this browser never sends one.' }
-        : remote
-          ? { state: 'warn', badge: 'Missing', value: 'none', note: 'The remote backend has no MINIMAX_API_KEY. Requests to the MiniMax API will be rejected until one is set on the server.' }
-          : { state: 'info', badge: 'Not needed', value: 'none', note: 'local-comfy renders on your own hardware. A MiniMax API key is only used by the remote backend.' });
 
     /* --- models + raw ---------------------------------------------------- */
     paintModels(h);
@@ -1043,7 +1028,6 @@ export function mount(root, ctx) {
       row('models', h && h.modelKeys.length ? h.modelKeys.join(', ') : '—'),
       row('lyrics', h ? h.lyricsProvider : '—'),
       row('cover art', h ? h.coverArtProvider : '—'),
-      row('server key', h ? String(h.hasServerKey) : '—'),
       row('openai account', h?.raw?.openaiAccount
         ? `${h.raw.openaiAccount.mode}${h.raw.openaiAccount.usable ? '' : ' (not usable)'}`
         : '—'),
