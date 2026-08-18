@@ -356,7 +356,11 @@
   overflow-wrap: anywhere;
 }
 
+/* Same reasoning as the length control's "Exact seconds": an 18px-tall link is
+   something you aim at rather than something you press. */
 .screen-settings .set-cap__link {
+  margin: calc(var(--space-2) * -1) 0;
+  padding: var(--space-2) 0;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -565,6 +569,7 @@
 .screen-settings .set-raw[open] .set-raw__chev { transform: rotate(90deg); }
 .screen-settings .set-raw__meta { font-size: var(--fs-2xs); color: var(--text-faint); }
 .screen-settings .set-raw__pre {
+  overflow-x: auto;
   margin: 0;
   padding: var(--space-6);
   border-top: 1px solid var(--border-faint);

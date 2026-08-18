@@ -1152,6 +1152,10 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 }
 .duration-control__exact {
   flex: none;
+  /* The text is small on purpose; the thing you press should not be. Padding
+     and a negative margin give it a 24px target without moving the line. */
+  margin: calc(var(--space-2) * -1) calc(var(--space-2) * -1);
+  padding: var(--space-2);
   color: var(--text-lo);
   font-size: var(--fs-2xs);
   line-height: var(--lh-snug);
