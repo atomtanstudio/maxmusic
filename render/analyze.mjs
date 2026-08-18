@@ -28,7 +28,7 @@ const VIDEO_FPS = 30;
 /** Decode any audio file to mono float32 PCM via ffmpeg. */
 function decode(file) {
   return new Promise((resolve, reject) => {
-    const p = spawn('ffmpeg', [
+    const p = spawn(process.env.MAXMUSIC_FFMPEG || 'ffmpeg', [
       '-v', 'error', '-i', file,
       '-ac', '1', '-ar', String(SR),
       '-f', 'f32le', '-',

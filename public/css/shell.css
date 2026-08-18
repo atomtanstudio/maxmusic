@@ -497,6 +497,23 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.toast__progress {
+  --toast-progress: 0%;
+  height: 3px;
+  margin-top: var(--space-4);
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-hi) 10%, transparent);
+}
+.toast__progress[hidden] { display: none; }
+.toast__progress > span {
+  display: block;
+  width: var(--toast-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--toast-accent);
+  transition: width 900ms var(--ease-out);
+}
 .toast__close {
   color: var(--text-faint);
   align-self: flex-start;
@@ -513,6 +530,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .toast[data-kind="info"]    { --toast-accent: var(--text-mid); }
 .toast[data-kind="info"] .toast__icon { color: var(--text-lo); }
 .toast__actions { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
+.toast__actions[hidden] { display: none; }
 
 @keyframes toast-in  { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { to   { opacity: 0; transform: translateY(6px) scale(.98); } }
@@ -1007,7 +1025,14 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 
 /* --------------------------------------------------------------- range -- */
 .range {
-  --range-fill: 0%;
+  /* A range input's thumb centre does NOT travel the whole track: it runs from
+     half a thumb in to half a thumb short of the far end. Screens therefore
+     hand this control a plain 0-1 position and the geometry is applied once,
+     here, so the painted progress lands under the thumb at every value and a
+     printed scale can use the identical expression. */
+  --range-thumb: 14px;
+  --range-pos: 0;
+  --range-fill: calc((var(--range-thumb) / 2) + (var(--range-pos) * (100% - var(--range-thumb))));
   appearance: none;
   width: 100%;
   height: 20px;
@@ -1029,7 +1054,7 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
 .range::-moz-range-progress { height: 4px; border-radius: var(--r-pill); background: var(--text-hi); }
 .range::-webkit-slider-thumb {
   appearance: none;
-  width: 14px; height: 14px;
+  width: var(--range-thumb); height: var(--range-thumb);
   margin-top: -5px;
   border-radius: var(--r-circle);
   background: var(--text-hi);
@@ -1038,13 +1063,107 @@ img, svg, audio, canvas { display: block; max-width: 100%; }
   transition: transform var(--t-fast);
 }
 .range::-moz-range-thumb {
-  width: 14px; height: 14px; border: 0;
+  width: var(--range-thumb); height: var(--range-thumb); border: 0;
   border-radius: var(--r-circle);
   background: var(--text-hi);
   box-shadow: 0 1px 4px rgba(0,0,0,.6);
 }
 .range:hover::-webkit-slider-thumb { transform: scale(1.15); }
 .range:disabled { opacity: .45; cursor: not-allowed; }
+
+/* -------------------------------------------------------- duration control -- */
+/* A shared half-minute grid used by Create and Studio. The range itself is
+   deliberately quiet; the readout and endpoint scale carry the meaning. */
+.duration-control {
+  --range-thumb: 14px;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  width: 100%;
+}
+/* Ticks and labels are drawn at the position of the length they stand for,
+   using the same thumb-aware expression as the track, so the thumb lands on a
+   tick at every value it can take. Spacing labels evenly instead put 1:00 a
+   fifth of the way along a control where one minute actually sits at a ninth,
+   so every interior label pointed at the wrong place on the slider. */
+.duration-control__ticks {
+  position: relative;
+  height: var(--space-3);
+  /* The `.range` box is 20px around a 4px track, so the track's underside sits
+     8px above it. Close that gap and the flex gap above, so the ticks hang off
+     the track itself rather than floating in the space below it. */
+  margin-top: calc((var(--space-2) * -2) - var(--space-2));
+}
+/* A tick nobody can see is not a tick. The half-minutes are quiet but present;
+   a minute mark is drawn in the same ink as the label under it, so the eye
+   reads the two as one thing. */
+.duration-control__ticks > i {
+  position: absolute;
+  top: var(--space-1);
+  bottom: 0;
+  width: 1px;
+  left: calc((var(--range-thumb) / 2) + (var(--at) * (100% - var(--range-thumb))));
+  transform: translateX(-50%);
+  background: var(--text-lo);
+}
+.duration-control__ticks > i[data-minute] { top: 0; background: var(--text-faint); }
+.duration-control__scale {
+  position: relative;
+  height: var(--fs-2xs);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
+}
+.duration-control__scale > span {
+  position: absolute;
+  bottom: 0;
+  line-height: 1;
+  left: calc((var(--range-thumb) / 2) + (var(--at) * (100% - var(--range-thumb))));
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+/* The end labels sit inside the control rather than half-way off it. */
+.duration-control__scale > span:first-child { transform: none; }
+.duration-control__scale > span:last-child { transform: translateX(-100%); }
+/* Two labels printed over each other say less than one label printed once. */
+@container (max-width: 360px) {
+  .duration-control__scale > span[data-optional] { display: none; }
+}
+.duration-control__value {
+  margin-left: var(--space-3);
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.duration-control__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.duration-control__hint {
+  color: var(--text-lo);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-snug);
+}
+.duration-control__exact {
+  flex: none;
+  color: var(--text-lo);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-snug);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.duration-control__exact:hover { color: var(--text-hi); }
+.duration-control__exact-label {
+  color: var(--text-lo);
+  font-size: var(--fs-2xs);
+}
 
 /* --------------------------------------------------- panels and cards --- */
 .panel {

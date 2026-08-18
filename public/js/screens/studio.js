@@ -13,7 +13,9 @@
  * @module screens/studio
  */
 
-import { DENSITY, wordsFor, secondsFor } from '../pacing.js';
+import { countSungWords, DENSITY, wordsFor, secondsFor } from '../pacing.js';
+import { composeMusic3Caption, requestsInstrumental } from '../music3-caption.js';
+import { durationGridMarkup, durationGridPosition, durationGridValue } from '../duration-control.js';
 
 export const meta = {
   title: 'Studio',
@@ -528,7 +530,7 @@ function template(ctx) {
               <p class="notice__head">
                 <span class="notice__title">A sung track needs words</span>
               </p>
-              <p>Write them here, or let <b>Write for me</b> draft a full set from your
+              <p data-lyric-note>Write them here, or let <b>Write for me</b> draft a full set from your
               description first. Switch to Instrumental if you want no vocals at all.</p>
             </div>
           </div>
@@ -568,7 +570,7 @@ function template(ctx) {
       <section class="panel studio__panel">
         <header class="panel__head studio__head">
           <h3 class="panel__title">${i('panel')}Description</h3>
-          <span class="studio__count mono" data-prompt-count>0 / 2000</span>
+          <span class="studio__count mono" data-prompt-count>0 / 6000</span>
           <div class="spacer"></div>
           <button class="btn btn--sm btn--ghost" type="button" data-copy-prompt>${i('copy')}Copy</button>
         </header>
@@ -610,7 +612,8 @@ function template(ctx) {
                      inputmode="numeric" autocomplete="off" spellcheck="false"
                      aria-label="Track length, minutes and seconds">
             </label>
-            <div class="chiprow" data-duration-presets role="group" aria-label="Track length"></div>
+            ${durationGridMarkup({ ariaLabel: 'Track length in 30-second steps' })}
+            <p class="hint duration-control__hint">Drag in 30-second steps · type an exact length above if needed.</p>
           </div>
 
           <div class="field rack__group">
@@ -745,6 +748,26 @@ export async function mount(root, ctx) {
   const state = stored && typeof stored === 'object'
     ? { ...defaults, ...stored }
     : { ...defaults, ...EXAMPLE };
+
+  // The Simple composer can reach Studio when it needs hand-written lyrics.
+  // Carry its idea and duration across so the person is not dropped into a
+  // second, unrelated draft or asked to retype the brief they just supplied.
+  const fromCreate = ctx.route?.query?.from === 'create';
+  const simpleDraft = fromCreate ? ctx.storage.get('create.simple', null) : null;
+  const simpleIdea = String(simpleDraft?.idea || '').trim();
+  if (simpleIdea) {
+    Object.assign(state, {
+      title: '',
+      global: simpleIdea,
+      vocal: '',
+      arrangement: '',
+      lyrics: '',
+      instrumental: Boolean(simpleDraft.instrumental),
+      duration: Number(simpleDraft.duration) || state.duration,
+      seed: simpleDraft.seedAuto ? '' : String(simpleDraft.seed || ''),
+    });
+  }
+
   // Never trust storage: clamp everything back into SPEC §3a.
   state.duration = clamp(Number(state.duration) || LIMITS.DURATION_DEFAULT, LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
   if (!FORMATS.includes(state.format)) state.format = 'flac';
@@ -777,6 +800,7 @@ export async function mount(root, ctx) {
     modeBtns: qa('[data-mode-btn]'),
     lyricsPanel: q('[data-lyrics-panel]'),
     twostep: q('[data-twostep]'),
+    lyricNote: q('[data-lyric-note]'),
     tagbar: q('[data-tagbar]'),
     lyricbox: q('[data-lyricbox]'),
     hl: q('[data-hl]'),
@@ -802,7 +826,7 @@ export async function mount(root, ctx) {
     styleTags: q('[data-style-tags]'),
     model: q('[data-model]'),
     duration: q('[data-duration]'),
-    durPresets: q('[data-duration-presets]'),
+    durationSlider: q('[data-duration-slider]'),
     seed: q('[data-seed]'),
     seedDice: q('[data-seed-dice]'),
     audioMeta: q('[data-audio-meta]'),
@@ -856,14 +880,6 @@ export async function mount(root, ctx) {
     o.value = String(b);
     o.textContent = `${b / 1000} kbps`;
     el.bitrate.append(o);
-  }
-  for (const secs of [30, 60, 120, 180, 300]) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'chip chip--mono';
-    b.dataset.preset = String(secs);
-    b.textContent = clock(secs);
-    el.durPresets.append(b);
   }
   for (const tag of SECTION_TAGS) {
     const b = document.createElement('button');
@@ -950,10 +966,14 @@ export async function mount(root, ctx) {
   /* ----------------------------------------------------------- composing */
 
   function composePrompt() {
-    return CAPTION_FIELDS
-      .map((f) => String(state[f.key] || '').trim())
-      .filter(Boolean)
-      .join('\n\n');
+    return composeMusic3Caption({
+      global: state.global,
+      vocal: state.vocal,
+      arrangement: state.arrangement,
+      duration: state.duration,
+      lyrics: state.instrumental ? '' : state.lyrics,
+      instrumental: state.instrumental,
+    });
   }
 
   function currentInput() {
@@ -1107,15 +1127,21 @@ export async function mount(root, ctx) {
   }
 
   /**
-   * The two Codex buttons, in one place — they are gated by three separate
+   * The two writer buttons, in one place — they are gated by three separate
    * facts and each one has to state its own reason.
    */
   function syncLyricButtons() {
-    // The account decides, not health: health.lyricsEnabled reports configured
-    // routing and does not flip when someone signs in.
     const auth = ctx.auth;
-    const providerOff = auth ? !auth.ready : false;
-    const needsSignIn = Boolean(auth && auth.brokerConfigured && !auth.authenticated);
+    const health = ctx.health;
+    const accountConfigured = Boolean(
+      auth?.brokerConfigured
+      || (health?.openaiBroker && health.openaiBroker !== 'disabled' && health.openaiBroker !== 'unknown'),
+    );
+    // The selected account backend is authoritative when present. Without it,
+    // the local Ollama/OpenAI-compatible writer reported by health remains a
+    // valid path.
+    const providerOff = accountConfigured ? !auth?.ready : !health?.lyricsEnabled;
+    const needsSignIn = Boolean(accountConfigured && auth?.reachable && !auth?.authenticated);
     const busy = Boolean(lyricsJob);
     const reason = providerOff
       ? (needsSignIn
@@ -1124,6 +1150,14 @@ export async function mount(root, ctx) {
       : (state.instrumental
         ? 'Instrumental tracks are rendered without lyrics.'
         : 'Draft a full set of lyrics from your description.');
+
+    if (el.lyricNote) {
+      el.lyricNote.textContent = providerOff
+        ? (needsSignIn
+          ? 'Write them here, or connect your OpenAI account in Settings to draft a full set. Switch to Instrumental if you want no vocals at all.'
+          : 'Write them here. To draft words automatically, set LYRICS_URL and LYRICS_MODEL for Ollama or another compatible writer. Switch to Instrumental if you want no vocals at all.')
+        : 'Write them here, or let Write for me draft a full set from your description first. Switch to Instrumental if you want no vocals at all.';
+    }
 
     el.draft.disabled = providerOff || state.instrumental || busy;
     el.revise.disabled = el.draft.disabled || !state.lyrics.trim();
@@ -1231,13 +1265,12 @@ export async function mount(root, ctx) {
     el.lyrics.value = state.lyrics;
     for (const f of CAPTION_FIELDS) el.caption[f.key].area.value = state[f.key];
 
-    // ONE authoritative length value: this field. The chips are shortcuts into it.
+    // ONE authoritative length value: the text field. The slider is a quick
+    // half-minute selector into it and exact typed values remain available.
     if (document.activeElement !== el.duration) el.duration.value = clock(state.duration);
-    for (const chip of el.durPresets.children) {
-      const on = Number(chip.dataset.preset) === Number(state.duration);
-      chip.classList.toggle('is-active', on);
-      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
+    el.durationSlider.value = String(durationGridValue(state.duration));
+    el.durationSlider.style.setProperty('--range-pos', durationGridPosition(state.duration));
+    el.durationSlider.setAttribute('aria-valuetext', clock(state.duration));
 
     el.seed.value = state.seed;
     el.format.value = state.format;
@@ -1440,6 +1473,16 @@ export async function mount(root, ctx) {
 
   function startRender() {
     if (job) return;
+    if (
+      !state.instrumental
+      && countSungWords(state.lyrics) === 0
+      && requestsInstrumental(state.global, state.vocal, state.arrangement)
+    ) {
+      state.instrumental = true;
+      save();
+      buildPartBar(CAPTION_FIELDS.find((field) => field.key === 'vocal'));
+      syncAll();
+    }
     const input = currentInput();
     const v = api.validateGeneration(input);
     if (!v.valid) {
@@ -1490,9 +1533,18 @@ export async function mount(root, ctx) {
           announce(res?.takes?.A, 'A');
           announce(res?.takes?.B, 'B');
           const made = [res?.takes?.A, res?.takes?.B].filter((t) => t?.track).length;
+          const allBusy = !made && (res?.errors || []).length > 0
+            && res.errors.every((e) => api.isWorkerBusyError?.({
+              code: e.code,
+              status: e.status,
+              message: e.error,
+            }));
           ctx.toast(
             `${made} of 2 takes finished${res?.errors?.length ? `\n${res.errors.map((e) => `Take ${e.slot}: ${e.error}`).join('\n')}` : ''}`,
-            { kind: made ? 'success' : 'error', title: made ? 'Takes ready' : 'Render failed' },
+            {
+              kind: made ? 'success' : allBusy ? 'warn' : 'error',
+              title: made ? 'Takes ready' : allBusy ? 'Another render is still finishing' : 'Render failed',
+            },
           );
         } else {
           announce(res, null);
@@ -1505,7 +1557,10 @@ export async function mount(root, ctx) {
       })
       .catch((err) => {
         if (err?.name === 'AbortError') ctx.toast('Render stopped.', { kind: 'info' });
-        else ctx.toast(api.errorText(err), { kind: 'error', title: 'Render failed' });
+        else ctx.toast(api.errorText(err), {
+          kind: api.isWorkerBusyError?.(err) ? 'warn' : 'error',
+          title: api.isWorkerBusyError?.(err) ? 'Another render is still finishing' : 'Render failed',
+        });
         j.hook?.('error', err);
       })
       .finally(() => {
@@ -1526,12 +1581,13 @@ export async function mount(root, ctx) {
    */
   function renderFailure(err, j) {
     if (err?.name === 'AbortError') return;
+    const busy = api.isWorkerBusyError?.(err) || false;
     const box = document.createElement('div');
-    box.className = 'notice notice--error take__error';
+    box.className = `notice notice--${busy ? 'warn' : 'error'} take__error`;
     box.innerHTML = `<span class="notice__icon">${ctx.iconMarkup('alert')}</span>
       <div class="notice__body">
         <p class="notice__head">
-          <span class="notice__title">Render failed</span>
+          <span class="notice__title">${busy ? 'Another render is still finishing' : 'Render failed'}</span>
         </p>
         <span class="take__errmsg"></span>
         <p class="take__errfoot mono"></p>
@@ -1617,11 +1673,16 @@ export async function mount(root, ctx) {
       if (res?.takes?.B?.track) el.takesList.append(takeCard(res.takes.B, 'B', j));
       for (const e of res?.errors || []) {
         const p = document.createElement('div');
-        p.className = 'notice notice--error take__error';
+        const busy = api.isWorkerBusyError?.(e) || api.isWorkerBusyError?.({
+          code: e.code,
+          status: e.status,
+          message: e.error,
+        });
+        p.className = `notice notice--${busy ? 'warn' : 'error'} take__error`;
         p.innerHTML = `<span class="notice__icon">${ctx.iconMarkup('alert')}</span>
           <div class="notice__body">
             <p class="notice__head">
-              <span class="notice__title">Take ${escapeHtml(e.slot)} failed</span>
+              <span class="notice__title">${busy ? 'Another render is still finishing' : `Take ${escapeHtml(e.slot)} failed`}</span>
             </p>
             <span class="take__errmsg"></span>
           </div>`;
@@ -1796,10 +1857,7 @@ export async function mount(root, ctx) {
     if (e.key === 'Enter') { e.preventDefault(); commitDuration(); }
     if (e.key === 'Escape') { el.duration.value = clock(state.duration); el.duration.blur(); }
   });
-  on(el.durPresets, 'click', (e) => {
-    const chip = e.target.closest('[data-preset]');
-    if (chip) setDuration(chip.dataset.preset);
-  });
+  on(el.durationSlider, 'input', () => setDuration(el.durationSlider.value));
 
   on(el.seed, 'input', () => {
     state.seed = el.seed.value.trim();
@@ -1907,6 +1965,11 @@ export async function mount(root, ctx) {
   for (const f of CAPTION_FIELDS) buildPartBar(f);
   syncAll();
   syncOutput();
+  if (simpleIdea) {
+    el.lyrics.focus();
+    el.lyrics.scrollIntoView({ block: 'center' });
+    ctx.toast('Write or paste your lyrics, then generate the song.', { kind: 'info', key: 'studio-lyrics' });
+  }
   ctx.onHealth(applyHealth); // fires immediately when a snapshot already exists
   ctx.onAuth(() => syncLyricButtons()); // the two Codex buttons are gated by it
 

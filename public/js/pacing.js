@@ -46,6 +46,36 @@
 export const DENSITY = { slow: 1.35, plain: 1.5, fast: 1.7 };
 
 /**
+ * The length promise, stated once for the whole application.
+ *
+ * MiniMax Music 3 decides for itself when a composition has resolved, so the
+ * selected length can only ever be creative guidance — the app never trims a
+ * finished song back to a number. Guidance still has to mean something, and a
+ * quarter of the target either way (never less than fifteen seconds, which is
+ * what keeps the shortest songs from being held to an impossible standard) is
+ * the band the model, the backend, and the screens all speak in. Asking for
+ * five minutes and being handed fifty seconds is not a song that ran short; it
+ * is a different request, and the customer is told so.
+ *
+ * The worker holds the identical rule in `duration_ballpark()`.
+ *
+ * @param {number} seconds  the requested length
+ * @returns {{low: number, high: number}} the inclusive band, in seconds
+ */
+export function durationBallpark(seconds) {
+  const target = Math.max(0, Number(seconds) || 0);
+  const slack = Math.max(15, target * 0.25);
+  return { low: Math.max(0, target - slack), high: target + slack };
+}
+
+/** Whether a finished song answers the length that was asked for. */
+export function inDurationBallpark(delivered, requested) {
+  const { low, high } = durationBallpark(requested);
+  const got = Number(delivered) || 0;
+  return got >= low && got <= high;
+}
+
+/**
  * How far the running time may move from the length that was asked for.
  *
  * Barely upward, on purpose. Stretching the take was an early idea — keep every
@@ -140,7 +170,7 @@ export function pacedPrompt(idea, seconds, opts = {}) {
   } else if (opts.shorter) {
     brief = `LENGTH — the last draft came to ${opts.was} words, too many to sing inside a ${clock(secs)} recording, so the song would be cut off before its ending. Write a shorter lyric — no more than ${ceiling} words, aiming for ${target} — by cutting whole sections and tightening lines, while keeping the chorus and the ending.`;
   } else {
-    brief = `LENGTH — this is a ${clock(secs)} recording, and every written word gets sung. The whole lyric must come to about ${target} words: count them, keep it between ${floor} and ${ceiling}, and use fewer sections rather than more. A longer lyric gets cut off mid-song. Finish with a real ending that lands, never a hook repeated to fill time, and if the words run out before the running time does, close with a bare [instrumental] tag and let the band play it out.`;
+    brief = `LENGTH — this is a ${clock(secs)} recording, and every written word gets sung. The whole lyric must come to about ${target} words: count them, keep it between ${floor} and ${ceiling}, and use fewer sections rather than more. A longer lyric gets cut off mid-song. Finish with a real [outro] that lands, and make [outro] the FINAL section tag. If the words run out early, put a bare [instrumental] section BEFORE that terminal [outro], never after it. Do not repeat a hook merely to fill time.`;
   }
 
   return `${String(idea || '').trim()}\n\n${brief}`;
@@ -182,6 +212,44 @@ const blockKey = (b) => b.lines.join(' ').toLowerCase()
 
 /** `[chorus 2]` and `[chorus]` are the same kind of thing. */
 const blockKind = (b) => String(b.tag || '').toLowerCase().replace(/[^a-z]/g, '');
+
+/**
+ * Make the ending unambiguous to Music 3 without changing a single lyric.
+ *
+ * A generated sheet previously ended `[outro] ... [instrumental]`. That asks
+ * the model to finish the words, begin a new musical section, and then run out
+ * of frames in that new section. Move the last existing outro to the terminal
+ * position, or add a bare terminal outro when the writer supplied none. The
+ * latter is a musical direction only; it invents no words.
+ */
+export function normalizeSongEnding(lyrics) {
+  const blocks = toBlocks(lyrics);
+  if (!blocks.length) return String(lyrics || '').trim();
+
+  let outroIndex = -1;
+  for (let index = 0; index < blocks.length; index += 1) {
+    if (blockKind(blocks[index]) === 'outro') outroIndex = index;
+  }
+  if (outroIndex >= 0 && outroIndex !== blocks.length - 1) {
+    const [outro] = blocks.splice(outroIndex, 1);
+    blocks.push(outro);
+  } else if (outroIndex < 0) {
+    blocks.push({ tag: '[outro]', lines: [] });
+  }
+  return fromBlocks(blocks);
+}
+
+/** Add a wordless play-out immediately before, never after, the final outro. */
+function addInstrumentalBeforeOutro(lyrics) {
+  const blocks = toBlocks(normalizeSongEnding(lyrics));
+  const outroIndex = blocks.length - 1;
+  if (outroIndex < 0 || blockKind(blocks[outroIndex]) !== 'outro') return fromBlocks(blocks);
+  if (outroIndex > 0 && blockKind(blocks[outroIndex - 1]) === 'instrumental') {
+    return fromBlocks(blocks);
+  }
+  blocks.splice(outroIndex, 0, { tag: '[instrumental]', lines: [] });
+  return fromBlocks(blocks);
+}
 
 /**
  * How many of each kind a song has to keep.
@@ -299,10 +367,11 @@ function trimToBudget(blocks, budget) {
  *          `raw` is the count as it arrived, `words` what is left.
  */
 export function enforceLength({ lyrics, duration, voice = '', density = 0 }) {
-  const words = countSungWords(lyrics);
+  const normalized = normalizeSongEnding(lyrics);
+  const words = countSungWords(normalized);
   const seconds = Math.max(0, Number(duration) || 0);
   const limit = wordsFor(seconds, density > 0 ? density : rateFor(voice));
-  const out = { lyrics: String(lyrics || ''), words, raw: words, limit, trimmed: [] };
+  const out = { lyrics: normalized, words, raw: words, limit, trimmed: [] };
   // The floor sits at the boundary the songs themselves drew, not at the
   // comfortable target: nine measured takes put every truncation at 1.77
   // density or worse and every clean ending at 1.71 or better, so 1.5 × 1.15
@@ -313,7 +382,7 @@ export function enforceLength({ lyrics, duration, voice = '', density = 0 }) {
 
   const r = trimToBudget(toBlocks(out.lyrics), limit);
   if (!r.dropped.length) return out;
-  out.lyrics = fromBlocks(r.keep);
+  out.lyrics = normalizeSongEnding(fromBlocks(r.keep));
   out.words = countSungWords(out.lyrics);
   out.trimmed = r.dropped;
   return out;
@@ -341,10 +410,11 @@ export function enforceLength({ lyrics, duration, voice = '', density = 0 }) {
  */
 export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }) {
   const asked = clamp(Number(duration) || 0, min, max);
-  const words = countSungWords(lyrics);
+  const normalized = normalizeSongEnding(lyrics);
+  const words = countSungWords(normalized);
   const rate = rateFor(voice);
   if (!words) {
-    return { lyrics: String(lyrics || ''), words: 0, raw: 0, duration: asked, asked, trimmed: [], tail: 0, short: false };
+    return { lyrics: normalized, words: 0, raw: 0, duration: asked, asked, trimmed: [], tail: 0, short: false };
   }
 
   // A thin sheet shortens the take rather than being padded out to length:
@@ -359,7 +429,7 @@ export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }
     max,
   );
 
-  let out = String(lyrics || '');
+  let out = normalized;
   let trimmed = [];
   // Words only come out when the running time could not reach far enough to
   // hold them. The test is on the words themselves rather than on the two
@@ -370,7 +440,7 @@ export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }
   if (words > budget * 1.1) {
     const r = trimToBudget(toBlocks(out), budget);
     if (r.dropped.length) {
-      out = fromBlocks(r.keep);
+      out = normalizeSongEnding(fromBlocks(r.keep));
       trimmed = r.dropped;
     }
   }
@@ -382,8 +452,8 @@ export function planSong({ lyrics, duration, voice = '', min = 0.04, max = 360 }
   // the sheet. Left unsaid, the model fills the gap by singing its last hook
   // over and over — one real song's final minute was nine repeats of one line
   // — and a tag it might ignore costs nothing next to that.
-  if (tail > TAIL_MAX && !/\[\s*instrumental\s*\]\s*$/i.test(out.trim())) {
-    out = `${out.trim()}\n\n[instrumental]`;
+  if (tail > TAIL_MAX) {
+    out = addInstrumentalBeforeOutro(out);
   }
 
   return {

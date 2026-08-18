@@ -31,7 +31,7 @@
  */
 
 import { toRecord, coerce, loadRecords, saveRecords } from '../records.js';
-import { downloadAudio, makeLyricVideo, downloadVideo } from '../studio-actions.js';
+import { downloadAudio, makeLyricVideo, downloadVideo, hasDisplayableLyrics } from '../studio-actions.js';
 import { redoCoverArt } from '../cover-redo.js';
 import { renameSong } from '../rename.js';
 
@@ -505,9 +505,9 @@ export function mount(root, ctx) {
 
   /* ------------------------------------------------------------- store -- */
 
-  function persist(next, { silent = false } = {}) {
+  function persist(next, { silent = false, allowEmpty = false } = {}) {
     records = next;
-    const ok = saveRecords(ctx.storage, records);
+    const ok = saveRecords(ctx.storage, records, { allowEmpty });
     if (!ok) {
       ctx.toast('This browser refused to save your library — its storage is full or blocked. What you see is correct until you reload.', {
         kind: 'error', title: 'Could not save',
@@ -752,7 +752,7 @@ export function mount(root, ctx) {
   /* The studio actions live in studio-actions.js, shared with Create. */
 
   function menuItems(record) {
-    const hasLyrics = Boolean(record.lyrics) && !record.isInstrumental;
+    const hasLyrics = hasDisplayableLyrics(record);
     return [
       { label: 'Song details', icon: 'info', onSelect: () => openSheet(record.id, null) },
       { label: 'Rename song or artist', icon: 'pencil', onSelect: () => renameSong(ctx, record) },
@@ -762,12 +762,14 @@ export function mount(root, ctx) {
       {
         label: 'Make a lyric video',
         icon: 'wave',
-        disabled: !record.url,
+        note: hasLyrics ? 'Shows every lyric' : 'No lyrics saved',
+        disabled: !record.url || !hasLyrics,
         onSelect: () => makeLyricVideo(ctx, record, 'film'),
       },
       {
-        label: 'Make a visualizer video',
+        label: 'Make an audio visualizer',
         icon: 'wave',
+        note: hasLyrics ? 'No lyric text' : 'Music only',
         disabled: !record.url,
         onSelect: () => makeLyricVideo(ctx, record, 'visualizer'),
       },
@@ -1073,6 +1075,8 @@ export function mount(root, ctx) {
         prompt: record.prompt,
         lyrics: record.lyrics,
         duration: record.duration,
+        requestedDuration: record.requestedDuration,
+        durationWarning: record.durationWarning,
         seed: record.seed,
         format: record.format,
         isInstrumental: record.isInstrumental,
@@ -1109,7 +1113,8 @@ export function mount(root, ctx) {
       is_instrumental: record.isInstrumental,
       seed: record.seed,
     };
-    if (Number.isFinite(record.duration)) input.duration = record.duration;
+    if (Number.isFinite(record.requestedDuration)) input.duration = record.requestedDuration;
+    else if (Number.isFinite(record.duration)) input.duration = record.duration;
     if (record.model) input.model = record.model;
     const audio = {};
     if (record.format) audio.format = record.format;
@@ -1238,7 +1243,7 @@ export function mount(root, ctx) {
   function clearLibrary() {
     if (!records.length) return;
     const backup = records.slice();
-    persist([]);
+    persist([], { allowEmpty: true });
     closeSheet();
     ctx.toast(`Deleted ${backup.length} ${backup.length === 1 ? 'song' : 'songs'} from your library. The audio files themselves are untouched.`, {
       kind: 'warn',
@@ -1269,6 +1274,10 @@ export function mount(root, ctx) {
 
   function sheetMarkup(record) {
     const reason = regenerateBlockReason(record);
+    const requestedLength = Number(record.requestedDuration);
+    const showsRequestedLength = Number.isFinite(requestedLength)
+      && Number.isFinite(record.duration)
+      && Math.abs(requestedLength - record.duration) >= 1.5;
     const lyrics = record.isInstrumental
       ? 'Instrumental — this song was made without lyrics.'
       : (record.lyrics || 'No lyrics were saved with this song.');
@@ -1300,10 +1309,14 @@ export function mount(root, ctx) {
         </button>
       </div>
       ${reason ? `<p class="hint hint--warn lib-sheet__blocked">${ctx.iconMarkup('info')}${esc(reason)}</p>` : ''}
+      ${record.durationWarning
+        ? `<p class="hint hint--warn lib-sheet__blocked">${ctx.iconMarkup('info')}${esc(record.durationWarning)}</p>`
+        : ''}
       <div class="lib-sheet__job" data-role="sheet-job"></div>
 
       <dl class="lib-meta">
         ${metaRow('Length', fmtDuration(record.duration))}
+        ${showsRequestedLength ? metaRow('Requested', fmtDuration(requestedLength)) : ''}
         ${metaRow('Format', record.format ? record.format.toUpperCase() : '—')}
         ${metaRow('Quality', fmtSampleRate(record.sampleRate))}
         ${metaRow('Seed', record.seed === null ? 'not saved' : String(record.seed), { mono: true })}
@@ -1518,13 +1531,14 @@ export function mount(root, ctx) {
   // The shell stores finished tracks the moment they exist (records.js);
   // this screen only re-reads the ledger when told it changed.
   ctx.bus.on('library:changed', (payload) => {
-    if (payload?.source !== 'shell') return;
+    if (payload?.source && !['shell', 'server'].includes(payload.source)) return;
     records = loadRecords(ctx.storage);
     render();
   });
 
-  /* Durations we stored are what the song was *asked* for. Once the player has
-     decoded the file it knows the real length — take it, once per track. */
+  /* The worker reports a measured duration and the record separately keeps what
+     was requested. Once the player decodes the file it can correct the measured
+     value without losing the user's target. */
   const measured = new Set();
 
   ctx.bus.on('player:state', (payload) => {

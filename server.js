@@ -6,18 +6,49 @@
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { handleStudio } from './render/jobs.mjs';
+import { configureStudio, handleStudio } from './render/jobs.mjs';
 import { handleLocal, standalone } from './local-backend.mjs';
 import { enforceLength, clock } from './public/js/pacing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+let libraryDb = null;
+if (process.env.MAXMUSIC_DB) {
+  try {
+    const { openLibraryDb } = await import('./library-db.mjs');
+    libraryDb = await openLibraryDb(process.env.MAXMUSIC_DB);
+    configureStudio({ libraryDb });
+    console.log(`  Library database → ${libraryDb.filename}`);
+  } catch (error) {
+    console.error(`\n  Could not open MAXMUSIC_DB: ${error.message}\n`);
+    process.exit(1);
+  }
+}
+
+const START_TIME = Date.now();
 const PORT = Number(process.env.PORT || 3020);
+const HOST = process.env.HOST || '0.0.0.0';
 const BACKEND_HOST = process.env.BACKEND_HOST || '127.0.0.1';
 const BACKEND_PORT = Number(process.env.BACKEND_PORT || 3010);
+
+// The native worker speaks the same media routes as the old studio backend.
+// Use it for /studio/audio and related exports only in standalone mode; the
+// legacy path retains its existing BACKEND_HOST/BACKEND_PORT behavior.
+let STUDIO_HOST = BACKEND_HOST;
+let STUDIO_PORT = BACKEND_PORT;
+if (standalone) {
+  try {
+    const worker = new URL(process.env.WORKER_URL);
+    if (worker.protocol === 'http:') {
+      STUDIO_HOST = worker.hostname;
+      STUDIO_PORT = Number(worker.port || 80);
+    }
+  } catch { /* local-backend will report worker errors on its own */ }
+}
 
 const PROXY_PREFIXES = ['/api', '/uploads', '/covers', '/tracks'];
 
@@ -454,10 +485,30 @@ function buildStamp() {
   return stampCache.value;
 }
 
+/**
+ * Which copy of MaxMusic is answering.
+ *
+ * More than one checkout of this project can exist on one machine, and a
+ * second one is indistinguishable from the first through a browser window.
+ * That has cost real hours: a fix is made in one directory, the app is started
+ * from another, and the screen disagrees with the source for reasons nobody
+ * can see. So the running app says where it came from.
+ */
+function whichBuild() {
+  return {
+    root: __dirname,
+    host: os.hostname(),
+    node: process.version,
+    pid: process.pid,
+    stamp: buildStamp(),
+    startedAt: new Date(START_TIME).toISOString(),
+  };
+}
+
 const server = http.createServer((req, res) => {
-  if (req.url === '/app-version') {
+  if (req.url === '/app-version' || req.url === '/api/build') {
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-    res.end(JSON.stringify({ stamp: buildStamp() }));
+    res.end(JSON.stringify(req.url === '/api/build' ? whichBuild() : { stamp: buildStamp() }));
     return;
   }
 
@@ -465,11 +516,11 @@ const server = http.createServer((req, res) => {
   // not on the backend, because this machine has ffmpeg, whisper and the
   // renderer.
   if (req.url.startsWith('/studio/')) {
-    if (handleStudio(req, res, { host: BACKEND_HOST, port: BACKEND_PORT })) return;
+    if (handleStudio(req, res, { host: STUDIO_HOST, port: STUDIO_PORT })) return;
   }
   // Standing on its own: the model worker and a local lyric writer, with no
   // separate studio service in the picture. Only when WORKER_URL is set.
-  if (handleLocal(req, res)) return;
+  if (handleLocal(req, res, { libraryDb })) return;
 
   const isProxied = PROXY_PREFIXES.some(
     (p) => req.url === p || req.url.startsWith(p + '/') || req.url.startsWith(p + '?')
@@ -481,6 +532,13 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
+// A reliability retry can legitimately take longer than Node's five-minute
+// request default. The browser has its own cancellation signal, while the
+// worker enforces a one-hour upstream bound, so do not sever a healthy local
+// generation just because no response headers exist yet.
+server.requestTimeout = 65 * 60 * 1000;
+server.timeout = 0;
+
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\n  Port ${PORT} is in use. Try: PORT=${PORT + 1} node server.js\n`);
@@ -489,8 +547,11 @@ server.on('error', (err) => {
   throw err;
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`\n  MaxMusic → http://localhost:${PORT}`);
+  // Say which copy this is. Two checkouts of this project look identical
+  // through a browser, and starting the wrong one is invisible otherwise.
+  console.log(`  Serving from ${__dirname}`);
   console.log(standalone
     ? `  Music from the worker at ${process.env.WORKER_URL}\n`
     : `  API proxied to ${BACKEND_HOST}:${BACKEND_PORT}\n`);

@@ -12,12 +12,17 @@
 # experimental — its own docs say it is likely to change — so this is pinned to
 # the exact commit the pipeline was verified against rather than tracking main.
 # When huggingface/diffusers#14456 is in a release, this becomes a version.
-diffusers @ git+https://github.com/huggingface/diffusers@dafe3733fcfdbf3c48915fe77be3aef65b5d6a2d
+diffusers @ https://github.com/huggingface/diffusers/archive/dafe3733fcfdbf3c48915fe77be3aef65b5d6a2d.tar.gz
 
 transformers>=4.44
 accelerate>=0.34
 soundfile>=0.12
 numpy>=1.26
+
+# Vocal takes are checked on CPU before publication. This catches the case
+# where Music 3 emits a clean semantic EOS but never reaches the final lyric.
+# The model is downloaded into HF_HOME on the first vocal generation.
+faster-whisper==1.2.1
 
 # The worker's HTTP surface.
 fastapi>=0.110

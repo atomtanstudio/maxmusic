@@ -528,6 +528,14 @@ export function mount(root, ctx) {
   let rttMs = null;
   /** @type {?import('../api.js').Health} */
   let snapshot = null;
+  /* Which checkout is answering. More than one copy of this project can live
+     on one machine, or on the network, and through a browser window they are
+     indistinguishable — so the diagnostics say which directory replied. */
+  let buildInfo = null;
+  fetch('/api/build', { cache: 'no-store' })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((info) => { buildInfo = info; })
+    .catch(() => { /* an older server has no such route */ });
 
   const BADGE = { ok: 'badge--ok', warn: 'badge--warn', fail: 'badge--danger', info: 'badge--info', checking: '' };
 
@@ -669,17 +677,27 @@ export function mount(root, ctx) {
               : `Generation runs on your own ComfyUI at ${h.comfyUrl || 'the configured COMFY_URL'}.`,
           });
 
+    // A sign-in that was found but cannot be used is worth saying out loud: a
+    // person who knows they are signed in to ChatGPT should not have to guess
+    // why the app disagrees.
+    const account = h.raw?.openaiAccount;
+    const accountNote = account?.usable
+      ? ` MaxMusic is using ${account.source}.`
+      : account?.mode === 'chatgpt'
+        ? ` MaxMusic found ${account.source}, but that sign-in belongs to the Codex app and cannot be used here.`
+        : '';
+
     paintCap('lyrics', offline
       ? { state: 'fail', badge: 'Unknown', value: h.lyricsProvider, note: 'The backend did not answer, so its lyrics provider is unknown.' }
       : h.lyricsEnabled
-        ? { state: 'ok', badge: 'Available', value: h.lyricsProvider, note: 'Ready to write lyrics. A song with vocals needs words first — start on the Lyrics screen.' }
-        : { state: 'warn', badge: 'Off', value: h.lyricsProvider, note: 'No lyrics provider is configured. Set LOCAL_CODEX_BIN and LOCAL_CODEX_HOME in the backend environment, or paste lyrics by hand.' });
+        ? { state: 'ok', badge: 'Available', value: h.lyricsProvider, note: `Ready to write lyrics. A song with vocals needs words first — start on the Lyrics screen.${accountNote}` }
+        : { state: 'warn', badge: 'Off', value: h.lyricsProvider, note: `No lyric writer is reachable. Any of these works: an OpenAI key in OPENAI_API_KEY, a local model through Ollama or LM Studio, or any OpenAI-compatible endpoint in LYRICS_URL. You can also write or paste lyrics by hand and skip this entirely.${accountNote}` });
 
     paintCap('cover', offline
       ? { state: 'fail', badge: 'Unknown', value: h.coverArtProvider, note: 'The backend did not answer, so cover art availability is unknown.' }
       : h.coverArtEnabled
-        ? { state: 'ok', badge: 'Available', value: h.coverArtProvider, note: 'Ready to make album art for any of your songs. Start on the Art screen.' }
-        : { state: 'warn', badge: 'Disabled', value: h.coverArtProvider, note: 'Cover art is off. Set COMFY_COVER_WORKFLOW to a ComfyUI image workflow, or LOCAL_MEDIA_BROKER_URL to a running local broker, in the backend environment.' });
+        ? { state: 'ok', badge: 'Available', value: h.coverArtProvider, note: `Ready to make album art for any of your songs. Start on the Art screen.${accountNote}` }
+        : { state: 'warn', badge: 'Disabled', value: h.coverArtProvider, note: `Cover art is off. Set OPENAI_API_KEY, or COVER_URL to anything speaking the OpenAI images API. Songs, lyric videos and visualizers all work without it.${accountNote}` });
 
     paintCap('key', offline
       ? { state: 'fail', badge: 'Unknown', value: '—', note: 'The backend did not answer.' }
@@ -785,7 +803,7 @@ export function mount(root, ctx) {
   function paintDefaults() {
     const d = prefs.duration;
     el.durationRange.value = String(Math.min(360, Math.max(10, Math.round(d))));
-    el.durationRange.style.setProperty('--range-fill', `${((el.durationRange.value - 10) / 350) * 100}%`);
+    el.durationRange.style.setProperty('--range-pos', String((el.durationRange.value - 10) / 350));
     if (document.activeElement !== el.durationNum) el.durationNum.value = String(d);
     el.durationClock.textContent = clockOf(d);
 
@@ -839,13 +857,30 @@ export function mount(root, ctx) {
 
   ctx.headerSlot.append(copyBtn, recheckBtn);
 
+  /** Video-pipeline facts, straight from health, with the fallback called out. */
+  function videoLine(h, field) {
+    const video = h?.raw?.video;
+    if (!video) return '—';
+    if (video.error) return video.error;
+    if (field === 'encoder') {
+      return `${video.encoder || '—'}${video.accelerated ? '' : ' (CPU — no hardware encoder found)'}`;
+    }
+    if (field === 'words') {
+      return `${video.words || '—'}${video.wordsAccelerated ? '' : ' (CPU — the slowest step in a lyric video)'}`;
+    }
+    return video.subtitles ? 'available' : 'MISSING — this FFmpeg has no libass, so lyrics cannot be drawn';
+  }
+
   /** One paste-able block for a bug report — every value straight from health. */
   function report() {
     const h = snapshot;
+    const build = buildInfo;
     const row = (label, value) => `${(label + ' ').padEnd(17, '.')} ${value}`;
     const lines = [
       `MaxMusic diagnostics — ${new Date().toISOString()}`,
       row('app', location.origin),
+      row('serving from', build ? `${build.root} on ${build.host}` : '—'),
+      row('server started', build ? build.startedAt : '—'),
       row('player module', ctx.player ? 'loaded' : (ctx.playerUnavailableReason || 'not loaded')),
       row('health status', h ? h.status : 'unknown'),
       row('health message', h ? h.message.replace(/\n/g, ' / ') : '—'),
@@ -858,6 +893,14 @@ export function mount(root, ctx) {
       row('lyrics', h ? h.lyricsProvider : '—'),
       row('cover art', h ? h.coverArtProvider : '—'),
       row('server key', h ? String(h.hasServerKey) : '—'),
+      row('openai account', h?.raw?.openaiAccount
+        ? `${h.raw.openaiAccount.mode}${h.raw.openaiAccount.usable ? '' : ' (not usable)'}`
+        : '—'),
+      // The two stages that decide whether a video takes seconds or minutes,
+      // named outright: both accept a slower answer without complaining.
+      row('video encoder', videoLine(h, 'encoder')),
+      row('video words', videoLine(h, 'words')),
+      row('video subtitles', videoLine(h, 'subtitles')),
       row('client defaults', JSON.stringify(prefs)),
       '',
       'raw /api/health:',

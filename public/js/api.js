@@ -11,6 +11,8 @@
  * @module api
  */
 
+import { countSungWords } from './pacing.js';
+
 /* ========================================================================== *
  * Errors
  * ========================================================================== */
@@ -64,7 +66,11 @@ export class ValidationError extends Error {
 
 /** @type {Readonly<Record<string, number>>} */
 export const LIMITS = Object.freeze({
-  PROMPT_MAX: 2000,
+  // Official structured Music 3 captions are commonly several thousand
+  // characters. The model enforces a 5,000-token limit on caption + lyrics;
+  // 6,000 caption characters remains conservative while preserving the full
+  // three-part arrangement used by longer songs.
+  PROMPT_MAX: 6000,
   LYRICS_MAX: 3500,
   DURATION_MIN: 0.04,
   DURATION_MAX: 360,
@@ -217,6 +223,7 @@ export async function request(endpoint, opts = {}) {
  * @property {boolean}  lyricsEnabled
  * @property {string}   coverArtProvider  e.g. `local-media-broker` | `disabled`.
  * @property {boolean}  coverArtEnabled
+ * @property {string}   openaiBroker      e.g. `authenticated` | `configured` | `disabled`.
  * @property {boolean}  hasServerKey
  * @property {?ApiError} error            Set when `status === 'offline'`.
  * @property {number}   checkedAt         Date.now() of this snapshot.
@@ -259,6 +266,7 @@ export async function health(opts = {}) {
       lyricsEnabled: lyricsProvider !== 'disabled',
       coverArtProvider,
       coverArtEnabled: coverArtProvider !== 'disabled',
+      openaiBroker: raw?.openaiBroker || 'disabled',
       hasServerKey: Boolean(raw?.hasServerKey),
       error: null,
       checkedAt: Date.now(),
@@ -282,6 +290,7 @@ export async function health(opts = {}) {
       lyricsEnabled: false,
       coverArtProvider: 'unknown',
       coverArtEnabled: false,
+      openaiBroker: 'unknown',
       hasServerKey: false,
       error: apiErr,
       checkedAt: Date.now(),
@@ -470,6 +479,7 @@ export async function openaiAuthLogout(opts = {}) {
 /**
  * @typedef {Object} VideoJob
  * @property {string} id
+ * @property {'scroll'|'film'|'visualizer'} mode The kind the server is actually rendering.
  * @property {'queued'|'working'|'completed'|'failed'|'cancelled'} status
  * @property {string} [step]   What the studio is doing right now, in words.
  * @property {number} progress 0..1
@@ -483,8 +493,8 @@ export async function openaiAuthLogout(opts = {}) {
  * Queue a video render in the studio — this app's own server, which has the
  * renderer, ffmpeg and the transcriber on hand.
  *
- * @param {{trackUrl: string, mode: 'scroll'|'film', title?: string,
- *          artist?: string, lyrics?: string, cover?: ?string}} input
+ * @param {{trackId?: string, trackUrl: string, mode: 'scroll'|'film'|'visualizer', title?: string,
+ *          artist?: string, lyrics?: string, cover?: ?string, visualizerConfirmed?: boolean}} input
  * @param {{signal?: AbortSignal}} [opts]
  * @returns {Promise<VideoJob>}
  */
@@ -492,12 +502,14 @@ export function videoJobCreate(input, opts = {}) {
   return request('/studio/video', {
     method: 'POST',
     body: {
+      trackId: input.trackId || null,
       trackUrl: input.trackUrl,
       mode: input.mode,
       title: input.title || 'Untitled',
       artist: input.artist || '',
       lyrics: input.lyrics || '',
       cover: input.cover || null,
+      visualizerConfirmed: input.visualizerConfirmed === true,
     },
     signal: opts.signal,
     timeoutMs: 20000,
@@ -544,6 +556,8 @@ export function audioDownloadUrl(trackUrl, format, title) {
 /**
  * @typedef {Object} GenerationInput
  * @property {string}  [prompt]           Structured caption, ≤2000 chars.
+ * @property {string}  [title]            Client title for durable server-side records.
+ * @property {string}  [idea]             Original one-line idea for durable records.
  * @property {string}  [lyrics]           Required unless `is_instrumental`, ≤3500.
  * @property {boolean} [is_instrumental]
  * @property {number}  [duration]         0.04–360 s. Default 120.
@@ -587,6 +601,8 @@ export function validateGeneration(input = {}) {
     if (lyrics.trim()) warnings.push('Lyrics are ignored while Instrumental is on.');
   } else if (!lyrics.trim()) {
     errors.push('A vocal track needs lyrics. Write them on the Lyrics page, or switch to Instrumental.');
+  } else if (countSungWords(lyrics) === 0) {
+    errors.push('A vocal track needs actual sung words; section tags alone make an instrumental.');
   } else if (lyrics.length > LIMITS.LYRICS_MAX) {
     warnings.push(`Your lyrics are ${lyrics.length} characters; only the first ${LIMITS.LYRICS_MAX} are used.`);
   }
@@ -594,6 +610,8 @@ export function validateGeneration(input = {}) {
   /** @type {Record<string, *>} */
   const payload = { is_instrumental: instrumental };
   if (prompt) payload.prompt = prompt.slice(0, LIMITS.PROMPT_MAX);
+  if (input.title) payload.title = String(input.title).trim().slice(0, 240);
+  if (input.idea) payload.idea = String(input.idea).trim().slice(0, LIMITS.PROMPT_MAX);
   if (!instrumental && lyrics.trim()) payload.lyrics = lyrics.slice(0, LIMITS.LYRICS_MAX);
 
   if (input.duration !== undefined && input.duration !== null && input.duration !== '') {
@@ -652,7 +670,12 @@ export function validateGeneration(input = {}) {
  * @property {boolean} ok
  * @property {Track}   track
  * @property {{music_duration?: number, music_sample_rate?: number, music_channel?: number,
- *            bitrate?: number, backend?: string, comfy_prompt_id?: string}} extra_info
+ *            bitrate?: number, backend?: string, comfy_prompt_id?: string,
+ *            requested_duration_seconds?: number, duration_warning?: string|null}} extra_info
+ * @property {number} requestedSeconds  The duration selected by the user, in seconds.
+ * @property {?number} generationSeed   The seed actually used when a short-take retry varied it.
+ * @property {?string} durationWarning  Present when the measured file is materially
+ *                                     shorter or longer than requested.
  * @property {?string} status
  * @property {?string} trace_id
  */
@@ -740,7 +763,13 @@ export async function generateStream(input, opts = {}) {
     if (json?.error && !failure) {
       failure = new ApiError(
         typeof json.error === 'string' ? json.error : (json.error.message || 'Generation failed'),
-        { status: 500, details: pickDetails(json), endpoint, body: json },
+        {
+          status: Number(json.status) || 500,
+          details: pickDetails(json),
+          code: json.code ?? null,
+          endpoint,
+          body: json,
+        },
       );
     }
     if (json?.done) final = json;
@@ -965,12 +994,21 @@ export function errorText(err) {
   return err.message || String(err);
 }
 
+/** A single-flight worker is a normal local-runtime state, not a failed song. */
+export function isWorkerBusyError(err) {
+  if (!err) return false;
+  if (err.code === 'worker_busy' || Number(err.status) === 409) return true;
+  return /already making a song|another render is (?:already )?in progress|previous render is still finishing/i
+    .test(errorText(err));
+}
+
 /** Named default export for `import api from './api.js'`. */
 const api = {
   ApiError, ValidationError,
   LIMITS, FORMATS, BITRATES, SAMPLE_RATES, SECTION_TAGS, ASPECT_RATIOS, LYRICS_MODES,
   request, health, validateGeneration, generate, generateDual, generateStream,
   lyrics, coverArt, upload, cover, coverPreprocess, mediaUrl, errorText,
+  isWorkerBusyError,
   openaiStatus, openaiAuthStart, openaiAuthPoll, openaiAuthLogout,
   videoJobCreate, videoJobStatus, videoJobCancel, audioDownloadUrl,
 };

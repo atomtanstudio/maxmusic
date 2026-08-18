@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Word-level lyric timing: canonical sheet × two whisper passes.
+ * Lossless word-level lyric timing: canonical sheet × speech timing.
  *
  * Whisper hears the record; the canonical sheet says what is actually sung.
- * Alignment is two-stage, because the two passes fail differently: the
- * segment pass reliably catches every sung PHRASE but times it loosely, and
- * the word pass (-ml 1) times words tightly but drops whole phrases. So
- * lines are first anchored to segments, then words are timed inside each
- * anchored window from the word pass, and anything still missing is
- * interpolated inside its window — never across the whole song.
+ * Alignment is two-stage. Lines are first anchored to phrase windows, then
+ * canonical words are timed inside those windows. Speech recognisers are
+ * evidence for WHEN a line is sung; they are never allowed to delete words
+ * from the authored lyric sheet. A recogniser may merge adjacent lines or
+ * miss a phrase, so merged windows are split and any final gap is estimated
+ * between its anchored neighbours. The output must retain every authored
+ * line and word.
  *
  *   node render/align.mjs <lyrics.json> <segments.json> <words.json> <out.json>
  *
@@ -18,9 +19,10 @@
 import fs from 'node:fs/promises';
 
 const argv = process.argv.slice(2);
-/** Studio jobs pass this: a written line the record never sings is dropped
-    with a warning instead of refusing the whole render. */
-const DROP_UNANCHORED = argv.includes('--drop-unanchored');
+/** `--drop-unanchored` remains for old hand-authored diagnostic runs. Studio
+    jobs use `--keep-all`: ASR uncertainty may affect timing, never content. */
+const KEEP_ALL = argv.includes('--keep-all');
+const DROP_UNANCHORED = argv.includes('--drop-unanchored') && !KEEP_ALL;
 /** Optional: the song's analysis JSON. With it, windows are trimmed to
     where vocal-band energy actually lives, and no line may be timed into
     a stretch the record left silent. */
@@ -29,7 +31,7 @@ const analysisFile = analysisIdx >= 0 ? argv[analysisIdx + 1] : null;
 const positional = argv.filter((x, i) => !x.startsWith('--') && argv[i - 1] !== '--analysis');
 const [lyricsFile, segFile, wordFile, outFile] = positional;
 if (!lyricsFile || !segFile || !wordFile || !outFile) {
-  console.error('usage: node render/align.mjs <lyrics.json> <segments.json> <words.json> <out.json> [--drop-unanchored]');
+  console.error('usage: node render/align.mjs <lyrics.json> <segments.json> <words.json> <out.json> [--keep-all|--drop-unanchored]');
   process.exit(1);
 }
 
@@ -142,46 +144,8 @@ for (const section of sheet.sections) {
     }
   }
 }
-
-/**
- * Whisper often hears several short consecutive lines as ONE segment
- * ("Turn it on, turn it over, turn it loose"). If a segment's text is
- * exactly a run of consecutive sheet lines, split it back into them,
- * time shared out by character count.
- */
-function splitConcats() {
-  const flats = lines.map((l) => l.norm.replace(/ /g, ''));
-  const out = [];
-  for (const seg of segments) {
-    const flat = seg.text.replace(/ /g, '');
-    let found = null;
-    for (let i = 0; i < flats.length && !found; i++) {
-      let acc = '';
-      const parts = [];
-      for (let j = i; j < flats.length && parts.length < 12; j++) {
-        if (!flats[j]) break;
-        acc += flats[j];
-        parts.push(j);
-        if (acc.length === flat.length) {
-          if (acc === flat && parts.length > 1) found = parts;
-          break;
-        }
-        if (acc.length > flat.length) break;
-      }
-    }
-    if (!found) { out.push(seg); continue; }
-    const total = found.reduce((a, j) => a + flats[j].length, 0);
-    let t = seg.t0;
-    for (const j of found) {
-      const dt = (seg.t1 - seg.t0) * (flats[j].length / total);
-      out.push({ text: lines[j].norm, t0: t, t1: t + dt });
-      t += dt;
-    }
-  }
-  segments = out;
-}
-splitConcats();
-segments = splitRepeats([...new Set(lines.map((l) => l.norm))]);
+const canonicalLineCount = lines.length;
+const canonicalWordCount = lines.reduce((sum, line) => sum + line.words.length, 0);
 
 /* ------------------------------------------------------- string similarity */
 
@@ -199,6 +163,53 @@ function lev(a, b) {
   return prev[n];
 }
 const sim = (a, b) => 1 - lev(a, b) / Math.max(a.length, b.length, 1);
+
+/**
+ * Whisper often hears several short consecutive lines as ONE segment
+ * ("Turn it on, turn it over, turn it loose"). If a segment's text is
+ * a run of consecutive sheet lines, split it back into them, with time
+ * shared by character count. The comparison is deliberately fuzzy: sung
+ * ASR commonly hears one word wrong ("lost" as "laws"), and requiring an
+ * exact concatenation was the reason every second canonical line vanished.
+ */
+function splitConcats() {
+  const flats = lines.map((l) => l.norm.replace(/ /g, ''));
+  const out = [];
+  for (const seg of segments) {
+    const flat = seg.text.replace(/ /g, '');
+    let found = null;
+    let bestScore = 0;
+    for (let i = 0; i < flats.length; i++) {
+      let acc = '';
+      const parts = [];
+      for (let j = i; j < flats.length && parts.length < 6; j++) {
+        if (!flats[j]) break;
+        acc += flats[j];
+        parts.push(j);
+        if (parts.length < 2) continue;
+        const ratio = acc.length / Math.max(1, flat.length);
+        if (ratio > 1.35) break;
+        if (ratio < 0.65) continue;
+        const score = sim(acc, flat);
+        if (score >= 0.72 && score > bestScore) {
+          found = [...parts];
+          bestScore = score;
+        }
+      }
+    }
+    if (!found) { out.push(seg); continue; }
+    const total = found.reduce((a, j) => a + flats[j].length, 0);
+    let t = seg.t0;
+    for (const j of found) {
+      const dt = (seg.t1 - seg.t0) * (flats[j].length / total);
+      out.push({ text: lines[j].norm, t0: t, t1: t + dt });
+      t += dt;
+    }
+  }
+  segments = out;
+}
+splitConcats();
+segments = splitRepeats([...new Set(lines.map((l) => l.norm))]);
 
 /* -------------------------------------- stage 1: lines ↔ segments (global) */
 
@@ -349,8 +360,72 @@ function rescueUnanchored() {
   }
 }
 
+/**
+ * Last-resort timing for canonical lines the recogniser did not name. This is
+ * intentionally conservative: use the gap between anchored neighbours when
+ * there is one; otherwise share the neighbouring vocal span. The line is
+ * marked as estimated for diagnostics, but it remains in the lyric video.
+ */
+function forceAnchorAll() {
+  const songEnd = Number(analysis?.duration)
+    || (segments.length ? segments[segments.length - 1].t1 + 3 : Math.max(3, lines.length * 2.5));
+  let i = 0;
+  while (i < lines.length) {
+    if (lineSeg[i] !== null) { i++; continue; }
+    let j = i;
+    while (j < lines.length && lineSeg[j] === null) j++;
+    const run = [];
+    for (let k = i; k < j; k++) run.push(k);
+
+    let p = i - 1;
+    while (p >= 0 && lineSeg[p] === null) p--;
+    let n = j;
+    while (n < lines.length && lineSeg[n] === null) n++;
+    const previous = p >= 0 ? segments[lineSeg[p]] : null;
+    const next = n < lines.length ? segments[lineSeg[n]] : null;
+
+    let t0 = previous ? previous.t1 : (segments[0]?.t0 || 0);
+    let t1 = next ? next.t0 : songEnd;
+    // The run is sized by what its lines need and shared out by the same
+    // measure, so the smallest line in a rescued run still gets the window it
+    // was budgeted. Splitting by character count instead once gave a
+    // three-word line a third of a second inside a run that had been widened
+    // on its behalf.
+    const weights = run.map((k) => Math.max(0.65, lines[k].words.length * 0.22));
+    const totalWeight = weights.reduce((a, b) => a + b, 0) || run.length;
+    const minimum = totalWeight;
+
+    // A run that will not fit takes the time in FRONT of it, never the time
+    // behind it. Rewinding into the previous line's span used to place whole
+    // outros before the line above them had finished; the renderer then had
+    // to choose between printing the song out of order and flashing eight
+    // lines through one second, and neither is a lyric anybody can read.
+    if (t1 - t0 < minimum) t1 = Math.min(songEnd, Math.max(t1, t0 + minimum));
+    // Only when the record itself has run out does the run share the
+    // following vocal's window — a merged ASR segment often holds both.
+    if (t1 - t0 < minimum && next) t1 = Math.min(songEnd, Math.max(t1, next.t1));
+    // A run before the first heard vocal has nothing in front of it to take.
+    if (t1 - t0 < minimum && !previous) t0 = Math.max(0, t1 - minimum);
+
+    let cursor = t0;
+    for (let r = 0; r < run.length; r++) {
+      const k = run[r];
+      const end = r === run.length - 1
+        ? Math.max(cursor + 0.65, t1)
+        : cursor + Math.max(0.65, (t1 - t0) * (weights[r] / totalWeight));
+      segments.push({ text: lines[k].norm, t0: cursor, t1: end, estimated: true });
+      lineSeg[k] = segments.length - 1;
+      lines[k].timingEstimated = true;
+      cursor = end;
+    }
+    i = j;
+  }
+}
+
+if (KEEP_ALL || DROP_UNANCHORED) rescueUnanchored();
+if (KEEP_ALL) forceAnchorAll();
+
 if (DROP_UNANCHORED) {
-  rescueUnanchored();
   const missing = lines.map((l, i) => (lineSeg[i] === null ? l : null)).filter(Boolean);
   if (missing.length === lines.length) {
     console.error('None of the written lyrics could be heard in this song\'s audio.');
@@ -455,6 +530,7 @@ const outLines = lines.map((line) => ({
   kind: line.kind,
   text: line.text,
   ...(line.device ? { device: line.device } : {}),
+  ...(line.timingEstimated ? { timingEstimated: true } : {}),
   repeatIndex: line.repeatIndex,
   t0: Number(line.t0.toFixed(3)),
   t1: Number(line.t1.toFixed(3)),
@@ -466,6 +542,16 @@ const outLines = lines.map((line) => ({
   })),
 }));
 
+if (KEEP_ALL) {
+  const timedWords = outLines.reduce((sum, line) => sum + line.words.length, 0);
+  if (outLines.length !== canonicalLineCount || timedWords !== canonicalWordCount) {
+    throw new Error(
+      `Lyric coverage invariant failed: ${outLines.length}/${canonicalLineCount} lines and `
+      + `${timedWords}/${canonicalWordCount} words reached the timing sheet.`,
+    );
+  }
+}
+
 await fs.writeFile(outFile, JSON.stringify({
   title: sheet.title,
   artist: sheet.artist,
@@ -473,6 +559,14 @@ await fs.writeFile(outFile, JSON.stringify({
   ...(sheet.style ? { style: sheet.style } : {}),
   ...(sheet.cover ? { cover: sheet.cover } : {}),
   lines: outLines,
+  coverage: {
+    canonicalLines: canonicalLineCount,
+    timedLines: outLines.length,
+    canonicalWords: canonicalWordCount,
+    timedWords: outLines.reduce((sum, line) => sum + line.words.length, 0),
+    estimatedLines: outLines.filter((line) => line.timingEstimated).length,
+    complete: outLines.length === lines.length,
+  },
 }, null, 1));
 
 const nWords = outLines.reduce((a, l) => a + l.words.length, 0);

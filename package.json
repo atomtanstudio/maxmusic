@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "MaxMusic — front end for MiniMax Music 3 via ComfyUI",
+  "description": "MaxMusic — local-first front end for MiniMax Music 3",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test",
+    "setup:native": "node scripts/setup-native.mjs",
+    "start:native": "node scripts/start-native.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   }
 }

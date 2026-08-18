@@ -12,10 +12,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/models/huggingface \
     TOKENIZERS_PARALLELISM=false
 
-# git is here because diffusers is pinned to a commit until the MiniMax Music 3
-# pipeline lands in a release; pip needs it to fetch that.
+# The diffusers dependency is pinned to a commit until the MiniMax Music 3
+# pipeline lands in a release. requirements.txt uses the GitHub archive so the
+# native installer does not need a Git executable.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-venv libsndfile1 curl ca-certificates git \
+      python3 python3-pip python3-venv libsndfile1 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Ubuntu 24.04 marks its Python as externally managed; this image IS the

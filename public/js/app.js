@@ -18,6 +18,7 @@
 import * as api from './api.js';
 import { createRouter } from './router.js';
 import { storeTrack, loadRecords, updateRecord } from './records.js';
+import { createLibrarySync } from './library-sync.js';
 
 /* ========================================================================== *
  * Elements
@@ -84,6 +85,8 @@ export const bus = {
 
 const STORE_PREFIX = 'maxmusic:';
 
+let librarySync = null;
+
 export const storage = {
   get(key, fallback = null) {
     try {
@@ -91,8 +94,12 @@ export const storage = {
       return raw === null ? fallback : JSON.parse(raw);
     } catch { return fallback; }
   },
-  set(key, value) {
-    try { localStorage.setItem(STORE_PREFIX + key, JSON.stringify(value)); return true; }
+  set(key, value, options = {}) {
+    try {
+      localStorage.setItem(STORE_PREFIX + key, JSON.stringify(value));
+      if (key === 'library.tracks') librarySync?.queue(value, options);
+      return true;
+    }
     catch { return false; }
   },
   remove(key) {
@@ -196,13 +203,13 @@ const TOAST_ICON = { info: 'info', success: 'check', warn: 'alert', error: 'aler
    have one. */
 const TOAST_SEVERITY = {};
 
-/** Live toasts that were given a `key`, so a repeat replaces rather than stacks. */
+/** Live keyed toasts. Repeats patch the same node so progress never flashes. */
 const keyedToasts = new Map();
 
 /**
  * @param {string} message               Shown verbatim; newlines preserved.
  * @param {{kind?: 'info'|'success'|'warn'|'error', title?: string, timeout?: number,
- *          key?: string,
+ *          key?: string, progress?: number,
  *          action?: {label: string, onClick: () => void},
  *          actions?: Array<{label: string, onClick: () => void}>}} [opts]
  * @returns {() => void} dismiss
@@ -210,60 +217,86 @@ const keyedToasts = new Map();
 export function toast(message, opts = {}) {
   const { kind = 'info', title = '', timeout = kind === 'error' ? 9000 : 5000, key } = opts;
   const actions = [opts.action, ...(opts.actions || [])].filter((a) => a && a.label);
-
-  // One live toast per key — a flapping connection must not build a wall.
-  if (key && keyedToasts.has(key)) keyedToasts.get(key)();
-
   const severity = TOAST_SEVERITY[kind] || '';
+
+  function paint(entry) {
+    const { node } = entry;
+    node.dataset.kind = kind;
+    node.querySelector('.toast__icon').innerHTML = iconMarkup(TOAST_ICON[kind] || 'info');
+    const head = node.querySelector('.toast__head');
+    const titleNode = node.querySelector('.toast__title');
+    const severityNode = node.querySelector('.sev');
+    titleNode.textContent = title;
+    titleNode.hidden = !title;
+    severityNode.textContent = severity;
+    severityNode.className = `sev${severity ? ` sev--${kind}` : ''}`;
+    severityNode.hidden = !severity;
+    head.hidden = !title && !severity;
+    node.querySelector('.toast__msg').textContent = String(message);
+
+    const progressNode = node.querySelector('.toast__progress');
+    const progress = Number(opts.progress);
+    const hasProgress = Number.isFinite(progress);
+    progressNode.hidden = !hasProgress;
+    if (hasProgress) {
+      const value = Math.max(0, Math.min(1, progress));
+      progressNode.style.setProperty('--toast-progress', `${value * 100}%`);
+      progressNode.setAttribute('aria-valuenow', String(Math.round(value * 100)));
+    } else {
+      progressNode.removeAttribute('aria-valuenow');
+    }
+
+    const row = node.querySelector('.toast__actions');
+    row.replaceChildren();
+    row.hidden = actions.length === 0;
+    for (const action of actions) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn--sm';
+      btn.type = 'button';
+      btn.textContent = action.label;
+      btn.addEventListener('click', () => { action.onClick?.(); entry.dismiss(); });
+      row.append(btn);
+    }
+
+    clearTimeout(entry.timer);
+    entry.timer = timeout > 0 ? setTimeout(entry.dismiss, timeout) : null;
+  }
+
+  // One live toast per key. Update its text, state and progress in place rather
+  // than playing the leave/enter animations on every polling response.
+  const existing = key ? keyedToasts.get(key) : null;
+  if (existing?.node.isConnected && !existing.node.hasAttribute('data-leaving')) {
+    paint(existing);
+    return existing.dismiss;
+  }
+  if (key) keyedToasts.delete(key);
 
   const node = document.createElement('div');
   node.className = 'toast';
-  node.dataset.kind = kind;
   node.innerHTML = `
-    <span class="toast__icon">${iconMarkup(TOAST_ICON[kind] || 'info')}</span>
+    <span class="toast__icon"></span>
     <div class="toast__body">
-      ${title || severity ? `<div class="toast__head">
-        ${title ? '<p class="toast__title"></p>' : ''}
-        ${severity ? `<span class="sev sev--${kind}"></span>` : ''}
-      </div>` : ''}
+      <div class="toast__head"><p class="toast__title"></p><span class="sev"></span></div>
       <p class="toast__msg"></p>
+      <div class="toast__progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span></span></div>
+      <div class="toast__actions"></div>
     </div>
     <button class="toast__close" type="button" aria-label="Dismiss">${iconMarkup('close')}</button>`;
-
-  if (title) node.querySelector('.toast__title').textContent = title;
-  if (severity) node.querySelector('.sev').textContent = severity;
-  node.querySelector('.toast__msg').textContent = String(message);
-
-  let timer = null;
-  const dismiss = () => {
-    if (key && keyedToasts.get(key) === dismiss) keyedToasts.delete(key);
+  const entry = { node, timer: null, dismiss: null };
+  entry.dismiss = () => {
+    if (key && keyedToasts.get(key) === entry) keyedToasts.delete(key);
     if (!node.isConnected) return;
-    clearTimeout(timer);
+    clearTimeout(entry.timer);
     node.setAttribute('data-leaving', '');
     node.addEventListener('animationend', () => node.remove(), { once: true });
     setTimeout(() => node.remove(), 400);
   };
 
-  node.querySelector('.toast__close').addEventListener('click', dismiss);
-
-  if (actions.length) {
-    const row = document.createElement('div');
-    row.className = 'toast__actions';
-    for (const a of actions) {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn--sm';
-      btn.type = 'button';
-      btn.textContent = a.label;
-      btn.addEventListener('click', () => { a.onClick?.(); dismiss(); });
-      row.append(btn);
-    }
-    node.querySelector('.toast__body').append(row);
-  }
-
+  node.querySelector('.toast__close').addEventListener('click', entry.dismiss);
   el.toasts.append(node);
-  if (key) keyedToasts.set(key, dismiss);
-  if (timeout > 0) timer = setTimeout(dismiss, timeout);
-  return dismiss;
+  if (key) keyedToasts.set(key, entry);
+  paint(entry);
+  return entry.dismiss;
 }
 
 /* ========================================================================== *
@@ -951,6 +984,26 @@ function wireChrome() {
   });
 }
 
+function wireLibrarySync() {
+  librarySync = createLibrarySync({
+    getLocal: () => storage.get('library.tracks', []),
+    setLocal: (records) => {
+      try { localStorage.setItem(`${STORE_PREFIX}library.tracks`, JSON.stringify(records)); }
+      catch { /* the existing browser ledger remains best-effort */ }
+    },
+    onChange: (records) => {
+      bus.emit('library:changed', { source: 'server', count: records.length });
+    },
+    onError: (error) => {
+      console.warn('[library] SQLite sync is temporarily unavailable', error);
+      toast('Your songs are still available in this browser, but the local library database could not be updated.', {
+        kind: 'warn', title: 'Library backup', key: 'library-sync',
+      });
+    },
+  });
+  void librarySync.start();
+}
+
 /* ========================================================================== *
  * Player module bootstrap (owned by the player lane)
  * ========================================================================== */
@@ -1133,6 +1186,7 @@ function wirePlayerFallbackRequests() {
 function boot() {
   document.documentElement.dataset.shell = 'ready';
 
+  wireLibrarySync();
   wireChrome();
   wireGlobalErrors();
   wirePlayerFallbackRequests();

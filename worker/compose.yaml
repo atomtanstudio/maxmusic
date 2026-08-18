@@ -23,10 +23,21 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       HF_HOME: /models/huggingface
       MAXMUSIC_TRACKS: /data/tracks
+      # `diffusers` is the self-contained fallback. `comfy` submits the exact
+      # official ComfyUI graph proven by the release gate, certifies the final
+      # waveform boundary, and records local lyric-transcription diagnostics.
+      MAXMUSIC_RUNTIME: ${MAXMUSIC_RUNTIME:-diffusers}
+      MAXMUSIC_COMFY_URL: ${MAXMUSIC_COMFY_URL:-http://host.docker.internal:8189}
+      # Keep the model warm across consecutive/two-take requests, then give VRAM
+      # back after a quiet editing window. Zero keeps it resident; POST
+      # /release is also available and refuses to interrupt an active render.
+      MAXMUSIC_IDLE_RELEASE_SECONDS: ${MAXMUSIC_IDLE_RELEASE_SECONDS:-600}
       # Set this if the weights live somewhere else, or to try a fine-tune.
       # MAXMUSIC_MODEL: MiniMaxAI/MiniMax-Music3
     ports:
       - "3011:3011"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # The Hugging Face cache. Point this at wherever you keep model weights.
       - ${MAXMUSIC_MODELS:-./models}:/models

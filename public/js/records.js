@@ -43,6 +43,16 @@ export function toRecord(payload) {
   const prompt = String(m.prompt ?? '');
   const audio = m.audio_setting || {};
   const format = String(m.format || audio.format || (filename.split('.').pop() || '')).toLowerCase();
+  const requestedRaw = m.requestedDuration
+    ?? m.requestedSeconds
+    ?? extra.requested_duration_seconds
+    ?? m.askedSeconds;
+  const requestedDuration = Number(requestedRaw);
+  const durationWarning = String(m.durationWarning ?? extra.duration_warning ?? '').trim() || null;
+  const durationEndReason = String(m.durationEndReason ?? extra.duration_end_reason ?? '').trim() || null;
+  const generationCeiling = Number(m.generationCeiling ?? extra.generation_ceiling_seconds);
+  const generationMinimum = Number(m.generationMinimum ?? extra.minimum_duration_seconds);
+  const generationAttempts = Number(m.generationAttempts ?? extra.generation_attempts);
 
   return {
     id,
@@ -58,7 +68,25 @@ export function toRecord(payload) {
     lyrics: String(m.lyrics ?? ''),
     isInstrumental: Boolean(m.isInstrumental ?? m.is_instrumental),
     duration: durationOf(m, extra),
-    seed: Number.isFinite(Number(m.seed)) && m.seed !== null && m.seed !== '' ? Number(m.seed) : null,
+    requestedDuration: Number.isFinite(requestedDuration) && requestedDuration > 0
+      ? requestedDuration
+      : durationOf(m, extra),
+    durationWarning,
+    durationEndReason,
+    generationCeiling: Number.isFinite(generationCeiling) && generationCeiling > 0
+      ? generationCeiling
+      : null,
+    generationMinimum: Number.isFinite(generationMinimum) && generationMinimum > 0
+      ? generationMinimum
+      : null,
+    generationAttempts: Number.isInteger(generationAttempts) && generationAttempts > 0
+      ? generationAttempts
+      : 1,
+    seed: Number.isFinite(Number(m.generationSeed ?? m.seed))
+      && (m.generationSeed ?? m.seed) !== null
+      && (m.generationSeed ?? m.seed) !== ''
+      ? Number(m.generationSeed ?? m.seed)
+      : null,
     format: format && format !== 'undefined' ? format : '',
     sampleRate: Number(m.sampleRate ?? m.sample_rate ?? audio.sample_rate ?? extra.music_sample_rate) || null,
     bitrate: Number(m.bitrate ?? audio.bitrate ?? extra.bitrate) || null,
@@ -84,8 +112,8 @@ export function loadRecords(storage) {
   return raw.filter((r) => r && typeof r === 'object' && (r.url || r.id)).map(coerce);
 }
 
-export function saveRecords(storage, list) {
-  return storage.set(STORE_KEY, list);
+export function saveRecords(storage, list, options = {}) {
+  return storage.set(STORE_KEY, list, options);
 }
 
 /**

@@ -1,4 +1,8 @@
 node_modules/
+.maxmusic-venv/
+.maxmusic-tools/
+__pycache__/
+data/
 .DS_Store
 .env
 shots/
@@ -7,3 +11,6 @@ render/out/
 render/models/
 render/data/job-*
 render/data/model-sets-length.json
+test-artifacts/
+# Timestamped safety copies taken before a deploy or a bulk edit.
+.maxmusic-backup-*/

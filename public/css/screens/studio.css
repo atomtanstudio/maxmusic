@@ -589,18 +589,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.screen-studio .chiprow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-.screen-studio .chiprow .chip {
-  flex: 1 1 auto;
-  justify-content: center;
-  height: var(--control-h-sm);
-  padding-inline: var(--space-4);
-}
-
 .screen-studio .rack__row {
   display: flex;
   align-items: center;

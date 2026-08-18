@@ -1,22 +1,25 @@
-# The MaxMusic lyric-video renderer
+# The MaxMusic lyric-video renderers
 
-Turns a song into a kinetic-typography lyric video: one continuous dark world
-— the venue from the cover art, rebuilt as live graphics — where the lyrics
-are the scenography. Words land on their sung timestamps; everything else
-moves on measured audio, so nothing can drift out of sync.
+MaxMusic has a fast production renderer and an optional kinetic renderer. The
+default production path keeps every authored lyric line visible, highlights
+words on their sung timestamps, and uses the machine's native video encoder.
+The kinetic path builds a continuous live-graphics world for hand-directed
+films, but takes longer because it captures one browser frame at a time.
 
-Zero npm dependencies, same as the app. The only tools it shells out to are
-`ffmpeg` (decode, mux, encode) and a local Chromium — the same one
-`capture.mjs` already drives.
+There are no renderer npm dependencies. The default path only shells out to
+`ffmpeg`/`ffprobe`; the optional kinetic path also needs local Chromium.
 
 ## The pipeline
 
 ```
 audio.flac ──▶ analyze.mjs ──▶ data/<song>-analysis.json   (bass/mid/high per frame, onsets, beats)
-lyrics.json ─▶ align.mjs ───▶ data/<song>-timing.json     (word-level sung times)
-                 ▲  whisper-cli (segments + words passes)
-stage.html + engine.mjs ◀── both JSONs, deterministic paint(frame)
-render.mjs ──▶ headless Chromium ──▶ ffmpeg ──▶ out/<song>.mp4
+lyrics.json ─▶ align.mjs ───▶ data/<song>-timing.json     (every authored line + word timing)
+                 ▲  faster-whisper (timing evidence)
+fast-render.mjs ──▶ ffmpeg (cover + waveform + ASS karaoke) ──▶ MP4
+
+Optional kinetic path:
+stage.html + engine.mjs ◀── analysis + timing, deterministic paint(frame)
+render.mjs ──▶ headless Chromium ──▶ ffmpeg ──▶ MP4
 ```
 
 1. **`analyze.mjs`** — decodes the track with ffmpeg and measures it: RMS,
@@ -25,11 +28,12 @@ render.mjs ──▶ headless Chromium ──▶ ffmpeg ──▶ out/<song>.mp4
    not always hold a grid, so the stage leans on the envelopes — which are
    sample-accurate by construction — and treats beats as decoration.
 
-2. **`align.mjs`** — marries the canonical lyric sheet to two whisper-cpp
-   passes (`-m small.en`, segment + `-ml 1 -sow` word). Lines anchor to
-   segments, words time inside their line's window, chant repeats split
-   merged segments, and anything the ASR missed is interpolated inside its
-   window. Refuses to emit a sheet with unanchored lines.
+2. **`align.mjs`** — marries the canonical lyric sheet to ASR timing evidence.
+   Lines anchor to phrases, words time inside their line's window, and merged
+   phrases are split back into their authored lines. ASR is never treated as
+   the source of lyric content: a final coverage invariant requires every
+   authored line and word to be present, estimating uncertain timing instead
+   of deleting text.
 
 3. **`engine.mjs` + `stage.html`** — the stage. A pure function of frame
    number: seeded PRNG, no wall-clock, no Math.random, so a render is
@@ -41,10 +45,13 @@ render.mjs ──▶ headless Chromium ──▶ ffmpeg ──▶ out/<song>.mp4
    `device` hints in the lyric sheet opt into bespoke treatments (the
    redaction bars, the crack).
 
-4. **`render.mjs`** — drives Chromium over the DevTools protocol, seeks the
-   stage one frame at a time, and pipes screenshots straight into ffmpeg,
-   which muxes the track. ~35 fps capture on an M-series Mac, so a
-   two-minute song renders in about two minutes.
+4. **`fast-render.mjs`** — builds the background, waveform, full-line ASS
+   karaoke, audio, and output in one FFmpeg graph. It prefers NVENC on NVIDIA,
+   VideoToolbox on macOS, and `libx264` elsewhere. This is the Studio default.
+
+5. **`render.mjs`** — the optional kinetic renderer. It drives Chromium over
+   the DevTools protocol, seeks the stage one frame at a time, and pipes
+   screenshots into ffmpeg. Enable it with `MAXMUSIC_VIDEO_RENDERER=kinetic`.
 
 ## Rendering a song
 
@@ -55,9 +62,14 @@ whisper-cli -m <model> -f <16k-mono.wav> -oj -of seg
 whisper-cli -m <model> -f <16k-mono.wav> -ml 1 -sow -oj -of words
 node render/align.mjs render/lyrics-osmw.json seg.json words.json render/data/osmw-timing.json
 
-# the video
-node render/render.mjs --song osmw --audio shots/showcase/open-source-must-win-v2.flac \
+# the default fast video
+node render/fast-render.mjs --audio shots/showcase/open-source-must-win-v2.flac \
+     --timing render/data/osmw-timing.json --mode film --cover cover.png \
      --out render/out/osmw.mp4
+
+# optional hand-directed kinetic video
+node render/render.mjs --song osmw --audio shots/showcase/open-source-must-win-v2.flac \
+     --out render/out/osmw-kinetic.mp4
 
 # fast iteration: excerpts and stills
 node render/render.mjs --song osmw --audio <flac> --from 24 --to 40 --out render/out/ex.mp4
@@ -146,12 +158,19 @@ machine. The Library's per-song menu drives it:
 
 - **Download FLAC / Download MP3** — `GET /studio/audio?track=…&format=…`,
   streamed; MP3 is transcoded on the way out at 320k.
-- **Make a lyric scroll** — the song's cover, softened, with the words
-  gliding up on the sung timing and each word lifting to the accent as it
-  is sung.
-- **Make a lyric film** — the directed kinetic engine; `auto-direct.mjs`
-  writes the sheet when no hand-authored one exists.
+- **Make a lyric video** — every authored line remains on screen while its
+  sung words highlight. Songs without cover art use an animated color field
+  instead of a blank background.
+- **Make an audio visualizer** — a large, bright waveform over the cover or
+  animated color field. Vocal songs require an explicit confirmation because
+  this deliverable intentionally contains no lyric text.
+
+The native default is `fast-render.mjs`, a single FFmpeg graph that uses NVENC
+on supported NVIDIA machines, VideoToolbox on supported Macs, and `libx264`
+elsewhere. Set `MAXMUSIC_VIDEO_RENDERER=kinetic` only for the slower browser-
+captured directed engine.
 
 Jobs run one at a time (`POST /studio/video`, poll `GET /studio/video/:id`,
-fetch `…/:id/file`). First video on a fresh machine downloads the
-transcription model (~460 MB) into `render/models/` and keeps it.
+fetch `…/:id/file`). Native installs reuse the private environment's
+`faster-whisper` model. Finished videos live beside the SQLite library under
+`data/videos/`; working files stay under `data/video-jobs/`.

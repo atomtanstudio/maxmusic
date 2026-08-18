@@ -158,14 +158,6 @@
 .screen-create .segment.opt__ctl { display: flex; }
 .screen-create .segment.opt__ctl .segment__item { flex: 1 1 0; min-width: 0; }
 
-.lengths { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-.lengths .chip {
-  min-width: 54px;
-  justify-content: center;
-  font-variant-numeric: tabular-nums;
-}
-.lengths .chip--custom { min-width: 64px; }
-
 .lenfield { display: inline-flex; align-items: center; gap: var(--space-3); }
 .lenfield__num {
   width: 72px;

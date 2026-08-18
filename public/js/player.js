@@ -686,7 +686,7 @@ export function mount(root, ctx) {
     // While muted the slider reads 0; state.volume is remembered for unmute.
     const v = state.muted ? 0 : state.volume;
     el.vol.value = String(v);
-    el.vol.style.setProperty('--range-fill', `${Math.round(v * 100)}%`);
+    el.vol.style.setProperty('--range-pos', String(v));
     el.mute.querySelector('use').setAttribute('href', state.muted || state.volume === 0 ? '#i-mute' : '#i-volume');
     el.mute.setAttribute('aria-label', state.muted ? 'Unmute' : 'Mute');
     el.mute.title = state.muted ? 'Unmute' : `Mute (${Math.round(state.volume * 100)}%)`;

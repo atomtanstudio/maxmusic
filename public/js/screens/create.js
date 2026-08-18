@@ -2,8 +2,8 @@
  * Create — the front door.
  *
  * Left: a creation surface. One idea, who sings it, how long, and a disclosure
- * for the few remaining SPEC §3a parameters. One authoritative control per
- * value — no slider shadowing a number shadowing a chip row.
+ * for the few remaining SPEC §3a parameters. Duration has one authoritative
+ * value with a quick half-minute slider and an exact-entry escape hatch.
  *
  * Right: the workspace. Every song made here, newest first, on one fixed row
  * rhythm, with the run in flight sitting at the top of the same list.
@@ -19,10 +19,17 @@
  * Owned by the create lane: this file + public/css/screens/create.css.
  */
 
-import { downloadAudio, makeLyricVideo, downloadVideo } from '../studio-actions.js';
+import { downloadAudio, makeLyricVideo, downloadVideo, hasDisplayableLyrics } from '../studio-actions.js';
 import { redoCoverArt } from '../cover-redo.js';
 import { renameSong } from '../rename.js';
-import { pacedPrompt, planSong, wordsFor } from '../pacing.js';
+import { countSungWords, pacedPrompt, planSong, wordsFor } from '../pacing.js';
+import { requestsInstrumental, simpleMusic3Caption } from '../music3-caption.js';
+import {
+  durationGridMarkup,
+  durationGridPosition,
+  durationGridValue,
+  isDurationGridValue,
+} from '../duration-control.js';
 
 export const meta = {
   title: 'Create',
@@ -80,8 +87,6 @@ const DETAILS = [
   { text: 'a saxophone solo' },
   { text: 'a long instrumental outro' },
 ];
-
-const LENGTHS = [30, 60, 120, 180, 300];
 
 const SORTS = [
   { value: 'newest', label: 'Newest first' },
@@ -183,19 +188,8 @@ function describe(rec) {
  * written. Nothing is invented. Studio is where the full three-part caption
  * gets written by hand.
  */
-function buildCaption({ idea, styleTags, instrumental }, max) {
-  const parts = [];
-  const line = String(idea || '').replace(/\s+/g, ' ').trim();
-  if (line) parts.push(line);
-
-  const tags = String(styleTags || '').replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
-  if (tags) parts.push(`Basic Attributes: ${tags}.`);
-
-  parts.push(instrumental
-    ? 'Instrumental, no vocals. The lead melodic instrument carries the hook.'
-    : 'Vocal Style: a lead vocal delivers the written lyrics with natural phrasing, mixed front and centre.');
-
-  return parts.join('\n').slice(0, max);
+function buildCaption({ idea, styleTags, duration, lyrics, instrumental }, max) {
+  return simpleMusic3Caption({ idea, styleTags, duration, lyrics, instrumental }).slice(0, max);
 }
 
 /* -------------------------------------------------------------------- run -- */
@@ -234,6 +228,16 @@ function normalise(raw) {
   const duration = Number.isFinite(ms) && ms > 0
     ? (ms > 400 ? ms / 1000 : ms)
     : (Number(r.duration) > 0 ? Number(r.duration) : null);
+  const requestedRaw = r.requestedDuration
+    ?? r.requestedSeconds
+    ?? extra.requested_duration_seconds
+    ?? r.askedSeconds;
+  const requestedDuration = Number(requestedRaw);
+  const durationWarning = String(r.durationWarning ?? extra.duration_warning ?? '').trim() || null;
+  const durationEndReason = String(r.durationEndReason ?? extra.duration_end_reason ?? '').trim() || null;
+  const generationCeiling = Number(r.generationCeiling ?? extra.generation_ceiling_seconds);
+  const generationMinimum = Number(r.generationMinimum ?? extra.minimum_duration_seconds);
+  const generationAttempts = Number(r.generationAttempts ?? extra.generation_attempts);
 
   const prompt = String(r.prompt ?? '');
   return {
@@ -249,8 +253,26 @@ function normalise(raw) {
     lyrics: String(r.lyrics ?? ''),
     isInstrumental: Boolean(r.isInstrumental ?? r.is_instrumental),
     duration,
+    requestedDuration: Number.isFinite(requestedDuration) && requestedDuration > 0
+      ? requestedDuration
+      : duration,
+    durationWarning,
+    durationEndReason,
+    generationCeiling: Number.isFinite(generationCeiling) && generationCeiling > 0
+      ? generationCeiling
+      : null,
+    generationMinimum: Number.isFinite(generationMinimum) && generationMinimum > 0
+      ? generationMinimum
+      : null,
+    generationAttempts: Number.isInteger(generationAttempts) && generationAttempts > 0
+      ? generationAttempts
+      : 1,
     format: String(r.format || (filename.split('.').pop() || '')).toLowerCase().replace('undefined', ''),
-    seed: Number.isFinite(Number(r.seed)) && r.seed !== null && r.seed !== '' ? Number(r.seed) : null,
+    seed: Number.isFinite(Number(r.generationSeed ?? r.seed))
+      && (r.generationSeed ?? r.seed) !== null
+      && (r.generationSeed ?? r.seed) !== ''
+      ? Number(r.generationSeed ?? r.seed)
+      : null,
     cover: String(r.cover || r.coverUrl || '') || null,
     takeSlot: String(r.takeSlot || '') || null,
     createdAt: Number(r.createdAt) || Date.now(),
@@ -264,6 +286,7 @@ function normalise(raw) {
 export function mount(root, ctx) {
   const { api, iconMarkup } = ctx;
   const { LIMITS } = api;
+  const isWorkerBusyError = (err) => api.isWorkerBusyError?.(err) || false;
 
   const saved = ctx.storage.get(FORM_KEY, {}) || {};
   const prefs = { view: 'list', sort: 'newest', liked: false, ...(ctx.storage.get(PREFS_KEY, null) || {}) };
@@ -370,17 +393,21 @@ export function mount(root, ctx) {
           </div>
 
           <div class="opt opt--stack">
-            <span class="opt__label" id="cr-length-label">Length</span>
-            <div class="lengths" role="group" aria-labelledby="cr-length-label" data-lengths>
-              ${LENGTHS.map((s) => `<button class="chip" type="button" data-length="${s}">${clock(s)}</button>`).join('')}
-              <button class="chip chip--custom" type="button" data-length="custom">Custom</button>
-              <span class="lenfield" data-lenfield hidden>
-                <input class="input lenfield__num" type="number" data-length-num
-                  min="${Math.ceil(LIMITS.DURATION_MIN)}" max="${LIMITS.DURATION_MAX}" step="5"
-                  aria-label="Length in seconds">
-                <span class="lenfield__unit">sec</span>
-              </span>
+            <span class="opt__label" id="cr-length-label">
+              Length <output class="duration-control__value mono" data-length-value>2:00</output>
+            </span>
+            ${durationGridMarkup({ ariaLabel: 'Song length in 30-second steps' })}
+            <div class="duration-control__footer">
+              <span class="duration-control__hint" data-length-hint>30-second steps · up to 5:00</span>
+              <button class="duration-control__exact" type="button" data-length-exact>Exact seconds</button>
             </div>
+            <span class="lenfield" data-lenfield hidden>
+              <label class="duration-control__exact-label" for="cr-length-num">Exact length</label>
+              <input class="input lenfield__num" id="cr-length-num" type="number" data-length-num
+                min="${Math.ceil(LIMITS.DURATION_MIN)}" max="${LIMITS.DURATION_MAX}" step="1"
+                aria-label="Exact length in seconds">
+              <span class="lenfield__unit">sec</span>
+            </span>
           </div>
 
           <div class="more" data-more>
@@ -496,7 +523,10 @@ export function mount(root, ctx) {
     hintList: $('[data-hint-list]'),
     surprise: $('[data-surprise]'),
     modes: $('[data-modes]'),
-    lengths: $('[data-lengths]'),
+    durationSlider: $('[data-duration-slider]'),
+    durationValue: $('[data-length-value]'),
+    durationHint: $('[data-length-hint]'),
+    exactDuration: $('[data-length-exact]'),
     lenField: $('[data-lenfield]'),
     lenNum: $('[data-length-num]'),
     more: $('[data-more]'),
@@ -627,24 +657,32 @@ export function mount(root, ctx) {
           retry: true,
         };
       }
-      // Lyrics come from the OpenAI account, so the account is what is asked.
-      // health.lyricsEnabled describes configured routing and does not change
-      // when someone signs in.
-      // A local lyric writer is as good as a signed-in account — better, for
-      // anyone running this on their own machine, where there is no account
-      // to sign into at all. Ask whether words can be written, not who by.
+      // If an OAuth-aware account backend is selected, account state is the
+      // authority. Otherwise the local writer reported by health is enough.
+      // These paths must not be OR-ed together: a configured OAuth route should
+      // not silently fall back to a weaker local model while signed out.
       const auth = ctx.auth;
-      const canWrite = auth?.ready || health.lyricsEnabled;
+      const accountConfigured = Boolean(
+        auth?.brokerConfigured
+        || (health.openaiBroker && health.openaiBroker !== 'disabled' && health.openaiBroker !== 'unknown'),
+      );
+      const canWrite = accountConfigured ? Boolean(auth?.ready) : health.lyricsEnabled;
       if (!state.instrumental && auth && !canWrite && !state.song?.lyrics) {
-        const needsSignIn = auth.brokerConfigured && !auth.authenticated;
+        const needsSignIn = accountConfigured && auth.reachable && !auth.authenticated;
+        const accountUnavailable = accountConfigured && !auth.reachable;
         return {
-          title: needsSignIn ? 'Sign in to write lyrics' : 'Lyric writing is unavailable',
-          text: needsSignIn
+          title: accountUnavailable
+            ? 'OpenAI account is unavailable'
+            : needsSignIn ? 'Sign in to write lyrics' : 'Add lyrics to continue',
+          text: accountUnavailable
+            ? 'The OpenAI account backend did not answer. Check the server connection in Settings, or make this one instrumental.'
+            : needsSignIn
             ? 'Songs with vocals need words first. Connect your OpenAI account in Settings, or make this one instrumental.'
-            : 'Songs with vocals need words first, and nothing is set up to write them. Start a local writer such as Ollama, '
-              + 'write the lyrics yourself in Studio, or make this one instrumental.',
+            : 'No local lyric writer is connected. Write or paste the words in Studio, connect Ollama or another compatible writer, '
+              + 'or make this one instrumental.',
           kind: 'warn',
           instrumental: true,
+          studio: true,
         };
       }
     }
@@ -670,12 +708,18 @@ export function mount(root, ctx) {
       prompt: buildCaption({
         idea: state.idea,
         styleTags: state.song?.styleTags,
+        duration: state.duration,
+        lyrics: state.song?.lyrics || '',
         instrumental: state.instrumental,
       }, LIMITS.PROMPT_MAX),
+      title: state.song?.title || titleFromIdea(state.idea),
+      idea: state.idea,
       is_instrumental: state.instrumental,
-      // The length the words actually want — see pacing.js. Identical to the
-      // chosen length whenever the sheet already fits it.
-      duration: state.plan?.duration ?? state.duration,
+      // The user's selected length is the render target. The lyric plan may
+      // choose how many words to write and where to add an instrumental tail,
+      // but it must never silently turn a five-minute request into a shorter
+      // render request.
+      duration: state.duration,
       audio_setting: state.format === 'mp3'
         ? { format: 'mp3', bitrate: state.bitrate }
         : { format: state.format },
@@ -755,7 +799,7 @@ export function mount(root, ctx) {
     ].join(' · ');
   }
 
-  /** The field's own furniture: the counter, and the block of chips under it. */
+  /** The field's own furniture: the counter and the duration slider. */
   function paintIdeaFoot() {
     const len = state.idea.length;
     el.ideaCount.textContent = len > LIMITS.PROMPT_MAX * 0.7 ? `${len} / ${LIMITS.PROMPT_MAX}` : '';
@@ -770,14 +814,20 @@ export function mount(root, ctx) {
       b.classList.toggle('is-active', (b.dataset.mode === 'instrumental') === state.instrumental);
     }
 
-    const preset = LENGTHS.includes(state.duration) && !state.customLength;
-    for (const b of el.lengths.querySelectorAll('[data-length]')) {
-      const v = b.dataset.length;
-      b.classList.toggle('is-active', v === 'custom' ? !preset : (preset && Number(v) === state.duration));
-      if (v === 'custom') b.textContent = preset ? 'Custom' : clock(state.duration);
+    const exact = state.customLength || !isDurationGridValue(state.duration);
+    const onGrid = !exact;
+    el.durationValue.textContent = clock(state.duration);
+    el.durationSlider.value = String(durationGridValue(state.duration));
+    el.durationSlider.style.setProperty('--range-pos', durationGridPosition(state.duration));
+    el.durationSlider.setAttribute('aria-valuetext', clock(state.duration));
+    el.durationHint.textContent = onGrid
+      ? '30-second steps · up to 5:00'
+      : 'Exact length · slider remains on 30-second steps';
+    el.exactDuration.textContent = exact ? 'Use 30-second steps' : 'Exact seconds';
+    el.lenField.hidden = !exact;
+    if (exact && document.activeElement !== el.lenNum) {
+      el.lenNum.value = String(Math.round(state.duration));
     }
-    el.lenField.hidden = preset;
-    if (!preset && document.activeElement !== el.lenNum) el.lenNum.value = String(Math.round(state.duration));
 
     el.moreToggle.setAttribute('aria-expanded', String(state.advanced));
     el.moreBody.hidden = !state.advanced;
@@ -809,7 +859,7 @@ export function mount(root, ctx) {
    * inside the surface and never on its edge — SPEC §9b.
    *
    * It deliberately does NOT add a `Warning` / `Error` chip. Every title here
-   * already names the state ("Lyric writing is unavailable", "Your studio is
+   * already names the state ("Add lyrics to continue", "Your studio is
    * offline"), so the chip was a fourth encoding of one fact alongside the
    * icon, the border and the title — and it was the only place this screen
    * dropped out of product voice into log-line shorthand. §9b asks severity to
@@ -853,6 +903,14 @@ export function mount(root, ctx) {
           b.disabled = true;
           ctx.refreshHealth().finally(() => { b.disabled = false; });
         });
+        body.append(b);
+      }
+      if (block.studio) {
+        const b = document.createElement('button');
+        b.className = 'btn btn--sm';
+        b.type = 'button';
+        b.append(ctx.icon('lyrics'), document.createTextNode('Write lyrics in Studio'));
+        b.addEventListener('click', () => ctx.navigate('studio', { query: { from: 'create' } }));
         body.append(b);
       }
       if (block.instrumental) {
@@ -967,6 +1025,8 @@ export function mount(root, ctx) {
         prompt: rec.prompt,
         lyrics: rec.lyrics,
         duration: rec.duration,
+        requestedDuration: rec.requestedDuration,
+        durationWarning: rec.durationWarning,
         format: rec.format,
         isInstrumental: rec.isInstrumental,
         seed: rec.seed,
@@ -995,7 +1055,7 @@ export function mount(root, ctx) {
     state.instrumental = rec.isInstrumental;
     if (Number.isFinite(rec.duration) && rec.duration > 0) {
       state.duration = clamp(Math.round(rec.duration), LIMITS.DURATION_MIN, LIMITS.DURATION_MAX);
-      state.customLength = !LENGTHS.includes(state.duration);
+      state.customLength = !isDurationGridValue(state.duration);
     }
     persistForm();
     paintForm();
@@ -1008,6 +1068,7 @@ export function mount(root, ctx) {
     return ctx.menu({
       label: `More actions for ${rec.title}`,
       items: () => {
+        const hasLyrics = hasDisplayableLyrics(rec);
         const items = [
           { label: 'Play', icon: 'play', onSelect: () => playRecord(rec) },
           {
@@ -1017,8 +1078,20 @@ export function mount(root, ctx) {
             href: api.mediaUrl(rec.url || rec.filename),
           },
           { label: 'Download MP3', icon: 'download', onSelect: () => downloadAudio(ctx, rec, 'mp3') },
-          { label: 'Make a lyric video', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'film') },
-          { label: 'Make a visualizer video', icon: 'wave', onSelect: () => makeLyricVideo(ctx, rec, 'visualizer') },
+          {
+            label: 'Make a lyric video',
+            icon: 'wave',
+            note: hasLyrics ? 'Shows every lyric' : 'No lyrics saved',
+            disabled: !rec.url || !hasLyrics,
+            onSelect: () => makeLyricVideo(ctx, rec, 'film'),
+          },
+          {
+            label: 'Make an audio visualizer',
+            icon: 'wave',
+            note: hasLyrics ? 'No lyric text' : 'Music only',
+            disabled: !rec.url,
+            onSelect: () => makeLyricVideo(ctx, rec, 'visualizer'),
+          },
           ...(((ctx.storage.get(LIBRARY_KEY, []) || []).find((r) => r && r.id === rec.id)?.videos) || []).map((v) => ({
             label: { film: 'Download the lyric video', scroll: 'Download the lyric scroll', visualizer: 'Download the visualizer' }[v.mode] || 'Download the video',
             icon: 'download',
@@ -1227,11 +1300,14 @@ export function mount(root, ctx) {
   }
 
   function errorBlock(err, actions = []) {
-    const title = err?.name === 'ValidationError'
+    const busy = isWorkerBusyError(err);
+    const title = busy
+      ? 'Another render is still finishing'
+      : err?.name === 'ValidationError'
       ? 'This request cannot be sent'
       : state.errorStep === 'lyrics' ? 'The lyrics could not be written' : 'The render stopped';
     // the backend's own words, verbatim — house rule 3
-    const { node: n, body } = notice('error', title, api.errorText(err));
+    const { node: n, body } = notice(busy ? 'warn' : 'error', title, api.errorText(err));
 
     const row = document.createElement('div');
     row.className = 'row row--wrap notice__actions';
@@ -1312,8 +1388,10 @@ export function mount(root, ctx) {
       lyrics: state.facts?.instrumental ? '' : (state.song?.lyrics || ''),
       isInstrumental: state.facts?.instrumental,
       duration: state.facts?.duration,
+      requestedDuration: result.requestedDuration ?? state.facts?.requestedDuration ?? state.facts?.duration,
+      durationWarning: result.durationWarning ?? result.extra_info?.duration_warning ?? null,
       format: state.facts?.format,
-      seed: state.facts?.seed,
+      seed: result.generationSeed ?? state.facts?.seed,
       takeSlot: slot || null,
       createdAt: Date.now(),
     });
@@ -1418,7 +1496,8 @@ export function mount(root, ctx) {
     kicker.className = 'session__kicker';
     kicker.textContent = state.running
       ? 'In progress'
-      : state.phase === 'error' ? 'Stopped'
+      : state.phase === 'error' && isWorkerBusyError(state.error) ? 'Waiting for studio'
+        : state.phase === 'error' ? 'Stopped'
         : state.takes.length > 1 ? 'Two new versions' : 'Just made';
     head.append(kicker);
 
@@ -1438,7 +1517,7 @@ export function mount(root, ctx) {
       again.append(ctx.icon('refresh'), document.createTextNode(
         state.instrumental ? 'Render again' : 'Render again with these lyrics',
       ));
-      again.addEventListener('click', () => start({ skipLyrics: true }));
+      again.addEventListener('click', () => retryWhenReady({ skipLyrics: true }));
       acts.append(again);
     }
     if (!state.running && state.song && !state.lyricsOpen) {
@@ -1473,9 +1552,25 @@ export function mount(root, ctx) {
       wrap.append(errorBlock(state.error, state.errorStep === 'lyrics'
         ? [
           { label: 'Try again', run: () => start({ lyricsOnly: true }) },
+          { label: 'Write lyrics in Studio', run: () => ctx.navigate('studio', { query: { from: 'create' } }) },
           { label: 'Make it instrumental', run: () => setInstrumental(true) },
         ]
-        : [{ label: 'Try again', run: () => start({ skipLyrics: Boolean(state.song) || state.instrumental }) }]));
+        : [{ label: 'Try again', run: () => retryWhenReady({ skipLyrics: Boolean(state.song) || state.instrumental }) }]));
+    }
+
+    const durationWarnings = state.takes
+      .map((take, i) => {
+        const warning = String(take?.durationWarning || take?.extra_info?.duration_warning || '').trim();
+        if (!warning) return '';
+        return state.takes.length > 1 ? `Take ${'AB'[i]}: ${warning}` : warning;
+      })
+      .filter(Boolean);
+    if (durationWarnings.length) {
+      wrap.append(notice(
+        'warn',
+        'The model did not match the requested length',
+        durationWarnings.join('\n'),
+      ).node);
     }
 
     for (const e of state.takeErrors) {
@@ -1627,6 +1722,19 @@ export function mount(root, ctx) {
 
   /* --------------------------------------------------------------- the run -- */
 
+  async function retryWhenReady(opts) {
+    if (isWorkerBusyError(state.error)) {
+      const snapshot = await api.health();
+      if (snapshot.raw?.worker?.busy) {
+        ctx.toast('Another render is still in progress. Try again after it finishes.', {
+          kind: 'info', title: 'Studio still busy', key: 'worker-busy',
+        });
+        return;
+      }
+    }
+    start(opts);
+  }
+
   function setInstrumental(on) {
     state.instrumental = Boolean(on);
     persistForm();
@@ -1647,6 +1755,14 @@ export function mount(root, ctx) {
       el.idea.focus();
       ctx.toast('Describe the song first — one line is enough.', { kind: 'warn', key: 'need-idea' });
       return;
+    }
+
+    // Simple mode promises to understand one plain-language idea. An explicit
+    // "instrumental / no vocals / no lyrics" request is therefore stronger
+    // than an untouched default mode switch. This also avoids asking the lyric
+    // writer for words the person expressly prohibited.
+    if (!state.instrumental && requestsInstrumental(idea)) {
+      setInstrumental(true);
     }
 
     controller = new AbortController();
@@ -1713,35 +1829,57 @@ export function mount(root, ctx) {
           );
         }
 
-        // Too thin to fill the take even shortened: ask once more, firmly.
-        // Padding it here would mean writing someone's song for them.
-        // A sheet that does not fit gets ONE more ask, told exactly what was
-        // wrong with the first. Rewriting beats cutting: an automatic trim can
-        // only delete whole sections, and a song with its second chorus
-        // deleted is a song without a chorus.
-        let plan = fit(written, res.style_tags);
-        const want = wordsFor(state.duration);
-        const missBy = (p) => Math.abs(p.raw - want);
-        if (plan.short || plan.trimmed.length) {
-          const again = await write(plan.short
-            ? { firmer: true, was: plan.raw }
-            : { shorter: true, was: plan.raw });
-          const redo = String(again?.lyrics || '').trim();
-          const replan = redo ? fit(redo, again.style_tags) : null;
-          if (replan && missBy(replan) < missBy(plan)) {
-            res = again;
-            written = redo;
-            plan = replan;
+        // A provider may honor an instrumental brief by returning section tags
+        // and no sung words. That is a valid instrumental blueprint, not valid
+        // vocal lyrics. Canonicalize it before building the Music 3 caption so
+        // the model never receives "no lyrics" beside "clear lead vocal".
+        if (countSungWords(written) === 0) {
+          if (!requestsInstrumental(idea, res?.style_tags, written)) {
+            throw new api.ApiError(
+              'The lyric writer returned structure but no words for this vocal song.',
+              { status: 0, endpoint: '/api/lyrics' },
+            );
           }
-        }
+          setInstrumental(true);
+          state.plan = null;
+          state.song = {
+            title: String(res.song_title || '').trim() || titleFromIdea(idea),
+            styleTags: String(res.style_tags || '').trim(),
+            lyrics: '',
+          };
+          paintWorkspace();
+        } else {
 
-        state.plan = plan;
-        state.song = {
-          title: String(res.song_title || '').trim() || titleFromIdea(idea),
-          styleTags: String(res.style_tags || '').trim(),
-          lyrics: plan.lyrics,
-        };
-        paintWorkspace();
+          // Too thin to fill the take even shortened: ask once more, firmly.
+          // Padding it here would mean writing someone's song for them.
+          // A sheet that does not fit gets ONE more ask, told exactly what was
+          // wrong with the first. Rewriting beats cutting: an automatic trim can
+          // only delete whole sections, and a song with its second chorus
+          // deleted is a song without a chorus.
+          let plan = fit(written, res.style_tags);
+          const want = wordsFor(state.duration);
+          const missBy = (p) => Math.abs(p.raw - want);
+          if (plan.short || plan.trimmed.length) {
+            const again = await write(plan.short
+              ? { firmer: true, was: plan.raw }
+              : { shorter: true, was: plan.raw });
+            const redo = String(again?.lyrics || '').trim();
+            const replan = redo ? fit(redo, again.style_tags) : null;
+            if (replan && countSungWords(redo) > 0 && missBy(replan) < missBy(plan)) {
+              res = again;
+              written = redo;
+              plan = replan;
+            }
+          }
+
+          state.plan = plan;
+          state.song = {
+            title: String(res.song_title || '').trim() || titleFromIdea(idea),
+            styleTags: String(res.style_tags || '').trim(),
+            lyrics: plan.lyrics,
+          };
+          paintWorkspace();
+        }
       }
 
       if (lyricsOnly) {
@@ -1771,6 +1909,7 @@ export function mount(root, ctx) {
 
       state.facts = {
         duration: check.payload.duration ?? state.duration,
+        requestedDuration: state.duration,
         seed: seedForRun,
         format: state.format,
         bitrate: state.bitrate,
@@ -1824,8 +1963,10 @@ export function mount(root, ctx) {
           lyrics: state.facts.instrumental ? '' : (state.song?.lyrics || ''),
           isInstrumental: state.facts.instrumental,
           duration: state.facts.duration,
+          requestedDuration: t.requestedDuration ?? state.facts.requestedDuration ?? state.facts.duration,
+          durationWarning: t.durationWarning ?? t.extra_info?.duration_warning ?? null,
           format: state.facts.format,
-          seed: state.facts.seed,
+          seed: t.generationSeed ?? state.facts.seed,
           takeSlot: slot || null,
           createdAt: Date.now(),
         });
@@ -1851,8 +1992,10 @@ export function mount(root, ctx) {
         state.step = 'idle';
         state.phase = 'error';
         ctx.toast(api.errorText(err), {
-          kind: 'error',
-          title: state.errorStep === 'lyrics' ? 'Lyrics failed' : 'Render failed',
+          kind: isWorkerBusyError(err) ? 'warn' : 'error',
+          title: isWorkerBusyError(err)
+            ? 'Another render is still finishing'
+            : state.errorStep === 'lyrics' ? 'Lyrics failed' : 'Render failed',
           key: 'run-error',
         });
       }
@@ -1933,21 +2076,26 @@ export function mount(root, ctx) {
     if (b) setInstrumental(b.dataset.mode === 'instrumental');
   });
 
-  el.lengths.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-length]');
-    if (!b) return;
-    if (b.dataset.length === 'custom') {
-      state.customLength = true;
-      persistForm();
-      paintForm();
-      el.lenNum.focus();
-      el.lenNum.select();
-      return;
-    }
+  el.durationSlider.addEventListener('input', () => {
     state.customLength = false;
-    state.duration = Number(b.dataset.length);
+    state.duration = Number(el.durationSlider.value);
     persistForm();
     paintForm();
+  });
+  el.exactDuration.addEventListener('click', () => {
+    const exact = state.customLength || !isDurationGridValue(state.duration);
+    if (exact) {
+      state.customLength = false;
+      state.duration = durationGridValue(state.duration);
+      persistForm();
+      paintForm();
+      return;
+    }
+    state.customLength = true;
+    persistForm();
+    paintForm();
+    el.lenNum.focus();
+    el.lenNum.select();
   });
   el.lenNum.addEventListener('input', () => {
     const v = Number(el.lenNum.value);
@@ -1958,7 +2106,7 @@ export function mount(root, ctx) {
   });
   el.lenNum.addEventListener('blur', () => {
     el.lenNum.value = String(Math.round(state.duration));
-    state.customLength = !LENGTHS.includes(state.duration);
+    state.customLength = !isDurationGridValue(state.duration);
     persistForm();
     paintForm();
   });
