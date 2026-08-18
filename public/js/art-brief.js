@@ -324,6 +324,114 @@ const REGISTERS = [
   },
 ];
 
+/* ========================================================================== *
+ * Sleeve design language
+ *
+ * REGISTERS above answer "what is in the picture". They are all scene, palette
+ * and light, which is why every cover came back looking like a photograph of a
+ * place — good work, but not an album cover. A sleeve is a designed object: it
+ * has a medium, a typographic treatment and a layout convention, and those
+ * conventions are what make a black metal record legible as a black metal
+ * record across a room. That is the part this table carries.
+ *
+ * `type` is written as an instruction because the title and artist are set INTO
+ * the artwork by the image model. The old brief ended "no text or lettering in
+ * the image itself", which is why no cover ever had a title on it.
+ * ========================================================================== */
+
+const SLEEVES = [
+  {
+    match: /(synth-?wave|retro-?wave|outrun|vapor-?wave|darksynth|80s|eighties)/i,
+    scene: 'an endless coast highway running to a chrome sun on the horizon',
+    palette: 'hot magenta and cyan bleeding over deep indigo',
+    light: 'sun-grid glow with a long lens flare',
+    medium: 'a 1980s airbrush illustration: chrome, deep gradients, a wireframe grid running to a low horizon, faint VHS scanlines over the whole thing',
+    type: 'set the title in a wide italic chrome logotype with a bevelled edge and a magenta-to-cyan glow, centred across the upper third',
+    layout: 'symmetrical, the horizon low and a sun disc behind the type',
+  },
+  {
+    match: /(black ?metal|death ?metal|doom|thrash|sludge|grindcore|metal|hardcore)/i,
+    scene: 'a bare winter forest, or a ruined stone chapel with no way in',
+    palette: 'black, bone white and one bruise of dried colour',
+    light: 'flat cold daylight with the shadows crushed shut',
+    medium: 'a high-contrast near-monochrome image, engraved linework and decayed photographic grain, heavy vignette eating the corners',
+    type: 'set the band name as an ornate spiked blackletter logotype across the top, barely legible by design, and the title beneath it small in stark spaced capitals',
+    layout: 'rigidly symmetrical and centred, blacks crushed to nothing',
+  },
+  {
+    match: /(old ?school hip ?hop|boom ?bap|golden ?age|hip ?hop|rap|turntabl|breakbeat)/i,
+    scene: 'a city block in the afternoon: brick, roller shutters, a stoop, a payphone',
+    palette: 'warm sodium orange against cold concrete grey',
+    light: 'hard low sun raking down the street',
+    medium: 'grainy 1990s 35mm street photography, wide-angle and shot slightly low, heavy film grain and a little motion in it',
+    type: 'paint the title as a graffiti piece — fat outlined bubble letters with a spray drop-shadow — overlapping the photograph, and set the artist beside it in a chunky condensed sans',
+    layout: 'the lettering sits over the image like it was put there afterwards, sticker energy, nothing precious',
+  },
+  {
+    match: /(k-?pop|j-?pop|idol|bubblegum|dance ?pop|teen ?pop)/i,
+    scene: 'a bright studio set: pastel backdrop, oversized props, confetti caught mid-air',
+    palette: 'candy pink, mint and butter yellow',
+    light: 'even high-key studio light with no hard shadow anywhere',
+    medium: 'a glossy high-key studio photograph with candy pastel seamless behind it, cut-paper collage and sticker shapes layered over the top',
+    type: 'set the title in a clean geometric sans, tight tracking, one bright accent colour, stacked off-centre with plenty of air around it',
+    layout: 'playful and asymmetric, lots of white, a photobook page rather than a poster',
+  },
+  {
+    match: /(lo-?fi|chill-?hop|study beats|bedroom|jazzhop)/i,
+    scene: 'a small bedroom at night — desk lamp, headphones, rain running down the window',
+    palette: 'muted teal, dusty rose and warm lamp amber',
+    light: 'one warm lamp inside and the cold blue of the window',
+    medium: 'a soft anime cel illustration: a cosy interior at night, warm lamp, rain running down the window, gentle film grain over flat colour',
+    type: 'set the title small and lowercase in an unobtrusive sans, tucked into a lower corner at low contrast',
+    layout: 'generous empty space, anyone in it small and seen from behind',
+  },
+  {
+    match: /(classical|orchestral|symphon|concerto|chamber|baroque|opera|choral|piano solo)/i,
+    scene: 'a single object on a plain ground, or one architectural detail',
+    palette: 'ivory, slate and a single restrained gold',
+    light: 'soft raking light with long gentle falloff',
+    medium: 'one restrained image, printed like a catalogue plate — nothing busy, nothing incidental',
+    type: 'set the title in an elegant serif with clear hierarchy, the work large and the performer smaller beneath, on a solid colour band with generous margins',
+    layout: 'symmetrical, wide quiet margins, composed like a record label house style',
+  },
+  {
+    match: /(punk|garage|riot|oi!|street ?punk)/i,
+    scene: 'a wall of torn flyers, or an empty club floor after closing',
+    palette: 'black, white and one screaming spot colour',
+    light: 'direct flash, blown out and unflattering',
+    medium: 'a photocopied black-and-white image, blown-out contrast, torn edges and halftone dots',
+    type: 'set the title in ransom-note cut-out letters or a stencil, slightly crooked, over a strip of flat colour',
+    layout: 'cut-and-paste, off-register, deliberately rough',
+  },
+  {
+    match: /(jazz|blues|bossa|swing|big band|lounge)/i,
+    scene: 'a stage after the set, the lights still up and nobody on it',
+    palette: 'tobacco brown, brass and deep green shadow',
+    light: 'one warm practical just outside the frame',
+    medium: 'a mid-century photograph with a duotone wash over it, generous flat colour field beside the image',
+    type: 'set the title in a confident modernist sans, lower case, aligned hard to one edge of the colour field',
+    layout: 'a strict grid, the image occupying part of the square and flat colour the rest',
+  },
+  {
+    match: /(ambient|drone|meditat|new ?age|shoegaze|dream ?pop|downtempo)/i,
+    medium: 'a soft-focus field of colour and haze, almost abstract, no clear subject',
+    type: 'set the title very small in a light sans, low contrast, near one edge',
+    layout: 'the image fills the square edge to edge, the type almost an afterthought',
+  },
+  {
+    match: /(folk|acoustic|country|americana|bluegrass|singer-?songwriter)/i,
+    medium: 'a warm faded photograph with the character of a 1970s sleeve, slight colour shift and print texture',
+    type: 'set the title in a friendly serif, hand-drawn in feel, across the lower third',
+    layout: 'centred and unhurried, the horizon high',
+  },
+];
+
+const FALLBACK_SLEEVE = {
+  medium: 'a photographic image with the finish of a designed record sleeve rather than an illustration',
+  type: 'set the title in a confident sans with clear hierarchy, placed where the composition leaves room',
+  layout: 'composed as a square sleeve, the type an intended part of the design',
+};
+
 const FALLBACK_REGISTER = {
   scene: 'an empty road at night, headlights sweeping past the frame',
   palette: 'deep indigo, sodium amber and a cold white edge',
@@ -390,7 +498,7 @@ const PEOPLE = /\b(figure|figures|man|men|woman|women|person|people|crowd|dancer
  * @returns {?{text: string, scene: string, palette: string, swatch: string[],
  *            light: string, texture: string, images: string[], mood: string}}
  */
-export function composeBrief({ style, lyrics, title, instrumental, useStyle, useLyrics, useTitle }) {
+export function composeBrief({ style, lyrics, title, artist, instrumental, useStyle, useLyrics, useTitle }) {
   const styleText = useStyle ? clean(style) : '';
   const song = readSong(styleText);
   const read = useLyrics && !instrumental
@@ -402,9 +510,28 @@ export function composeBrief({ style, lyrics, title, instrumental, useStyle, use
 
   // The music picks the register; failing that the lyrics do; failing that the
   // catch-all. So switching every toggle still lands somewhere specific.
-  const reg = pick(REGISTERS, `${song.genre} ${song.raw}`)
+  // The sleeve is the more specific read of the genre, so where it carries its
+  // own art direction it decides the picture too. A k-pop sleeve asking for a
+  // candy pastel studio and a register answering "wet city street at midnight"
+  // produced a brief that argued with itself.
+
+  // The sleeve is the more specific read of the genre, so where it carries its
+  // own art direction it decides the picture too. A k-pop sleeve asking for a
+  // candy pastel studio and a register answering "wet city street at midnight"
+  // produced a brief that argued with itself.
+  const sleeve = pick(SLEEVES, `${song.genre} ${song.raw}`)
+    || pick(SLEEVES, styleText)
+    || FALLBACK_SLEEVE;
+
+  const baseReg = pick(REGISTERS, `${song.genre} ${song.raw}`)
     || pick(REGISTERS, read.words.join(' '))
     || FALLBACK_REGISTER;
+  const reg = {
+    ...baseReg,
+    scene: sleeve.scene || baseReg.scene,
+    palette: sleeve.palette || baseReg.palette,
+    light: sleeve.light || baseReg.light,
+  };
 
   // The caption's own emotional line wins; a bare style sentence is scanned
   // next; a key signature is the last resort.
@@ -435,15 +562,17 @@ export function composeBrief({ style, lyrics, title, instrumental, useStyle, use
       ? 'Whoever is in it stays small and turned away'
       : 'One figure, small and turned away, is the only living thing in it');
 
+  // The title goes ON the cover. Real sleeves carry their own name, including
+  // instrumental ones — a concerto is not sold in a blank wrapper. What an
+  // instrumental must not have is anything that could be read as lyrics.
+  const performer = clean(artist || '');
   const titleClause = named
-    ? (instrumental
-      ? `Keep the lower third quiet so “${named}” can sit small and centred.`
-      : `Leave the upper third open for the title “${named}”.`)
-    : 'Leave one calm area where a title can sit.';
+    ? `${cap(sleeve.type)}: the title reads exactly “${named}”`
+      + `${performer && performer.toLowerCase() !== 'maxmusic' ? `, with “${performer}” as the artist` : ''}`
+      + '. Spell it correctly and set no other words anywhere in the image.'
+    : `${cap(sleeve.type.replace(/\bthe title\b/g, 'any lettering'))}, kept to a few words at most.`;
 
-  const closing = instrumental
-    ? 'Square album cover. No text, no lettering and no legible signage anywhere in it.'
-    : 'Square album cover. No text or lettering in the image itself.';
+  const closing = `Square album cover, artwork filling the whole square edge to edge. ${cap(sleeve.layout)}.`;
 
   const light = tempoNote ? `${reg.light}, ${tempoNote}` : reg.light;
   const colour = mood ? `${reg.palette} — ${mood}` : reg.palette;
@@ -452,15 +581,16 @@ export function composeBrief({ style, lyrics, title, instrumental, useStyle, use
     : cap(scene);
 
   // Three sentence shapes, all grammatical whatever the scene turns out to be.
+  const medium = cap(sleeve.medium);
   const shapes = [
-    () => [sceneLine, cap(colour), cap(light), subject, cap(texture), titleClause, closing],
-    () => [sceneLine, subject, cap(texture), cap(colour), cap(light), titleClause, closing],
+    () => [medium, sceneLine, cap(colour), cap(light), subject, titleClause, closing],
+    () => [medium, sceneLine, subject, cap(colour), cap(light), titleClause, closing],
     () => [
+      medium,
       `${cap(scene)}, lit by ${lower(light)}`,
       read.images.length ? `${cap(read.images.join(' and '))} somewhere in the frame` : '',
       cap(colour),
       subject,
-      cap(texture),
       titleClause,
       closing,
     ],
@@ -475,6 +605,7 @@ export function composeBrief({ style, lyrics, title, instrumental, useStyle, use
 
   return {
     text,
+    sleeve,
     scene,
     palette: reg.palette,
     swatch: reg.swatch,

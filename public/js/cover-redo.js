@@ -21,6 +21,7 @@ function autoBrief(record) {
     style: String(record.prompt || ''),
     lyrics: String(record.lyrics || ''),
     title: String(record.title || ''),
+    artist: String(record.artist || ''),
     instrumental: Boolean(record.isInstrumental),
     useStyle: true,
     useLyrics: true,
