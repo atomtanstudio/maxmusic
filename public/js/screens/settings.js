@@ -23,7 +23,7 @@
 
 export const meta = {
   title: 'Settings',
-  subtitle: 'What the server is actually running',
+  subtitle: 'Your defaults, and what this install is running',
   css: '/css/screens/settings.css',
 };
 
@@ -179,6 +179,145 @@ function envRow(row) {
 
 function template(iconMarkup) {
   return `
+  <section class="set-sec">
+    <header class="set-sec__head">
+      <h2 class="set-sec__title">Your defaults</h2>
+      <p class="set-sec__note">Stored in this browser under <code class="code">maxmusic:defaults</code>.</p>
+      <button class="btn btn--sm btn--ghost set-sec__action" type="button" data-reset>
+        ${iconMarkup('refresh')}Reset
+      </button>
+    </header>
+
+    <div class="panel set-prefs">
+      <div class="set-pref">
+        <div class="field">
+          <label class="label" for="set-duration-num">
+            Default duration
+            <span class="label__hint" data-duration-clock>2:00</span>
+          </label>
+          <div class="set-pref__control">
+            <input class="range set-pref__range" type="range" id="set-duration"
+                   min="10" max="360" step="5" aria-label="Default duration in seconds">
+            <input class="input set-pref__num mono" type="number" id="set-duration-num"
+                   min="0.04" max="360" step="1" inputmode="decimal">
+            <span class="set-pref__unit">s</span>
+          </div>
+          <p class="hint" data-duration-hint>
+            MiniMax Music 3 accepts 0.04–360 s. New requests start here.
+          </p>
+        </div>
+      </div>
+
+      <div class="set-pref">
+        <div class="field">
+          <span class="label" id="set-format-label">Default format</span>
+          <div class="segment set-pref__segment" role="group" aria-labelledby="set-format-label" data-format>
+            <button class="segment__item" type="button" data-format-value="flac" aria-pressed="false">FLAC</button>
+            <button class="segment__item" type="button" data-format-value="mp3" aria-pressed="false">MP3</button>
+            <button class="segment__item" type="button" data-format-value="wav" aria-pressed="false">WAV</button>
+          </div>
+          <p class="hint" data-format-hint></p>
+        </div>
+        <div class="field set-pref__sub">
+          <label class="label" for="set-bitrate">
+            mp3 bitrate
+            <span class="label__hint" data-bitrate-state></span>
+          </label>
+          <select class="select" id="set-bitrate" data-bitrate></select>
+        </div>
+      </div>
+
+      <div class="set-pref">
+        <div class="field">
+          <label class="label" for="set-artist">Artist name</label>
+          <div class="set-pref__control">
+            <input class="input set-pref__text" type="text" id="set-artist" data-artist
+                   maxlength="${ARTIST_MAX}" autocomplete="off" spellcheck="false"
+                   placeholder="Nobody in particular">
+          </div>
+          <p class="hint">
+            Who gets credited on the songs you make. Any song can override it in Studio.
+            Leave it empty and songs stay uncredited.
+          </p>
+        </div>
+      </div>
+
+      <div class="set-pref">
+        <div class="field">
+          <label class="label" for="set-start">Start screen</label>
+          <div class="set-pref__control">
+            <select class="select" id="set-start" data-start></select>
+            <button class="btn btn--sm" type="button" data-open-start>
+              ${iconMarkup('external')}Open
+            </button>
+          </div>
+          <p class="hint">
+            MaxMusic opens the route in the URL and falls back to
+            <code class="code">#/create</code>. This choice is stored for screens that link
+            home; <b>Open</b> takes you there now.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="set-sec">
+    <header class="set-sec__head">
+      <h2 class="set-sec__title">OpenAI account</h2>
+      <p class="set-sec__note">Signs in on the server. This browser never holds the credential.</p>
+    </header>
+
+    <div class="panel set-account" data-account data-state="checking">
+      <div class="set-account__row">
+        <span class="set-account__dot" aria-hidden="true"></span>
+        <div class="set-account__text">
+          <p class="set-account__state" data-account-state>Checking OpenAI…</p>
+          <p class="set-account__note" data-account-note></p>
+        </div>
+        <div class="row set-account__actions">
+          <button class="btn btn--sm btn--ghost set-account__out" type="button" data-account-out hidden>
+            Sign out
+          </button>
+          <button class="btn btn--sm set-account__btn" type="button" data-account-btn disabled>
+            Sign in with OpenAI
+          </button>
+        </div>
+      </div>
+
+      <div class="set-account__pending" data-account-pending hidden>
+        <p class="set-account__pendtext">
+          Finish signing in on the OpenAI tab. This page picks it up on its own.
+        </p>
+        <p class="set-account__code" data-account-code hidden>
+          If the tab didn’t open, go to <b data-account-url></b> and enter
+          <code class="code" data-account-verify></code>
+        </p>
+        <div class="row">
+          <button class="btn btn--sm" type="button" data-account-cancel>Stop waiting</button>
+          <button class="btn btn--sm btn--ghost" type="button" data-account-reopen>Open the tab again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Everything below this line is the app reporting on itself. It is worth
+       having and it is not worth reading most days, so it is folded away: a
+       settings screen should open on the things a person can change. -->
+  <details class="set-diag">
+    <summary class="set-diag__summary">
+      <svg class="icon set-diag__chev" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+      <span class="set-diag__label">What is running</span>
+      <span class="spacer"></span>
+      <span class="set-diag__state mono" data-diag-state></span>
+    </summary>
+
+    <div class="set-preview">
+      <span class="label">What a new request starts from</span>
+      <code class="set-preview__code mono" data-preview></code>
+      <p class="hint hint--warn set-preview__warn" data-preview-warn hidden></p>
+    </div>
+
   <section class="panel set-hero" data-state="checking">
     <div class="set-hero__line" data-line aria-hidden="true"></div>
 
@@ -295,133 +434,7 @@ function template(iconMarkup) {
       </div>
     </section>
   </div>
-
-  <section class="set-sec">
-    <header class="set-sec__head">
-      <h2 class="set-sec__title">OpenAI account</h2>
-      <p class="set-sec__note">Signs in on the server. This browser never holds the credential.</p>
-    </header>
-
-    <div class="panel set-account" data-account data-state="checking">
-      <div class="set-account__row">
-        <span class="set-account__dot" aria-hidden="true"></span>
-        <div class="set-account__text">
-          <p class="set-account__state" data-account-state>Checking OpenAI…</p>
-          <p class="set-account__note" data-account-note></p>
-        </div>
-        <div class="row set-account__actions">
-          <button class="btn btn--sm btn--ghost set-account__out" type="button" data-account-out hidden>
-            Sign out
-          </button>
-          <button class="btn btn--sm set-account__btn" type="button" data-account-btn disabled>
-            Sign in with OpenAI
-          </button>
-        </div>
-      </div>
-
-      <div class="set-account__pending" data-account-pending hidden>
-        <p class="set-account__pendtext">
-          Finish signing in on the OpenAI tab. This page picks it up on its own.
-        </p>
-        <p class="set-account__code" data-account-code hidden>
-          If the tab didn’t open, go to <b data-account-url></b> and enter
-          <code class="code" data-account-verify></code>
-        </p>
-        <div class="row">
-          <button class="btn btn--sm" type="button" data-account-cancel>Stop waiting</button>
-          <button class="btn btn--sm btn--ghost" type="button" data-account-reopen>Open the tab again</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="set-sec">
-    <header class="set-sec__head">
-      <h2 class="set-sec__title">Your defaults</h2>
-      <p class="set-sec__note">Stored in this browser under <code class="code">maxmusic:defaults</code>.</p>
-      <button class="btn btn--sm btn--ghost set-sec__action" type="button" data-reset>
-        ${iconMarkup('refresh')}Reset
-      </button>
-    </header>
-
-    <div class="panel set-prefs">
-      <div class="set-pref">
-        <div class="field">
-          <label class="label" for="set-duration-num">
-            Default duration
-            <span class="label__hint" data-duration-clock>2:00</span>
-          </label>
-          <div class="set-pref__control">
-            <input class="range set-pref__range" type="range" id="set-duration"
-                   min="10" max="360" step="5" aria-label="Default duration in seconds">
-            <input class="input set-pref__num mono" type="number" id="set-duration-num"
-                   min="0.04" max="360" step="1" inputmode="decimal">
-            <span class="set-pref__unit">s</span>
-          </div>
-          <p class="hint" data-duration-hint>
-            MiniMax Music 3 accepts 0.04–360 s. New requests start here.
-          </p>
-        </div>
-      </div>
-
-      <div class="set-pref">
-        <div class="field">
-          <span class="label" id="set-format-label">Default format</span>
-          <div class="segment set-pref__segment" role="group" aria-labelledby="set-format-label" data-format>
-            <button class="segment__item" type="button" data-format-value="flac" aria-pressed="false">FLAC</button>
-            <button class="segment__item" type="button" data-format-value="mp3" aria-pressed="false">MP3</button>
-            <button class="segment__item" type="button" data-format-value="wav" aria-pressed="false">WAV</button>
-          </div>
-          <p class="hint" data-format-hint></p>
-        </div>
-        <div class="field set-pref__sub">
-          <label class="label" for="set-bitrate">
-            mp3 bitrate
-            <span class="label__hint" data-bitrate-state></span>
-          </label>
-          <select class="select" id="set-bitrate" data-bitrate></select>
-        </div>
-      </div>
-
-      <div class="set-pref">
-        <div class="field">
-          <label class="label" for="set-artist">Artist name</label>
-          <div class="set-pref__control">
-            <input class="input set-pref__text" type="text" id="set-artist" data-artist
-                   maxlength="${ARTIST_MAX}" autocomplete="off" spellcheck="false"
-                   placeholder="Nobody in particular">
-          </div>
-          <p class="hint">
-            Who gets credited on the songs you make. Any song can override it in Studio.
-            Leave it empty and songs stay uncredited.
-          </p>
-        </div>
-      </div>
-
-      <div class="set-pref">
-        <div class="field">
-          <label class="label" for="set-start">Start screen</label>
-          <div class="set-pref__control">
-            <select class="select" id="set-start" data-start></select>
-            <button class="btn btn--sm" type="button" data-open-start>
-              ${iconMarkup('external')}Open
-            </button>
-          </div>
-          <p class="hint">
-            MaxMusic opens the route in the URL and falls back to
-            <code class="code">#/create</code>. This choice is stored for screens that link
-            home; <b>Open</b> takes you there now.
-          </p>
-        </div>
-      </div>
-
-      <div class="set-preview">
-        <span class="label">What a new request starts from</span>
-        <code class="set-preview__code mono" data-preview></code>
-        <p class="hint hint--warn set-preview__warn" data-preview-warn hidden></p>
-      </div>
-    </div>
-  </section>`;
+  </details>`;
 }
 
 /* ========================================================================== *
@@ -601,6 +614,7 @@ export function mount(root, ctx) {
 
   function paintHealth(h) {
     snapshot = h;
+    paintDiagSummary(h);
     const offline = h.status === 'offline';
     const degraded = h.status === 'degraded';
     // Only claim a remote backend when the health call actually told us so —
@@ -856,6 +870,18 @@ export function mount(root, ctx) {
   copyBtn.innerHTML = `${ctx.iconMarkup('copy')}Copy report`;
 
   ctx.headerSlot.append(copyBtn, recheckBtn);
+
+  /** One line on the closed fold, so it need not be opened to learn all is well. */
+  function paintDiagSummary(h) {
+    const slot = page.querySelector('[data-diag-state]');
+    if (!slot) return;
+    if (!h) { slot.textContent = ''; return; }
+    const bits = [];
+    bits.push(h.status === 'online' ? 'all good' : h.status === 'degraded' ? 'not ready' : 'offline');
+    if (h.raw?.video?.encoder) bits.push(h.raw.video.encoder);
+    if (h.lyricsProvider && h.lyricsProvider !== 'disabled') bits.push(h.lyricsProvider);
+    slot.textContent = bits.join(' · ');
+  }
 
   /** Video-pipeline facts, straight from health, with the fallback called out. */
   function videoLine(h, field) {

@@ -670,3 +670,32 @@
 .screen-settings .set-pref__text { width: 100%; }
 .screen-settings .set-account__actions { flex: none; margin-left: auto; gap: var(--space-4); }
 .screen-settings .set-account__out[hidden] { display: none; }
+
+/* ------------------------------------------------------- diagnostics --- */
+/* The app reporting on itself. Worth having, not worth reading most days. */
+.screen-settings .set-diag {
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.screen-settings .set-diag__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-hi);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+.screen-settings .set-diag__summary::-webkit-details-marker { display: none; }
+.screen-settings .set-diag__chev { transition: transform var(--t-fast); flex: none; }
+.screen-settings .set-diag[open] .set-diag__chev { transform: rotate(90deg); }
+.screen-settings .set-diag__state {
+  color: var(--text-lo);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-normal);
+}
+.screen-settings .set-diag > *:not(summary) { margin: 0 var(--space-6) var(--space-6); }
+.screen-settings .set-diag > summary + * { margin-top: var(--space-2); }
