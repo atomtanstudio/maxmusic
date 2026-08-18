@@ -23,6 +23,12 @@ if (process.env.MAXMUSIC_DB) {
     libraryDb = await openLibraryDb(process.env.MAXMUSIC_DB);
     configureStudio({ libraryDb });
     console.log(`  Library database → ${libraryDb.filename}`);
+    // A fresh install has nothing to play, which is a poor first answer to
+    // "what is this". Only ever on an empty library: deleting the samples is
+    // a decision, and putting them back would be ignoring it.
+    const { seedLibrary } = await import('./seed-library.mjs');
+    seedLibrary(libraryDb, process.env.MAXMUSIC_TRACKS
+      || path.join(process.env.MAXMUSIC_DATA || __dirname, 'tracks'));
   } catch (error) {
     console.error(`\n  Could not open MAXMUSIC_DB: ${error.message}\n`);
     process.exit(1);
@@ -67,6 +73,7 @@ const MIME = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.mp3': 'audio/mpeg',
+  '.flac': 'audio/flac',
   '.wav': 'audio/wav',
   '.map': 'application/json; charset=utf-8',
 };

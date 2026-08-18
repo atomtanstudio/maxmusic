@@ -1020,7 +1020,71 @@ async function coverArt(req, res) {
  * The finished audio
  * -------------------------------------------------------------------------- */
 
+/**
+ * Where the app keeps song audio, when it keeps any.
+ *
+ * Normally this is the same directory the worker serves from, which is why
+ * handing every `/tracks/` request straight to the worker was harmless. It
+ * stops being harmless the moment the worker is on another machine or simply
+ * has not started: a file sitting right here answers 502. The shipped samples
+ * are precisely that case — they exist to be played before anything else is
+ * running.
+ */
+function localTrackFile(urlPath) {
+  const dir = process.env.MAXMUSIC_TRACKS
+    || (process.env.MAXMUSIC_DATA ? path.join(process.env.MAXMUSIC_DATA, 'tracks') : '');
+  if (!dir) return null;
+  const name = path.basename(decodeURIComponent(new URL(urlPath, 'http://localhost').pathname));
+  if (!name || name === '.' || name === '..') return null;
+  const file = path.resolve(dir, name);
+  if (!file.startsWith(`${path.resolve(dir)}${path.sep}`)) return null;
+  try {
+    return fs.statSync(file).isFile() ? file : null;
+  } catch {
+    return null;
+  }
+}
+
+const AUDIO_TYPES = {
+  '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+};
+
 function streamTrack(req, res) {
+  const here = localTrackFile(req.url);
+  if (here) {
+    const stat = fs.statSync(here);
+    const type = AUDIO_TYPES[path.extname(here).toLowerCase()] || 'application/octet-stream';
+    // The player seeks, so a range request has to be answered properly.
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (range) {
+      const start = range[1] ? Number(range[1]) : 0;
+      const end = range[2] ? Math.min(Number(range[2]), stat.size - 1) : stat.size - 1;
+      if (start >= stat.size || start > end) {
+        res.writeHead(416, { 'content-range': `bytes */${stat.size}` });
+        res.end();
+        return;
+      }
+      res.writeHead(206, {
+        'content-type': type,
+        'content-length': (end - start) + 1,
+        'content-range': `bytes ${start}-${end}/${stat.size}`,
+        'accept-ranges': 'bytes',
+      });
+      if (req.method !== 'HEAD') fs.createReadStream(here, { start, end }).pipe(res);
+      else res.end();
+      return;
+    }
+    res.writeHead(200, {
+      'content-type': type,
+      'content-length': stat.size,
+      'accept-ranges': 'bytes',
+    });
+    if (req.method !== 'HEAD') fs.createReadStream(here).pipe(res);
+    else res.end();
+    return;
+  }
+
   const target = new URL(WORKER_URL + req.url);
   const mod = target.protocol === 'https:' ? https : http;
   const upstream = mod.request(

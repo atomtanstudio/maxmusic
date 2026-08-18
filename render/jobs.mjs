@@ -274,8 +274,36 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-/** Fetch a backend media file to disk. */
+/**
+ * Where a media URL might already be on this machine.
+ *
+ * Two cases: the sleeves shipped in `public/samples`, which are not on the
+ * worker at all, and a tracks directory this app shares with the worker. A
+ * copy beats a round trip, and it is the only thing that works when the worker
+ * is on another machine and the file is a local one.
+ */
+function localMedia(urlPath) {
+  const url = String(urlPath || '');
+  const candidates = [];
+  if (url.startsWith('/samples/')) {
+    candidates.push(path.join(REPO, 'public', 'samples', path.basename(url)));
+  }
+  if (url.startsWith('/tracks/')) {
+    const tracks = process.env.MAXMUSIC_TRACKS
+      || (NATIVE_DATA_DIR ? path.join(NATIVE_DATA_DIR, 'tracks') : null);
+    if (tracks) candidates.push(path.join(tracks, path.basename(url)));
+  }
+  return candidates.find((file) => fs.existsSync(file)) || null;
+}
+
+/** Fetch a backend media file to disk, or copy it if it is already here. */
 function fetchToFile(backend, urlPath, dest) {
+  const here = localMedia(urlPath);
+  if (here) return fsp.copyFile(here, dest);
+  return fetchOverHttp(backend, urlPath, dest);
+}
+
+function fetchOverHttp(backend, urlPath, dest) {
   return new Promise((resolve, reject) => {
     const req = http.get({ host: backend.host, port: backend.port, path: urlPath }, (up) => {
       if (up.statusCode !== 200) {
@@ -822,7 +850,9 @@ export function handleStudio(req, res, backend) {
         progress: 0,
         error: null,
         trackUrl,
-        cover: mediaPath(body?.cover, 'covers'),
+        // A shipped sample's sleeve lives in `public/samples`, not in the covers
+      // store, and it should still be able to back its own lyric video.
+      cover: mediaPath(body?.cover, 'covers') || mediaPath(body?.cover, 'samples'),
         title,
         artist: String(body?.artist || 'MaxMusic').slice(0, 80).trim() || 'MaxMusic',
         lyrics,
