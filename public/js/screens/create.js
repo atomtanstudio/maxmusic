@@ -49,7 +49,18 @@ const LIBRARY_KEY = 'library.tracks';
 
 const HISTORY_MAX = 80;
 
-/** Starter ideas — clicking one fills the idea field. Nothing decorative. */
+/**
+ * Starter ideas — clicking one fills the idea field. Nothing decorative.
+ *
+ * Four are drawn at random every time the screen mounts, so the pool has to be
+ * deep enough that the same four rarely come round twice. Ten was not: the
+ * panel shuffled honestly and still looked like it never changed. Breadth
+ * matters as much as depth — somebody who makes drill should see drill here,
+ * not four more shades of the same evening.
+ *
+ * Each one is a line a person could plausibly have typed: a genre, a subject,
+ * and something specific enough to be worth hearing.
+ */
 const STARTERS = [
   { idea: 'a smoky late-night soul ballad about old flames, warm female voice', tag: 'Soul' },
   { idea: 'stadium synthwave about driving home at 4am with the windows down', tag: 'Synthwave' },
@@ -61,6 +72,73 @@ const STARTERS = [
   { idea: 'euphoric drum and bass about the first warm day of the year', tag: 'Drum & bass' },
   { idea: 'a hushed acoustic lullaby for a sleepless city', tag: 'Acoustic' },
   { idea: 'a slow-burn trip hop track about a phone that never rings', tag: 'Trip hop' },
+
+  { idea: 'boom bap about the corner shop that knows your order', tag: 'Hip hop' },
+  { idea: 'menacing UK drill about a group chat that went quiet', tag: 'Drill' },
+  { idea: 'southern trap about buying your mother a house', tag: 'Trap' },
+  { idea: 'nineties g-funk about a very slow Sunday', tag: 'G-funk' },
+  { idea: 'grime over a cold square-wave beat, all elbows', tag: 'Grime' },
+
+  { idea: 'black metal about a winter that outlived its king', tag: 'Black metal' },
+  { idea: 'doom metal about a town the map forgot', tag: 'Doom' },
+  { idea: 'thrash about a job you should have quit years ago', tag: 'Thrash' },
+  { idea: 'stoner rock about a desert highway and one working speaker', tag: 'Stoner rock' },
+  { idea: 'math rock about assembling flat-pack furniture at midnight', tag: 'Math rock' },
+  { idea: 'shoegaze about a face you cannot quite remember', tag: 'Shoegaze' },
+  { idea: 'post-punk about a city that keeps rebuilding the same street', tag: 'Post-punk' },
+  { idea: 'garage rock about a band that broke up in a car park', tag: 'Garage' },
+  { idea: 'emo about a bedroom you moved out of ten years ago', tag: 'Emo' },
+  { idea: 'prog rock in seven, about a lighthouse keeper losing count', tag: 'Prog' },
+
+  { idea: 'a k-pop single about the hour before a night out', tag: 'K-pop' },
+  { idea: 'eighties city pop about a taxi across a rainy bay', tag: 'City pop' },
+  { idea: 'bubblegum j-pop about a vending machine romance', tag: 'J-pop' },
+  { idea: 'a disco floor-filler about refusing to go home', tag: 'Disco' },
+  { idea: 'new wave about answering a phone that is not ringing', tag: 'New wave' },
+  { idea: 'dream pop about the last week of a long summer', tag: 'Dream pop' },
+  { idea: 'hyperpop about being extremely fine, thank you', tag: 'Hyperpop' },
+
+  { idea: 'deep house about the last train and the first light', tag: 'House' },
+  { idea: 'detroit techno about a factory floor at shift change', tag: 'Techno' },
+  { idea: 'uplifting trance about a horizon you never reach', tag: 'Trance' },
+  { idea: 'UK garage about a text you should not have sent', tag: 'UK garage' },
+  { idea: 'dub techno about fog rolling over a harbour', tag: 'Dub techno' },
+  { idea: 'breakcore about a printer that will not cooperate', tag: 'Breakcore' },
+  { idea: 'chiptune about a boss you cannot beat', tag: 'Chiptune' },
+  { idea: 'vaporwave about a shopping mall after closing', tag: 'Vaporwave' },
+
+  { idea: 'a jazz quartet playing the last set to four people', tag: 'Jazz' },
+  { idea: 'bossa nova about an afternoon nobody needs anything from', tag: 'Bossa nova' },
+  { idea: 'big band swing about a letter that arrived too late', tag: 'Swing' },
+  { idea: 'delta blues about a river that took the road with it', tag: 'Blues' },
+  { idea: 'gospel about a choir that will not be hurried', tag: 'Gospel' },
+  { idea: 'seventies funk about a lift that stops on every floor', tag: 'Funk' },
+  { idea: 'neo-soul about learning to cook for one', tag: 'Neo-soul' },
+
+  { idea: 'outlaw country about a truck with a hundred thousand miles left', tag: 'Country' },
+  { idea: 'bluegrass about a wedding nobody expected to work', tag: 'Bluegrass' },
+  { idea: 'americana about the highway between two small towns', tag: 'Americana' },
+  { idea: 'a sea shanty about a crew that misses the harbour', tag: 'Shanty' },
+  { idea: 'celtic folk about a road that only goes uphill', tag: 'Folk' },
+  { idea: 'a spaghetti western cue for a standoff nobody wins', tag: 'Western' },
+
+  { idea: 'a nocturne for solo piano and an empty concert hall', tag: 'Classical' },
+  { idea: 'a string quartet about a house being packed up', tag: 'Chamber' },
+  { idea: 'a choral piece for a cathedral at first light', tag: 'Choral' },
+  { idea: 'a baroque concerto with somewhere urgent to be', tag: 'Baroque' },
+  { idea: 'ambient drone about a tide coming in over an hour', tag: 'Ambient' },
+  { idea: 'a minimalist piano loop that changes once, late', tag: 'Minimalism' },
+
+  { idea: 'reggaeton about a summer that refuses to end', tag: 'Reggaeton' },
+  { idea: 'salsa about a kitchen at two in the morning', tag: 'Salsa' },
+  { idea: 'roots reggae about a landlord and a long memory', tag: 'Reggae' },
+  { idea: 'cumbia about a bus that stops everywhere', tag: 'Cumbia' },
+  { idea: 'flamenco about a door closed for the last time', tag: 'Flamenco' },
+  { idea: 'a tango about two people being extremely polite', tag: 'Tango' },
+  { idea: 'highlife about a cousin who always turns up', tag: 'Highlife' },
+  { idea: 'desert blues about walking somewhere that takes days', tag: 'Desert blues' },
+  { idea: 'afrobeat with horns, about a meeting that solved nothing', tag: 'Afrobeat' },
+  { idea: 'a qawwali-inflected piece about devotion and stamina', tag: 'Devotional' },
 ];
 
 /**
