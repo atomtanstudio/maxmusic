@@ -25,3 +25,6 @@ docs/backend-let-the-model-set-the-length.md
 # The gauntlet monitor: a local QA dashboard with machine-specific paths.
 gauntlet-status.mjs
 docs/progress.html
+
+# Personal permission settings, not part of the product.
+.claude/settings.local.json
