@@ -27,6 +27,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomInt } from 'node:crypto';
 
+import { readSettings, sanitiseSettings, writeSettings } from './settings-store.mjs';
 import {
   enforceLength,
   countSungWords,
@@ -93,16 +94,35 @@ const OPENAI_API = 'https://api.openai.com/v1';
    share memory with Music 3. */
 const CONFIGURED_LYRICS_URL = String(process.env.LYRICS_URL || '').trim().replace(/\/+$/, '');
 const LYRICS_USE_OPENAI = !CONFIGURED_LYRICS_URL && Boolean(LOCAL_OPENAI.key);
-const LLM_URL = CONFIGURED_LYRICS_URL
+const ENV_LLM_URL = CONFIGURED_LYRICS_URL
   || (LYRICS_USE_OPENAI ? OPENAI_API : 'http://127.0.0.1:11434/v1');
-const LLM_MODEL = process.env.LYRICS_MODEL || (LYRICS_USE_OPENAI ? 'gpt-4o-mini' : 'qwen3:14b');
-const LLM_KEY = process.env.LYRICS_KEY
-  || (LLM_URL.startsWith(OPENAI_API) ? LOCAL_OPENAI.key || '' : '');
-const LLM_API = String(
-  process.env.LYRICS_API || (LLM_URL.includes(':11434') ? 'ollama' : 'openai-compatible'),
-).toLowerCase();
+const ENV_LLM_MODEL = process.env.LYRICS_MODEL || (LYRICS_USE_OPENAI ? 'gpt-4o-mini' : 'qwen3:14b');
 const LLM_CONTEXT = Math.max(2048, Number(process.env.LYRICS_CONTEXT || 8192));
 const LLM_MAX_TOKENS = Math.max(256, Number(process.env.LYRICS_MAX_TOKENS || 1200));
+
+/**
+ * Where the words come from right now.
+ *
+ * Read on every call rather than fixed at import, because a person can change
+ * it from Settings and should not have to restart the program to be believed.
+ * A saved value wins over the environment: it is the more recent and more
+ * deliberate of the two. An empty saved value means "use the environment", so
+ * clearing the box in Settings restores whatever `.env` said.
+ *
+ * The key is never part of this. It comes from the environment or from an
+ * account already on the machine, and nothing a browser sends can set it.
+ */
+function lyricProvider() {
+  const saved = readSettings();
+  const url = String(saved.lyricsUrl || '').trim().replace(/\/+$/, '') || ENV_LLM_URL;
+  const model = String(saved.lyricsModel || '').trim() || ENV_LLM_MODEL;
+  const api = String(
+    saved.lyricsApi || process.env.LYRICS_API || (url.includes(':11434') ? 'ollama' : 'openai-compatible'),
+  ).toLowerCase();
+  const key = process.env.LYRICS_KEY
+    || (url.startsWith(OPENAI_API) ? LOCAL_OPENAI.key || '' : '');
+  return { url, model, api, key, fromSettings: Boolean(saved.lyricsUrl || saved.lyricsModel) };
+}
 
 /* Artwork is optional; the lyric video and the visualizer never needed it. A
    credential already on the machine is enough to offer it, and covers are only
@@ -331,8 +351,8 @@ function readModelJson(text) {
 }
 
 /** Build a native Ollama URL from either `.../v1` or its host-only form. */
-function ollamaUrl(endpoint) {
-  const target = new URL(LLM_URL);
+function ollamaUrl(endpoint, origin = lyricProvider().url) {
+  const target = new URL(origin);
   const base = target.pathname.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
   target.pathname = `${base}/api/${String(endpoint).replace(/^\/+/, '')}`;
   target.search = '';
@@ -350,11 +370,12 @@ async function writeLyrics(req, res) {
   });
 
   const messages = [{ role: 'user', content: brief }];
-  const request = LLM_API === 'ollama'
+  const provider = lyricProvider();
+  const request = provider.api === 'ollama'
     ? {
         url: ollamaUrl('chat'),
         body: {
-          model: LLM_MODEL,
+          model: provider.model,
           messages,
           stream: false,
           think: false,
@@ -367,9 +388,9 @@ async function writeLyrics(req, res) {
         },
       }
     : {
-        url: `${LLM_URL}/chat/completions`,
+        url: `${provider.url}/chat/completions`,
         body: {
-          model: LLM_MODEL,
+          model: provider.model,
           messages,
           temperature: 0.9,
           max_tokens: LLM_MAX_TOKENS,
@@ -382,14 +403,14 @@ async function writeLyrics(req, res) {
   try {
     reply = await fetchJson(request.url, {
       method: 'POST',
-      headers: LLM_KEY ? { authorization: `Bearer ${LLM_KEY}` } : {},
+      headers: provider.key ? { authorization: `Bearer ${provider.key}` } : {},
       body: request.body,
       timeoutMs: 10 * 60 * 1000,
     });
   } catch (err) {
     return send(res, 502, {
-      error: `The lyric writer at ${LLM_URL} did not answer (${err.message}). `
-        + 'Start it, or point LYRICS_URL somewhere else — Ollama and OpenAI-compatible chat APIs are supported.',
+      error: `The lyric writer at ${provider.url} did not answer (${err.message}). `
+        + 'Start it, or point Settings at another one — Ollama and OpenAI-compatible chat APIs both work.',
     });
   }
 
@@ -433,8 +454,8 @@ async function writeLyrics(req, res) {
     style_tags: String(parsed.style_tags || '').trim(),
     lyrics: sheet,
     words: countSungWords(sheet),
-    provider: LLM_API === 'ollama' ? 'ollama' : 'openai-compatible',
-    model: LLM_MODEL,
+    provider: provider.api === 'ollama' ? 'ollama' : 'openai-compatible',
+    model: provider.model,
   });
 }
 
@@ -916,14 +937,16 @@ async function health(req, res) {
       : 'unreachable';
   } else {
     try {
-      const models = await fetchJson(LLM_API === 'ollama' ? ollamaUrl('tags') : `${LLM_URL}/models`, {
-        headers: LLM_KEY ? { authorization: `Bearer ${LLM_KEY}` } : {},
+      const writer = lyricProvider();
+      const models = await fetchJson(
+        writer.api === 'ollama' ? ollamaUrl('tags', writer.url) : `${writer.url}/models`, {
+        headers: writer.key ? { authorization: `Bearer ${writer.key}` } : {},
         timeoutMs: 2500,
       });
       if (models.status === 200) {
-        lyricsProvider = LLM_API === 'ollama'
+        lyricsProvider = writer.api === 'ollama'
           ? 'ollama'
-          : (LLM_URL.startsWith(OPENAI_API) ? 'openai-key' : 'openai-compatible');
+          : (writer.url.startsWith(OPENAI_API) ? 'openai-key' : 'openai-compatible');
       }
     } catch { /* stays disabled */ }
     coverArtProvider = IMAGE_URL
@@ -944,7 +967,7 @@ async function health(req, res) {
     coverArt: coverArtProvider,
     openaiBroker,
     openaiConfigured: Boolean(OPENAI_BACKEND_URL),
-    hasServerKey: Boolean(LLM_KEY || IMAGE_KEY),
+    hasServerKey: Boolean(lyricProvider().key || IMAGE_KEY),
     // Where the credential came from, never what it is. A ChatGPT sign-in is
     // reported as found-but-unusable rather than quietly ignored, so nobody
     // concludes the app cannot see an account they know they have.
@@ -983,6 +1006,73 @@ async function videoHealth() {
     };
   } catch (error) {
     return { error: String(error?.message || error).slice(0, 200) };
+  }
+}
+
+/* -------------------------------------------------------------------------- *
+ * Where the words come from — changeable without editing a file
+ * -------------------------------------------------------------------------- */
+
+/** What Settings shows: the effective writer, and where each part came from. */
+function lyricSettings(res) {
+  const saved = readSettings();
+  const active = lyricProvider();
+  send(res, 200, {
+    // What is in the boxes: only what was actually saved, so an empty box
+    // means "whatever the environment says" rather than a value to preserve.
+    lyricsUrl: String(saved.lyricsUrl || ''),
+    lyricsModel: String(saved.lyricsModel || ''),
+    lyricsApi: String(saved.lyricsApi || ''),
+    // What is in force, and what it would fall back to.
+    active: { url: active.url, model: active.model, api: active.api },
+    fromEnvironment: { url: ENV_LLM_URL, model: ENV_LLM_MODEL },
+    // The relay outranks all of this when it is configured, and saying so
+    // beats letting somebody wonder why their endpoint is ignored.
+    relayInUse: Boolean(OPENAI_BACKEND_URL),
+    keyFromEnvironment: Boolean(active.key),
+  });
+}
+
+async function saveLyricSettings(req, res) {
+  const body = await readBody(req);
+  const { stored, refused, saved } = writeSettings(body);
+  if (!saved) {
+    return send(res, 501, {
+      error: 'This install has nowhere to keep settings. Set MAXMUSIC_DATA and restart.',
+    });
+  }
+  if (refused.length) {
+    return send(res, 400, {
+      error: 'A lyric endpoint is an address and a model name, never a credential. '
+        + `Refused: ${refused.join(', ')}. Keys belong in the environment, where the browser cannot reach them.`,
+    });
+  }
+  const active = lyricProvider();
+  console.log(`[lyrics] writer is now ${active.model} at ${active.url} (${active.api}).`);
+  send(res, 200, { ok: true, stored, active: { url: active.url, model: active.model, api: active.api } });
+}
+
+/** Ask the configured writer whether it is there, without writing a song. */
+async function testLyricWriter(req, res) {
+  const body = await readBody(req);
+  const { settings } = sanitiseSettings(body);
+  const current = lyricProvider();
+  const url = (settings.lyricsUrl || current.url).replace(/\/+$/, '');
+  const api = String(settings.lyricsApi || (url.includes(':11434') ? 'ollama' : 'openai-compatible')).toLowerCase();
+  try {
+    const reply = await fetchJson(api === 'ollama' ? ollamaUrl('tags', url) : `${url}/models`, {
+      headers: current.key ? { authorization: `Bearer ${current.key}` } : {},
+      timeoutMs: 8000,
+    });
+    if (reply.status !== 200) {
+      return send(res, 200, { ok: false, detail: `It answered ${reply.status}.` });
+    }
+    const models = api === 'ollama'
+      ? (reply.body?.models || []).map((m) => m.name)
+      : (reply.body?.data || []).map((m) => m.id);
+    send(res, 200, { ok: true, models: models.slice(0, 60), count: models.length });
+  } catch (err) {
+    send(res, 200, { ok: false, detail: `Nothing answered at ${url}. ${err.message}` });
   }
 }
 
@@ -1170,6 +1260,9 @@ export function handleLocal(req, res, { libraryDb = null } = {}) {
     forwardAccountRequest(req, res);
     return true;
   }
+  if (path === '/api/settings/lyrics' && req.method === 'GET') { lyricSettings(res); return true; }
+  if (path === '/api/settings/lyrics' && req.method === 'PUT') { saveLyricSettings(req, res); return true; }
+  if (path === '/api/settings/lyrics/test' && post) { testLyricWriter(req, res); return true; }
   if (path === '/api/lyrics' && post) { writeLyrics(req, res); return true; }
   if (path === '/api/cover-art' && post) { coverArt(req, res); return true; }
   if (path.startsWith('/tracks/')) { streamTrack(req, res); return true; }

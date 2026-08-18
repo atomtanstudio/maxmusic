@@ -734,7 +734,7 @@ export function mount(root, ctx) {
         ${ctx.iconMarkup('art')}<span class="lib-view__label">Grid</span>
       </button>
     </div>
-    <button class="btn btn--ghost lib-select-toggle" type="button" data-role="select-toggle">Select</button>`;
+    <button class="btn btn--ghost lib-select-toggle" type="button" data-role="select-toggle">Edit</button>`;
   ctx.headerSlot.append(headerTools);
 
   headerTools.addEventListener('click', (e) => {
@@ -769,7 +769,7 @@ export function mount(root, ctx) {
 
     const toggle = headerTools.querySelector('[data-role="select-toggle"]');
     if (toggle) {
-      toggle.textContent = selecting ? 'Done' : 'Select';
+      toggle.textContent = selecting ? 'Done' : 'Edit';
       toggle.classList.toggle('is-active', selecting);
     }
 
@@ -944,7 +944,7 @@ export function mount(root, ctx) {
   }
 
   function rowMarkup(record) {
-    return `<li class="lib-row${selecting && selected.has(record.id) ? ' is-picked' : ''}" data-id="${esc(record.id)}" tabindex="0">
+    return `<li class="lib-row${selecting ? ' is-selecting' : ''}${selecting && selected.has(record.id) ? ' is-picked' : ''}" data-id="${esc(record.id)}" tabindex="0">
       ${tickMarkup(record)}
       ${coverMarkup(record)}
       <div class="lib-row__main">
@@ -960,7 +960,7 @@ export function mount(root, ctx) {
 
   function cardMarkup(record) {
     const canPlay = Boolean(record.url);
-    return `<li class="lib-card${selecting && selected.has(record.id) ? ' is-picked' : ''}" data-id="${esc(record.id)}" tabindex="0">
+    return `<li class="lib-card${selecting ? ' is-selecting' : ''}${selecting && selected.has(record.id) ? ' is-picked' : ''}" data-id="${esc(record.id)}" tabindex="0">
       <span class="lib-card__art">
         ${tickMarkup(record)}
         ${coverMarkup(record)}

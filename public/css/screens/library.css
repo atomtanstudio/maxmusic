@@ -823,14 +823,11 @@
 }
 
 /* ---------------------------------------------------------- selecting --- */
-/* Choosing several songs at once. The tick sits over the top-left corner of
-   the artwork, where a cover has nothing worth covering, and the same
-   treatment works for a row because a row shows its cover in the same place. */
+/* Selection is shown on the artwork, the way hover and focus already are.
+   Outlining the whole card drew a rounded box straight through the title text
+   and left the square corners of the sleeve poking out of it. */
 .screen-library .lib-select-toggle { margin-left: var(--space-3); }
-.screen-library .lib-select-toggle.is-active {
-  background: var(--surface-4);
-  color: var(--text-hi);
-}
+.screen-library .lib-select-toggle.is-active { background: var(--surface-4); color: var(--text-hi); }
 
 .screen-library .lib-selbar {
   position: sticky;
@@ -858,29 +855,54 @@
 }
 .screen-library .lib-selbar__delete[disabled] { opacity: .45; cursor: not-allowed; }
 
+/* The tick. In the grid it sits over a corner of the sleeve, where a cover has
+   nothing worth covering. In the list it takes a column of its own, because
+   laying it over a 56px thumbnail hides most of the picture. */
 .screen-library .lib-tick {
-  position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
-  z-index: 2;
   display: grid;
   place-items: center;
   width: 22px;
   height: 22px;
   border-radius: var(--r-sm, 6px);
-  background: rgba(6, 8, 12, 0.66);
-  backdrop-filter: blur(2px);
-  pointer-events: none;
+  flex: none;
 }
-.screen-library .lib-tick__box { margin: 0; width: 15px; height: 15px; accent-color: var(--text-hi); }
-/* The row's cover is the positioning context in list view; the card's art is
-   in grid view. Both need to be relative for the tick to land on the artwork. */
-.screen-library .lib-row { position: relative; }
+.screen-library .lib-tick__box {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #6ea8fe);
+  cursor: pointer;
+}
 .screen-library .lib-card__art { position: relative; }
-
-.screen-library .lib-row.is-picked,
-.screen-library .lib-card.is-picked {
-  outline: 2px solid var(--text-hi);
-  outline-offset: -2px;
-  border-radius: var(--r-lg);
+.screen-library .lib-card .lib-tick {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 2;
+  background: rgba(6, 8, 12, 0.72);
+  backdrop-filter: blur(2px);
 }
+/* The list makes room rather than covering anything. */
+.screen-library .lib-row.is-selecting {
+  grid-template-columns: 22px var(--cover-row) minmax(0, 1fr) auto auto;
+}
+.screen-library .lib-row.is-selecting .lib-tick { align-self: center; }
+
+/* Picked: a ring on the sleeve and a slightly warmer card. Nothing is drawn
+   across the text, and nothing changes size, so the grid does not shift when
+   the mode is entered. */
+.screen-library .lib-card.is-picked .cover,
+.screen-library .lib-row.is-picked .cover {
+  box-shadow: inset 0 0 0 2px var(--text-hi);
+}
+.screen-library .lib-card.is-picked,
+.screen-library .lib-row.is-picked { background: var(--surface-3); }
+.screen-library .lib-card.is-picked { border-radius: var(--r-lg); }
+.screen-library .lib-card.is-picked .lib-card__title,
+.screen-library .lib-row.is-picked .lib-row__name { color: var(--text-hi); }
+
+/* While choosing, a song is something to pick, not something to open. */
+.screen-library .lib-row.is-selecting .cover__play,
+.screen-library .lib-card.is-selecting .cover__play,
+.screen-library .lib-row.is-selecting .actionbar,
+.screen-library .lib-card.is-selecting .actionbar { display: none; }
