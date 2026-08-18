@@ -699,3 +699,21 @@
 }
 .screen-settings .set-diag > *:not(summary) { margin: 0 var(--space-6) var(--space-6); }
 .screen-settings .set-diag > summary + * { margin-top: var(--space-2); }
+
+/* ------------------------------------------------- who writes the words --- */
+.screen-settings .set-writer { padding: var(--space-6); display: grid; gap: var(--space-4); }
+.screen-settings .set-writer__now { margin: 0; color: var(--text-hi); font-size: var(--fs-sm); }
+.screen-settings .set-writer__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-4);
+}
+@media (max-width: 620px) {
+  .screen-settings .set-writer__fields { grid-template-columns: minmax(0, 1fr); }
+}
+.screen-settings .set-writer__field { display: grid; gap: var(--space-2); }
+.screen-settings .set-writer__hint { margin: 0; }
+.screen-settings .set-writer__status { margin: 0; font-size: var(--fs-xs); color: var(--text-lo); }
+.screen-settings .set-writer__status[data-kind="ok"] { color: var(--ok, #4ec9a5); }
+.screen-settings .set-writer__status[data-kind="error"] { color: var(--danger, #f04060); }
+.screen-settings .set-writer__acts { gap: var(--space-3); }

@@ -264,6 +264,36 @@ function template(iconMarkup) {
 
   <section class="set-sec">
     <header class="set-sec__head">
+      <h2 class="set-sec__title">Who writes the lyrics</h2>
+      <p class="set-sec__note">Any Ollama or OpenAI-compatible chat endpoint. Keys stay in the environment.</p>
+    </header>
+    <div class="panel set-writer" data-writer>
+      <p class="set-writer__now" data-writer-now>Checking…</p>
+      <div class="set-writer__fields">
+        <label class="label set-writer__field">Address
+          <input class="input" type="url" data-writer-url autocomplete="off" spellcheck="false"
+            placeholder="http://127.0.0.1:11434/v1">
+        </label>
+        <label class="label set-writer__field">Model
+          <input class="input" type="text" data-writer-model autocomplete="off" spellcheck="false"
+            placeholder="qwen3:14b">
+        </label>
+      </div>
+      <p class="hint set-writer__hint">
+        Ollama and LM Studio need no account and no key. Leave both empty to use whatever
+        the environment sets. A key, if one is needed, belongs in <code class="code">.env</code> —
+        this form will not take one.
+      </p>
+      <p class="set-writer__status" data-writer-status hidden></p>
+      <div class="row row--end set-writer__acts">
+        <button class="btn btn--sm btn--ghost" type="button" data-writer-test>Test it</button>
+        <button class="btn btn--sm" type="button" data-writer-save>Save</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="set-sec">
+    <header class="set-sec__head">
       <h2 class="set-sec__title">OpenAI account</h2>
       <p class="set-sec__note">Signs in on the server. This browser never holds the credential.</p>
     </header>
@@ -870,6 +900,101 @@ export function mount(root, ctx) {
   copyBtn.innerHTML = `${ctx.iconMarkup('copy')}Copy report`;
 
   ctx.headerSlot.append(copyBtn, recheckBtn);
+
+  /* ------------------------------------------------- who writes the words -- */
+
+  const writerEl = {
+    now: page.querySelector('[data-writer-now]'),
+    url: page.querySelector('[data-writer-url]'),
+    model: page.querySelector('[data-writer-model]'),
+    status: page.querySelector('[data-writer-status]'),
+    test: page.querySelector('[data-writer-test]'),
+    save: page.querySelector('[data-writer-save]'),
+  };
+
+  function writerSay(text, kind = 'info') {
+    if (!writerEl.status) return;
+    writerEl.status.hidden = !text;
+    writerEl.status.textContent = text || '';
+    writerEl.status.dataset.kind = kind;
+  }
+
+  function paintWriter(info) {
+    if (!writerEl.now || !info) return;
+    writerEl.url.value = info.lyricsUrl || '';
+    writerEl.model.value = info.lyricsModel || '';
+    writerEl.url.placeholder = info.fromEnvironment?.url || '';
+    writerEl.model.placeholder = info.fromEnvironment?.model || '';
+    // Saying "your endpoint is ignored" up front beats letting somebody set one
+    // and wonder for a week why nothing changed.
+    writerEl.now.textContent = info.relayInUse
+      ? `An OpenAI account is signed in on the server, and it writes the lyrics. What is set here is used only if that stops being available.`
+      : `Writing with ${info.active?.model} at ${info.active?.url}.`;
+  }
+
+  async function loadWriter() {
+    try {
+      const res = await fetch('/api/settings/lyrics', { cache: 'no-store' });
+      if (res.ok) paintWriter(await res.json());
+    } catch { /* the panel simply stays quiet */ }
+  }
+
+  writerEl.save?.addEventListener('click', async () => {
+    writerEl.save.disabled = true;
+    writerSay('Saving…');
+    try {
+      const res = await fetch('/api/settings/lyrics', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          lyricsUrl: writerEl.url.value.trim(),
+          lyricsModel: writerEl.model.value.trim(),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { writerSay(body.error || `The server answered ${res.status}.`, 'error'); return; }
+      writerSay('Saved. New lyrics will be written by this one.', 'ok');
+      await loadWriter();
+      recheck();
+    } catch (err) {
+      writerSay(`Could not save: ${err.message}`, 'error');
+    } finally {
+      writerEl.save.disabled = false;
+    }
+  });
+
+  writerEl.test?.addEventListener('click', async () => {
+    writerEl.test.disabled = true;
+    writerSay('Asking…');
+    try {
+      const res = await fetch('/api/settings/lyrics/test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          lyricsUrl: writerEl.url.value.trim(),
+          lyricsModel: writerEl.model.value.trim(),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (body.ok) {
+        const named = (body.models || []).slice(0, 3).join(', ');
+        writerSay(
+          body.count
+            ? `It answered, with ${body.count} model${body.count === 1 ? '' : 's'}${named ? `: ${named}${body.count > 3 ? '…' : ''}` : ''}.`
+            : 'It answered.',
+          'ok',
+        );
+      } else {
+        writerSay(body.detail || 'Nothing answered there.', 'error');
+      }
+    } catch (err) {
+      writerSay(`Could not reach it: ${err.message}`, 'error');
+    } finally {
+      writerEl.test.disabled = false;
+    }
+  });
+
+  loadWriter();
 
   /** One line on the closed fold, so it need not be opened to learn all is well. */
   function paintDiagSummary(h) {
