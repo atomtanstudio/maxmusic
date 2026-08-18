@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Bring the MaxMusic redesign back up: app on 3020, gauntlet monitor on 3021.
-# Does not touch the backend on 3010 — that one is yours to start.
+# The original launcher: app on 3020, against a separate studio backend.
+# Does not touch that backend — that one is yours to start.
+#
+# For a self-contained install, use `node scripts/start-native.mjs` instead;
+# see README.md. This script is kept for setups that predate it.
 set -u
 cd "$(dirname "$0")"
 
-# The backend lives on the LAN box that hosts ComfyUI (moved off this Mac,
-# 15 Aug 2026). Override either of these to point somewhere else:
-#   BACKEND_HOST=127.0.0.1 ./start.sh
-export BACKEND_HOST="${BACKEND_HOST:-192.168.1.100}"
+# Point these at whichever machine runs the studio backend:
+#   BACKEND_HOST=192.0.2.10 ./start.sh
+export BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 export BACKEND_PORT="${BACKEND_PORT:-3010}"
 
 start() { # name port command...
@@ -27,8 +29,7 @@ start() { # name port command...
 
 echo
 echo "MaxMusic"
-start app     3020 node server.js
-start monitor 3021 node gauntlet-status.mjs
+start app 3020 node server.js
 
 printf '  backend %s:%s ' "$BACKEND_HOST" "$BACKEND_PORT"
 health="http://$BACKEND_HOST:$BACKEND_PORT/api/health"
@@ -41,8 +42,6 @@ fi
 
 cat <<'EOF'
 
-  app      http://localhost:3020
-  monitor  http://localhost:3021
+  app  http://localhost:3020
 
-  Next steps are in RESUME.md
 EOF

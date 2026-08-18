@@ -161,7 +161,7 @@ const MAX_BODY = 2 * 1024 * 1024;
  *
  * Nothing needs configuring either way: a song that comes back SHORTER than it
  * was asked for can only mean the model set the length, so that is the signal.
- * See docs/backend-let-the-model-set-the-length.md.
+ * The model sets its own length; the request carries a target, not a cutoff.
  */
 const PACING_FLAG = path.join(__dirname, 'render', 'data', 'model-sets-length.json');
 let modelSetsLength = false;

@@ -711,7 +711,7 @@ function template(ctx) {
 
 /**
  * @param {HTMLElement} root
- * @param {*} ctx  See docs/CONTRACT.md §2.
+ * @param {*} ctx  Shell context: router, bus, toast and storage.
  * @returns {() => void} teardown
  */
 export async function mount(root, ctx) {

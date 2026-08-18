@@ -68,10 +68,11 @@ art, and there are three ways to have them:
 2. **Any OpenAI-compatible endpoint.** Ollama, LM Studio, llama.cpp, vLLM, or a
    hosted provider, through `LYRICS_URL` / `LYRICS_MODEL` / `LYRICS_KEY`. Ollama
    needs no account and no key.
-3. **A server-side OpenAI account backend** implementing the contract in
-   [docs/BROKER.md](docs/BROKER.md), set with `OPENAI_BACKEND_URL`. This is the
-   OAuth path; it exists for people who already run that service and most
-   installs will never need it. When set, it takes precedence over the above.
+3. **A server-side OpenAI account backend**, set with `OPENAI_BACKEND_URL`.
+   MaxMusic relays account status, sign-in, lyrics and cover-art requests to it
+   and the browser never sees a token. This is the OAuth path; it exists for
+   people who already run such a service and most installs will never need it.
+   When set, it takes precedence over the above.
 
 You can also write or paste lyrics in Studio and skip all of it. The native
 launcher loads `.env.local` and `.env`; see [.env.example](.env.example) for

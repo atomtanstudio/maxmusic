@@ -30,7 +30,7 @@ The server only opens SQLite when `MAXMUSIC_DB` is set. The legacy proxy path an
 ## OpenAI account routing
 
 `OPENAI_BACKEND_URL` is an optional server-side relay for the OAuth-aware
-OpenAI account backend described in `docs/BROKER.md`. It is intentionally a
+OpenAI account backend set with `OPENAI_BACKEND_URL`. It is intentionally a
 URL for the MaxMusic backend, not the broker's private URL or a token-bearing
 setting. With it enabled, the native server routes `/api/openai/*`,
 `/api/lyrics`, `/api/cover-art`, and relative `/covers/...` media through that

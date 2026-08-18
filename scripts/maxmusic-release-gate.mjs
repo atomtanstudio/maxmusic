@@ -77,7 +77,7 @@ function run(command, args) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const maxmusic = String(args.maxmusic || 'http://192.168.1.100:3024').replace(/\/+$/, '');
+  const maxmusic = String(args.maxmusic || 'http://127.0.0.1:3024').replace(/\/+$/, '');
   const whisper = String(args.whisper || '').replace(/\/+$/, '');
   if (!whisper) throw new Error('--whisper is required.');
 

@@ -79,7 +79,7 @@ async function main() {
   const target = Number(args.target);
   if (!(target > 0)) throw new Error('--target must be a positive number of seconds.');
 
-  const maxmusic = String(args.maxmusic || 'http://192.168.1.100:3024').replace(/\/+$/, '');
+  const maxmusic = String(args.maxmusic || 'http://127.0.0.1:3024').replace(/\/+$/, '');
   const whisper = args.whisper ? String(args.whisper).replace(/\/+$/, '') : null;
   if (!whisper) throw new Error('--whisper is required for the lyric-ending comparison.');
 

@@ -44,7 +44,7 @@ import {
 const WORKER_URL = (process.env.WORKER_URL || '').replace(/\/+$/, '');
 
 /* A server-side backend that already implements the OpenAI account contract in
-   docs/BROKER.md. This is not the broker itself: do not point this at the
+   the account contract. This is not the broker itself: do not point this at the
    broker's private port and do not put a broker token in the environment. */
 const OPENAI_BACKEND_URL = (process.env.OPENAI_BACKEND_URL || '').replace(/\/+$/, '');
 

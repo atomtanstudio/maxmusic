@@ -14,3 +14,14 @@ render/data/model-sets-length.json
 test-artifacts/
 # Timestamped safety copies taken before a deploy or a bulk edit.
 .maxmusic-backup-*/
+
+# Internal working notes: they describe a private network and personal paths,
+# and they are for building this rather than for installing it. Kept on disk.
+RESUME.md
+docs/BROKER.md
+docs/CONTRACT.md
+docs/SPEC.md
+docs/backend-let-the-model-set-the-length.md
+# The gauntlet monitor: a local QA dashboard with machine-specific paths.
+gauntlet-status.mjs
+docs/progress.html

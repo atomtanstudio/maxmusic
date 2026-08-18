@@ -5,14 +5,14 @@
  * Reads the last real generation out of ComfyUI's history and reports whether
  * the audio canvas is wired to the text encoder's own answer (`['4', 1]`) or
  * still hardcoded to whatever length was requested. See
- * docs/backend-let-the-model-set-the-length.md.
+ * the duration handling notes.
  *
  *   node render/check-workflow.mjs [comfyUrl]
  *
  * @module render/check-workflow
  */
 
-const COMFY = process.argv[2] || 'http://192.168.1.100:8189';
+const COMFY = process.argv[2] || 'http://127.0.0.1:8189';
 
 /* Songs the BACKEND made, which is what this is asking about — anything
    submitted to ComfyUI by hand for a test writes somewhere else and would

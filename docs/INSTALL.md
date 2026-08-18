@@ -227,11 +227,11 @@ LYRICS_MODEL=gpt-4o-mini
 LYRICS_KEY=sk-...
 ```
 
-**3. A server-side OpenAI account backend.** If you run one implementing
-[BROKER.md](BROKER.md), set `OPENAI_BACKEND_URL` and it takes over the lyrics,
-artwork, and sign-in routes. This is the OAuth path, and it exists for people
-who already operate that service; it is not required and most installs will
-never use it.
+**3. A server-side OpenAI account backend.** Set `OPENAI_BACKEND_URL` and it
+takes over the lyrics, artwork, and sign-in routes — MaxMusic relays to it and
+the browser never sees a token. This is the OAuth path, and it exists for
+people who already operate such a service; it is not required and most installs
+will never use it.
 
 ---
 

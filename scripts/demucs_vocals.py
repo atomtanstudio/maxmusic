@@ -9,6 +9,7 @@ implementation already installed with the Legion ACE-Step UI.
 from __future__ import annotations
 
 import argparse
+import os
 import math
 from pathlib import Path
 
@@ -132,7 +133,9 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path("/srv/ai/models/audio-separation/htdemucs_embedded.onnx"),
+        # No default worth guessing: point this at wherever the ONNX weights
+        # live on your machine, or set MAXMUSIC_DEMUCS_MODEL once.
+        default=Path(os.environ.get("MAXMUSIC_DEMUCS_MODEL", "htdemucs_embedded.onnx")),
     )
     args = parser.parse_args()
 

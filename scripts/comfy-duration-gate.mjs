@@ -28,7 +28,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_COMFY = 'http://192.168.1.100:8189';
+const DEFAULT_COMFY = 'http://127.0.0.1:8189';
 const TARGETS = Object.freeze([30, 60, 90, 120, 150, 180, 210, 240, 270, 300]);
 const TERMINAL_LYRIC = 'At last, the silver river carries us safely home.';
 

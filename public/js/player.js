@@ -60,7 +60,7 @@
  *   ctx.bus.on('player:job:stop', ({ id }) => controller.abort());
  *
  * ---------------------------------------------------------------------------
- * BUS EVENTS (in addition to the table in docs/CONTRACT.md §3)
+ * BUS EVENTS
  * ---------------------------------------------------------------------------
  *   listens  player:play      {track, title?, cover?, meta?, queue?}  → load + play
  *   listens  player:pause     —                                       → pause
@@ -213,7 +213,7 @@ function subtitleParts(track) {
 
 /**
  * @param {HTMLElement} root  `#player-root`, the persistent bar.
- * @param {*} ctx             Shell context (see docs/CONTRACT.md §2).
+ * @param {*} ctx             Shell context: router, bus, toast and storage.
  * @returns {Object} the controller stored as `ctx.player`.
  */
 export function mount(root, ctx) {

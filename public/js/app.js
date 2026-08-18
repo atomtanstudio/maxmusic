@@ -10,7 +10,8 @@
  * Settings screen. The machine does not get published to the customer.
  *
  * Screens never import this file. They receive everything through `ctx`.
- * See docs/CONTRACT.md.
+ * The shell owns routing, the bus, toasts and the player; screens own their
+ * own DOM and nothing else.
  *
  * @module app
  */
@@ -1094,7 +1095,7 @@ function buildContext(route, opts = {}) {
     icon,
     iconMarkup,
 
-    // Shared primitives — see docs/CONTRACT.md §6.
+    // Shared primitives, used by every screen.
     menu,
     attachMenu: (trigger, config) => {
       const controller = attachMenu(trigger, config);
