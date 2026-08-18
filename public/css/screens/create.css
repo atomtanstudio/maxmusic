@@ -743,3 +743,23 @@
   .wsscroll { overflow: visible; }
   .trk__acts .actionchip:nth-child(2) { display: none; }
 }
+
+/* ------------------------------------------------------------- naming --- */
+/* Title and artist sit side by side because they are one thought, and the
+   title takes the room because it is the longer of the two. */
+.screen-create .namefields {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-3);
+}
+@media (max-width: 560px) {
+  .screen-create .namefields { grid-template-columns: minmax(0, 1fr); }
+}
+/* Not `.opt__hint`: that one is deliberately the warning colour, and telling
+   somebody what their song will be called is not a warning. */
+.screen-create .namefields__hint {
+  margin: 0;
+  font-size: var(--fs-2xs);
+  color: var(--text-lo);
+  line-height: var(--lh-snug);
+}

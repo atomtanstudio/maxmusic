@@ -296,6 +296,11 @@ export function mount(root, ctx) {
   const state = {
     /* form — every field maps to a SPEC §3a parameter */
     idea: typeof saved.idea === 'string' ? saved.idea : '',
+    /* A song's name and whose it is. The lyric writer proposes a title once it
+       has written something, but only into an empty box: a name somebody chose
+       is not a default to improve on. */
+    title: typeof saved.title === 'string' ? saved.title : '',
+    artist: typeof saved.artist === 'string' ? saved.artist : '',
     instrumental: Boolean(saved.instrumental),
     duration: clamp(Number(saved.duration) || LIMITS.DURATION_DEFAULT, LIMITS.DURATION_MIN, LIMITS.DURATION_MAX),
     customLength: Boolean(saved.customLength),
@@ -382,6 +387,17 @@ export function mount(root, ctx) {
                 aria-label="Show other details">${iconMarkup('dice')}</button>
             </div>
             <div class="hints__list" data-hint-list></div>
+          </div>
+
+          <div class="opt opt--stack">
+            <span class="opt__label" id="cr-name-label">Name it</span>
+            <div class="namefields" role="group" aria-labelledby="cr-name-label">
+              <input class="input namefields__title" type="text" data-title maxlength="120"
+                autocomplete="off" placeholder="Song title" aria-label="Song title">
+              <input class="input namefields__artist" type="text" data-artist maxlength="80"
+                autocomplete="off" placeholder="Artist" aria-label="Artist">
+            </div>
+            <p class="namefields__hint" data-name-hint>Leave the title empty and one is written with the lyrics.</p>
           </div>
 
           <div class="opt">
@@ -518,6 +534,9 @@ export function mount(root, ctx) {
   const el = {
     idea: $('#cr-idea'),
     ideaCount: $('[data-idea-count]'),
+    title: $('[data-title]'),
+    artist: $('[data-artist]'),
+    nameHint: $('[data-name-hint]'),
     hints: $('[data-hints]'),
     hintsLabel: $('[data-hints-label]'),
     hintList: $('[data-hint-list]'),
@@ -584,9 +603,42 @@ export function mount(root, ctx) {
 
   /* ---------------------------------------------------------------- store -- */
 
+  /** The name this song is saved under: typed, else written, else the idea. */
+  const songTitle = () => String(state.title || '').trim()
+    || String(state.song?.title || '').trim()
+    || titleFromIdea(state.idea);
+
+  /** Who it is credited to: typed here, else the name kept in Settings. */
+  const songArtist = () => String(state.artist || '').trim()
+    || String((ctx.storage.get('defaults', null) || {}).artist || '').trim();
+
+  /**
+   * The title for this run: whatever is in the box, or the writer's suggestion
+   * put there on the person's behalf. A name already typed is never overruled.
+   */
+  function proposeTitle(suggested, idea) {
+    const mine = String(state.title || '').trim();
+    if (mine) return mine;
+    const written = String(suggested || '').trim() || titleFromIdea(idea);
+    state.title = written;
+    if (el.title) el.title.value = written;
+    persistForm();
+    paintNameHint();
+    return written;
+  }
+
+  function paintNameHint() {
+    if (!el.nameHint) return;
+    el.nameHint.textContent = String(state.title || '').trim()
+      ? 'This is the name the song is saved under.'
+      : 'Leave the title empty and one is written with the lyrics.';
+  }
+
   function persistForm() {
     ctx.storage.set(FORM_KEY, {
       idea: state.idea,
+      title: state.title,
+      artist: state.artist,
       instrumental: state.instrumental,
       duration: state.duration,
       customLength: state.customLength,
@@ -712,7 +764,7 @@ export function mount(root, ctx) {
         lyrics: state.song?.lyrics || '',
         instrumental: state.instrumental,
       }, LIMITS.PROMPT_MAX),
-      title: state.song?.title || titleFromIdea(state.idea),
+      title: songTitle(),
       idea: state.idea,
       is_instrumental: state.instrumental,
       // The user's selected length is the render target. The lyric plan may
@@ -814,6 +866,9 @@ export function mount(root, ctx) {
       b.classList.toggle('is-active', (b.dataset.mode === 'instrumental') === state.instrumental);
     }
 
+    if (el.title && el.title.value !== state.title) el.title.value = state.title;
+    if (el.artist && el.artist.value !== state.artist) el.artist.value = state.artist;
+    paintNameHint();
     const exact = state.customLength || !isDurationGridValue(state.duration);
     const onGrid = !exact;
     el.durationValue.textContent = clock(state.duration);
@@ -1348,7 +1403,7 @@ export function mount(root, ctx) {
     line.className = 'trk__line';
     const title = document.createElement('h3');
     title.className = 'trk__title';
-    title.textContent = state.song?.title || titleFromIdea(state.idea);
+    title.textContent = songTitle();
     // the shell's sanctioned "working" signal: a labelled chip, solid accent
     const badge = document.createElement('span');
     badge.className = 'sev sev--live';
@@ -1382,7 +1437,8 @@ export function mount(root, ctx) {
   function resultRow(result, slot) {
     const rec = normalise({
       ...result,
-      title: state.song?.title || titleFromIdea(state.idea),
+      title: songTitle(),
+      artist: songArtist(),
       prompt: state.facts?.prompt || '',
       idea: state.idea,
       lyrics: state.facts?.instrumental ? '' : (state.song?.lyrics || ''),
@@ -1843,7 +1899,7 @@ export function mount(root, ctx) {
           setInstrumental(true);
           state.plan = null;
           state.song = {
-            title: String(res.song_title || '').trim() || titleFromIdea(idea),
+            title: proposeTitle(res.song_title, idea),
             styleTags: String(res.style_tags || '').trim(),
             lyrics: '',
           };
@@ -1874,7 +1930,7 @@ export function mount(root, ctx) {
 
           state.plan = plan;
           state.song = {
-            title: String(res.song_title || '').trim() || titleFromIdea(idea),
+            title: proposeTitle(res.song_title, idea),
             styleTags: String(res.style_tags || '').trim(),
             lyrics: plan.lyrics,
           };
@@ -1953,11 +2009,11 @@ export function mount(root, ctx) {
         const slot = state.takes.length > 1 ? 'AB'[i] : '';
         const rec = normalise({
           ...t,
-          title: state.song?.title || titleFromIdea(idea),
-          // Simple mode has no artist field and is not getting one — but if
-          // there is a name in Settings, songs made here should be credited to
-          // it rather than arriving anonymous and being renamed one at a time.
-          artist: String((ctx.storage.get('defaults', null) || {}).artist || '').trim(),
+          title: songTitle(),
+          // Typed on this screen if it was, and otherwise the name kept in
+          // Settings, so songs do not arrive anonymous and get renamed one at
+          // a time.
+          artist: songArtist(),
           prompt: state.facts.prompt,
           idea,
           lyrics: state.facts.instrumental ? '' : (state.song?.lyrics || ''),
@@ -1977,7 +2033,7 @@ export function mount(root, ctx) {
 
       ctx.toast(
         state.takes.length > 1 ? 'Two versions are ready.' : 'Your song is ready.',
-        { kind: 'success', title: state.song?.title || titleFromIdea(idea), key: 'done' },
+        { kind: 'success', title: songTitle(), key: 'done' },
       );
     } catch (err) {
       run.error = err;
@@ -2074,6 +2130,19 @@ export function mount(root, ctx) {
   el.modes.addEventListener('click', (e) => {
     const b = e.target.closest('[data-mode]');
     if (b) setInstrumental(b.dataset.mode === 'instrumental');
+  });
+
+  // A name typed here is the song's name. It survives the lyric writer, the
+  // render and the save, which is the whole point: the library used to show
+  // the first few words of the idea because nothing else ever reached it.
+  el.title.addEventListener('input', () => {
+    state.title = el.title.value;
+    persistForm();
+    paintNameHint();
+  });
+  el.artist.addEventListener('input', () => {
+    state.artist = el.artist.value;
+    persistForm();
   });
 
   el.durationSlider.addEventListener('input', () => {
