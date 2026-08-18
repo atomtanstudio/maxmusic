@@ -21,12 +21,15 @@ test('an empty value means "use the environment" and is kept as empty', () => {
 });
 
 test('anything shaped like a credential is refused, not stored', () => {
+  // Every string below is a deliberate fake. They exist to prove the refusal
+  // fires, and they are written so a secret scanner reading this repository
+  // can tell at a glance that nothing here was ever real.
   // This route is reachable by anything on the network — the app has no
   // authentication and its own install guide suggests HOST=0.0.0.0. Nothing
   // that could cost somebody money is allowed to land in this file.
   for (const value of [
-    'sk-proj-abcdefghijklmnopqrst',
-    'Bearer abcdefghijklmnopqrstuvwx',
+    'sk-proj-EXAMPLE0000NOTAREALKEY',
+    'Bearer EXAMPLE0000NOTAREALTOKEN',
     'my-api-key-here',
     'the-password-is-hunter2',
     'a-secret-value',
@@ -54,8 +57,8 @@ test('a URL carrying credentials, or one this server should not call, is refused
 test('fields nobody asked for are ignored rather than written through', () => {
   const { settings } = sanitiseSettings({
     lyricsUrl: 'http://127.0.0.1:11434/v1',
-    lyricsKey: 'sk-should-never-appear',
-    OPENAI_API_KEY: 'sk-nor-this',
+    lyricsKey: 'sk-EXAMPLE-SHOULD-NEVER-APPEAR',
+    OPENAI_API_KEY: 'sk-EXAMPLE-NOR-THIS',
     somethingElse: true,
   });
   assert.deepEqual(Object.keys(settings), ['lyricsUrl']);
