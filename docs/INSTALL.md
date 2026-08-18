@@ -24,7 +24,7 @@ way.
 | **Python** | 3.10 or newer |
 | **FFmpeg** | built with **libass**, for video and export |
 | **GPU** | NVIDIA with CUDA is the intended path. Apple MPS and CPU run, but are experimental and slow |
-| **Disk** | about 30 GB for the model cache, the Python environment, and the lyric-timing model |
+| **Disk** | about 30 GB for the model cache, the Python environment, and the lyric-timing model. The eight sample songs that ship with it add 19 MB, and the first run copies them into your library |
 | **RAM/VRAM** | MiniMax Music 3 is roughly 23 GB of weights. 24 GB of VRAM or more is comfortable; less will offload to system RAM and run slower |
 
 FFmpeg must have libass or MaxMusic cannot draw lyrics or title cards. The
