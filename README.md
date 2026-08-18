@@ -83,3 +83,29 @@ The model weights are downloaded by Hugging Face at runtime and are not included
 ## Existing compatibility path
 
 The original `node server.js` and `start.sh` behavior remains available. If `WORKER_URL` and `MAXMUSIC_DB` are not set, the app continues to use the existing backend proxy and browser-local library exactly as before. The native path is deliberately additive.
+
+## A note on running it over a network
+
+MaxMusic has no accounts and no password. It is built to run on the machine in
+front of you, and everything it exposes — your library, your songs, the delete
+button — is available to anyone who can reach the port. That is the right
+trade for a local tool and the wrong one for an open network.
+
+`HOST=0.0.0.0` publishes it to every device on your LAN, which is how you use
+it from a laptop while the GPU box does the work. Do that only on a network you
+trust, and do not forward the port to the internet.
+
+Credentials are deliberately kept out of the browser's reach. An OpenAI key
+lives in the environment or in an account already signed in on the machine; the
+Settings screen can point the lyric writer at a different address but refuses to
+accept a key, because that form is reachable by anything on the network.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Use it, change it, sell it; keep the notice.
+
+The model weights are not part of this repository. They are downloaded from
+Hugging Face at runtime and carry their own licence, as do the Python and Node
+dependencies. If you are redistributing anything built on this, read those
+separately from this one.
+

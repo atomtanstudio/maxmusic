@@ -1,9 +1,19 @@
 {
-  "name": "maxmusic-frontend",
+  "name": "maxmusic",
   "version": "1.0.0",
-  "private": true,
+  "description": "Make songs on your own computer. A local-first studio for MiniMax Music 3, with lyric videos and cover art.",
+  "license": "MIT",
+  "author": "Rich Gates <admin@atomtan.studio>",
+  "keywords": [
+    "music",
+    "generation",
+    "minimax-music-3",
+    "local-first",
+    "lyric-video",
+    "comfyui",
+    "diffusers"
+  ],
   "type": "module",
-  "description": "MaxMusic — local-first front end for MiniMax Music 3",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
