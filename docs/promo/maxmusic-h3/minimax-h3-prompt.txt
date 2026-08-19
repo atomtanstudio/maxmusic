@@ -1,0 +1,38 @@
+subject_definitions:
+<Subject 1> is the real MaxMusic desktop application interface shown across @图片1, @图片2, and @图片3, with a near-black shell, restrained borders, cyan active controls, and the exact visible layouts and text of the supplied product screens.
+<Subject 2> is the genuine “Neon Mile” kinetic lyric-video visual language in @图片4, with a dark coastal road, cyan and magenta waveform energy, and the exact gold serif lyric text “EVERY GREEN”.
+<Subject 3> is the MaxMusic brand mark in @图片5, consisting of the cyan-blue-magenta-orange waveform M, the exact white word “MAX”, and the exact spaced word “MUSIC”.
+<Picture 1> is @图片1 and is the concrete keyframe for [Shot 1], showing the MaxMusic Create screen.
+<Picture 2> is @图片2 and is the concrete keyframe for [Shot 2], showing the MaxMusic Studio lyrics-and-arrangement screen.
+<Picture 3> is @图片3 and is the concrete keyframe for [Shot 3], showing the MaxMusic artwork library.
+<Picture 4> is @图片4 and is the concrete keyframe for [Shot 4], showing the kinetic lyric-video payoff.
+<Picture 5> is @图片5 and is the concrete final keyframe for [Shot 5], showing the MaxMusic logo.
+<Audio 1> is the first 15.00 seconds of the supplied “Neon Mile” MaxMusic sample and is reused as the target video's complete final soundtrack.
+
+summary:
+[reference generation + keyframe completion + audio reuse] The target video is a 15-second landscape launch promo that moves from <Subject 1>'s Create screen to Studio and the artwork library, reveals <Subject 2>'s kinetic lyric-video payoff, and ends on <Subject 3>. <Picture 1> through <Picture 5> define the ordered five-shot arc, while <Audio 1> is reused as the complete soundtrack.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - the real interface structure, visible controls, dark palette, cyan accents, artwork, and on-screen product wording remain stable and readable rather than being redesigned.
+<Subject 2> (appears in [Shot 4]): fully_preserved - the coastal-road composition, cyan/magenta waveform treatment, gold serif typography, and exact visible lyric text “EVERY GREEN” are retained.
+<Subject 3> (appears in [Shot 5]): fully_preserved - the waveform mark, colors, spelling, proportions, and two-line MAX MUSIC lockup remain exact.
+<Picture 1> ([Shot 1] keyframe): fully_preserved - @图片1 defines the Create-screen composition and UI geometry.
+<Picture 2> ([Shot 2] keyframe): fully_preserved - @图片2 defines the Studio composition and lyric-editor geometry.
+<Picture 3> ([Shot 3] keyframe): fully_preserved - @图片3 defines the library composition and album-art arrangement.
+<Picture 4> ([Shot 4] keyframe): fully_preserved - @图片4 defines the kinetic-lyric composition and exact lyric text.
+<Picture 5> ([Shot 5] final keyframe): fully_preserved - @图片5 defines the final logo composition.
+<Audio 1>: fully_copy - the supplied audio signal is reused as the complete final 15.00-second soundtrack without generated dialogue or replacement music.
+
+detailed_description:
+The target video uses a premium cinematic desktop-product style with near-black negative space, cyan and magenta waveform light, small warm-orange highlights, restrained optical bloom, and crisp readable product surfaces. No people appear, no new interface elements are invented, and no additional on-screen marketing copy is generated.
+[Shot 1] The video begins from <Picture 1> (@图片1), preserving <Subject 1>'s MaxMusic Create interface, its one-line song idea, navigation, controls, and cyan Create button exactly. The camera pushes in with small amplitude at slow speed toward the center-left idea field while sparse cyan and magenta audio particles wake at the frame edges. The UI itself remains planar, stable, and readable; only the surrounding light and shallow display depth move. The cyan Create control gives one restrained luminance pulse on the musical beat.
+[Shot 2] At 00:03.000, the camera cuts to <Picture 2> (@图片2). A shallow truck-right movement with small amplitude reveals the Studio view as a coherent continuation of the same dark application. Preserve every visible panel, lyric line, duration control, take selector, and Generate control. A thin cyan scan of light travels across the lyrics editor without replacing, scrambling, or animating the actual interface text. Faint magenta waveform traces rise behind the display and remain outside the UI surface.
+[Shot 3] At 00:06.000, the shot cuts to <Picture 3> (@图片3), holding the supplied artwork library and all album covers in their exact positions. The camera pulls out with small amplitude at slow speed while a magenta audio-energy trace moves from the “Neon Mile” cover across the grid. Album names, artwork, durations, navigation, and player controls remain unchanged and readable. The motion suggests that finished songs accumulate in a durable personal library without adding badges, counters, or fake telemetry.
+[Shot 4] At 00:09.000, the shot transitions to <Picture 4> (@图片4) and <Subject 2>. The dark road advances gently toward the glowing horizon as cyan and magenta waveform energy breathes at the far left and right edges. Preserve the exact gold serif lyric text “EVERY GREEN” with no spelling, wording, font, or letter-shape changes. The words make one subtle synchronized scale-and-settle movement while remaining centered and legible, demonstrating kinetic lyric-video motion rather than ordinary subtitles.
+[Shot 5] At 00:12.000, the shot cuts to <Picture 5> (@图片5) and <Subject 3>. Cyan light streams from the left and magenta-to-orange light streams from the right, converging behind the exact MaxMusic waveform mark. The camera pushes in with small amplitude at slow speed, then becomes static for the final second. Preserve the logo, spelling, colors, and proportions exactly; introduce no additional words. The surrounding waveform particles settle as the video lands precisely on the supplied logo composition at 00:15.000.
+
+overall_soundscape:
+No independent ambience, interface clicks, whooshes, dialogue, or generated sound effects are added; the supplied soundtrack remains clean and uninterrupted.
+
+non_diegetic_music:
+<Audio 1> is reused 1:1 as the complete audience-only soundtrack for the full 15.00-second target video.

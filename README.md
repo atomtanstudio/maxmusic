@@ -1,6 +1,21 @@
 # MaxMusic
 
+[![Tests](https://github.com/atomtanstudio/maxmusic/actions/workflows/test.yml/badge.svg)](https://github.com/atomtanstudio/maxmusic/actions/workflows/test.yml)
+
 MaxMusic is a local-first front end for MiniMax Music 3. It keeps generated songs in a durable SQLite library and stores the audio beside the project, while leaving the model runtime as a replaceable HTTP worker.
+
+![MaxMusic library with generated songs and artwork](docs/media/maxmusic-library.png)
+
+[![15-second MaxMusic promo showing Create, Studio, the library, and a kinetic lyric video](docs/media/maxmusic-promo.gif)](docs/media/maxmusic-promo.mp4)
+
+*A 15-second MiniMax H3 launch film, scored with a song made in MaxMusic. [Watch with sound.](docs/media/maxmusic-promo.mp4)*
+
+<p align="center">
+  <img src="docs/media/maxmusic-create.png" width="49%" alt="MaxMusic simple song creation screen">
+  <img src="docs/media/maxmusic-studio.png" width="49%" alt="MaxMusic Studio lyrics and arrangement screen">
+</p>
+
+Describe one idea or direct every section in Studio. Finished songs land in a durable visual library and can become kinetic lyric videos or audio visualizers without leaving the app.
 
 **[Full installation guide →](docs/INSTALL.md)** — both model routes
 (diffusers or your existing ComfyUI), what to install, and how to check that
@@ -108,4 +123,3 @@ The model weights are not part of this repository. They are downloaded from
 Hugging Face at runtime and carry their own licence, as do the Python and Node
 dependencies. If you are redistributing anything built on this, read those
 separately from this one.
-
