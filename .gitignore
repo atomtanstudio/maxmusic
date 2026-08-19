@@ -12,6 +12,9 @@ render/models/
 render/data/job-*
 render/data/model-sets-length.json
 test-artifacts/
+# Local source renders used to assemble public promo assets. These can exceed
+# GitHub's per-file limit; only the selected compressed deliverables are kept.
+docs/promo/**/source/
 # Timestamped safety copies taken before a deploy or a bulk edit.
 .maxmusic-backup-*/
 
